@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -88,6 +91,46 @@ class ImportEIDTests(unittest.TestCase):
             {"collectibles", "repcollectibles"},
         )
         self.assertEqual(entries[1]["description"], description)
+
+    def test_discovers_union_of_base_and_repentance_languages(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "descriptions" / "ab+"
+            rep = root / "descriptions" / "rep"
+            base.mkdir(parents=True)
+            rep.mkdir(parents=True)
+            (base / "en_us.lua").write_text('local languageCode = "en_us"\n', encoding="utf-8")
+            (rep / "en_us.lua").write_text('local languageCode = "en_us"\n', encoding="utf-8")
+            (base / "bul.lua").write_text('local languageCode = "bul"\n', encoding="utf-8")
+            discovered = IMPORTER.discover_language_files(root)
+            self.assertEqual(set(discovered), {"en_us", "bul"})
+            self.assertEqual(len(discovered["en_us"]), 2)
+            self.assertEqual(len(discovered["bul"]), 1)
+
+    def test_output_metadata_targets_standard_repentance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "upstream"
+            output = Path(directory) / "descriptions.json"
+            base = root / "descriptions" / "ab+"
+            rep = root / "descriptions" / "rep"
+            base.mkdir(parents=True)
+            rep.mkdir(parents=True)
+            table = ('local languageCode = "{code}"\n'
+                     'EID.descriptions[languageCode].collectibles={{\n'
+                     '  {{"1", "One", "Description"}},\n'
+                     '}}\n')
+            (base / "en_us.lua").write_text(table.format(code="en_us"), encoding="utf-8")
+            (rep / "en_us.lua").write_text('local languageCode = "en_us"\n', encoding="utf-8")
+            (base / "bul.lua").write_text(table.format(code="bul"), encoding="utf-8")
+            subprocess.check_call([sys.executable, str(SCRIPT), str(root), str(output)])
+            payload = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                payload["source"],
+                "https://github.com/wofsauge/External-Item-Descriptions",
+            )
+            self.assertEqual(payload["game_version"], "rep")
+            self.assertEqual(payload["compatible_isaac_version"], "1.7.9b")
+            self.assertEqual(set(payload["languages"]), {"en_us", "bul"})
 
 
 if __name__ == "__main__":

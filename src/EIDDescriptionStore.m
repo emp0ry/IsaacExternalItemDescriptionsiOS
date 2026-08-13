@@ -102,6 +102,8 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 @interface EIDDescriptionStore ()
 @property(nonatomic, strong) NSMutableDictionary<NSString *, EIDDescription *> *items;
 @property(nonatomic, copy) NSString *languageCode;
+@property(nonatomic, copy) NSArray<NSString *> *availableLanguageCodes;
+@property(nonatomic, copy) NSString *descriptionDataSet;
 @end
 
 @implementation EIDDescriptionStore
@@ -111,6 +113,8 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     if (self) {
         _items = [NSMutableDictionary dictionary];
         _languageCode = [self resolvedLanguageCode];
+        _availableLanguageCodes = @[@"en_us"];
+        _descriptionDataSet = @"Isaac metadata";
         [self reload];
     }
     return self;
@@ -154,18 +158,45 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 
 - (NSString *)resolvedLanguageCode {
     NSString *saved = [[NSUserDefaults standardUserDefaults] stringForKey:@"IsaacEIDLanguage"];
-    if ([saved isEqualToString:@"en_us"] || [saved isEqualToString:@"ru"]) return saved;
-    NSString *preferred = NSLocale.preferredLanguages.firstObject.lowercaseString ?: @"en";
-    return [preferred hasPrefix:@"ru"] ? @"ru" : @"en_us";
+    if (saved.length) return saved;
+    NSString *preferred = [NSLocale.preferredLanguages.firstObject.lowercaseString
+        stringByReplacingOccurrencesOfString:@"_" withString:@"-"] ?: @"en";
+    if ([preferred hasPrefix:@"pt-br"]) return @"pt_br";
+    NSDictionary<NSString *, NSString *> *languageMap = @{
+        @"bg": @"bul", @"cs": @"cs_cz", @"de": @"de", @"el": @"el_gr",
+        @"en": @"en_us", @"es": @"spa", @"fr": @"fr", @"it": @"it",
+        @"ja": @"ja_jp", @"ko": @"ko_kr", @"nl": @"nl_nl", @"pl": @"pl",
+        @"pt": @"pt", @"ro": @"ro_ro", @"ru": @"ru", @"tr": @"tr_tr",
+        @"uk": @"uk_ua", @"vi": @"vi", @"zh": @"zh_cn"
+    };
+    NSString *base = [preferred componentsSeparatedByString:@"-"].firstObject;
+    return languageMap[base] ?: @"en_us";
 }
 
 - (void)setLanguageCode:(NSString *)languageCode {
-    if (![@[@"en_us", @"ru"] containsObject:languageCode]) return;
+    if (![self.availableLanguageCodes containsObject:languageCode]) return;
     if ([_languageCode isEqualToString:languageCode]) return;
     _languageCode = [languageCode copy];
     [[NSUserDefaults standardUserDefaults] setObject:languageCode forKey:@"IsaacEIDLanguage"];
     [self reload];
     EIDLog(@"description language selected: %@", languageCode);
+}
+
+- (NSString *)displayNameForLanguageCode:(NSString *)languageCode {
+    static NSDictionary<NSString *, NSString *> *names;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        names = @{
+            @"bul": @"Български", @"cs_cz": @"Čeština", @"de": @"Deutsch",
+            @"el_gr": @"Ελληνικά", @"en_us": @"English", @"spa": @"Español",
+            @"fr": @"Français", @"it": @"Italiano", @"ja_jp": @"日本語",
+            @"ko_kr": @"한국어", @"nl_nl": @"Nederlands", @"pl": @"Polski",
+            @"pt": @"Português", @"pt_br": @"Português (Brasil)",
+            @"ro_ro": @"Română", @"ru": @"Русский", @"tr_tr": @"Türkçe",
+            @"uk_ua": @"Українська", @"vi": @"Tiếng Việt", @"zh_cn": @"简体中文"
+        };
+    });
+    return names[languageCode] ?: languageCode;
 }
 
 - (void)loadGameItemMetadata {
@@ -224,8 +255,36 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     NSData *data = [NSData dataWithContentsOfFile:selectedPath];
     NSDictionary *root = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
     NSDictionary *languages = [root[@"languages"] isKindOfClass:NSDictionary.class] ? root[@"languages"] : nil;
+    NSArray<NSString *> *preferredOrder = @[
+        @"en_us", @"fr", @"pt", @"pt_br", @"ru", @"spa", @"it", @"bul",
+        @"pl", @"de", @"tr_tr", @"ko_kr", @"zh_cn", @"ja_jp", @"cs_cz",
+        @"nl_nl", @"uk_ua", @"el_gr", @"ro_ro", @"vi"
+    ];
+    NSMutableArray<NSString *> *available = [NSMutableArray array];
+    for (NSString *code in preferredOrder) {
+        if ([languages[code] isKindOfClass:NSDictionary.class]) [available addObject:code];
+    }
+    for (NSString *code in [[languages allKeys] sortedArrayUsingSelector:@selector(compare:)]) {
+        if (![available containsObject:code] && [languages[code] isKindOfClass:NSDictionary.class]) {
+            [available addObject:code];
+        }
+    }
+    self.availableLanguageCodes = available.count ? available : @[@"en_us"];
+    if (![self.availableLanguageCodes containsObject:self.languageCode]) {
+        self.languageCode = [self.availableLanguageCodes containsObject:@"en_us"]
+            ? @"en_us" : self.availableLanguageCodes.firstObject;
+        [[NSUserDefaults standardUserDefaults] setObject:self.languageCode forKey:@"IsaacEIDLanguage"];
+    }
+    NSString *gameVersion = [root[@"game_version"] isKindOfClass:NSString.class]
+        ? root[@"game_version"] : @"rep";
+    NSString *compatibleVersion = [root[@"compatible_isaac_version"] isKindOfClass:NSString.class]
+        ? root[@"compatible_isaac_version"] : @"1.7.9b";
+    self.descriptionDataSet = [NSString stringWithFormat:@"Repentance %@ (%@)",
+                               compatibleVersion, gameVersion];
     NSDictionary *language = [languages[self.languageCode] isKindOfClass:NSDictionary.class]
         ? languages[self.languageCode] : nil;
+    NSDictionary *english = [languages[@"en_us"] isKindOfClass:NSDictionary.class]
+        ? languages[@"en_us"] : nil;
     NSDictionary<NSString *, NSNumber *> *categories = @{
         @"collectibles": @(EIDPickupVariantCollectible),
         @"trinkets": @(EIDPickupVariantTrinket),
@@ -235,12 +294,17 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     };
     [categories enumerateKeysAndObjectsUsingBlock:^(NSString *category, NSNumber *variantNumber,
                                                      __unused BOOL *categoryStop) {
-        NSDictionary *entries = [language[category] isKindOfClass:NSDictionary.class]
-            ? language[category] : nil;
+        NSMutableDictionary *entries = [NSMutableDictionary dictionary];
+        if ([english[category] isKindOfClass:NSDictionary.class]) {
+            [entries addEntriesFromDictionary:english[category]];
+        }
+        if ([language[category] isKindOfClass:NSDictionary.class]) {
+            [entries addEntriesFromDictionary:language[category]];
+        }
         // Read the original one-category format for backward-compatible local databases.
-        if (!entries && [category isEqualToString:@"collectibles"] &&
+        if (!entries.count && [category isEqualToString:@"collectibles"] &&
             [root[@"collectibles"] isKindOfClass:NSDictionary.class]) {
-            entries = root[@"collectibles"];
+            [entries addEntriesFromDictionary:root[@"collectibles"]];
         }
         NSInteger variant = variantNumber.integerValue;
         [entries enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSDictionary *value,
@@ -259,6 +323,9 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
                                                      iconPath:existing.iconPath];
         }];
     }];
-    EIDLog(@"imported EID descriptions from %@", selectedPath.lastPathComponent);
+    EIDLog(@"imported EID descriptions from %@ (%lu languages; active %@; dataset %@)",
+           selectedPath.lastPathComponent,
+           (unsigned long)self.availableLanguageCodes.count,
+           self.languageCode, self.descriptionDataSet);
 }
 @end

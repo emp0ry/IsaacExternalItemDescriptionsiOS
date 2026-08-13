@@ -10,3 +10,4 @@ package/stage/
 *.dylib
 *.log
 *.json
+!data/descriptions.json

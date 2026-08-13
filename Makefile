@@ -10,8 +10,13 @@ DEB_STAGE := $(PROJECT_ROOT)/package/stage
 DEB := $(PROJECT_ROOT)/packages/IsaacExternalItemDescriptions-rootless.deb
 LIVECONTAINER_FRAMEWORK := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions.framework
 LIVECONTAINER_ZIP := $(PROJECT_ROOT)/packages/IsaacExternalItemDescriptions-LiveContainer.framework.zip
+EMBEDDED_STAGE := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions-Embedded
+EMBEDDED_ZIP := $(PROJECT_ROOT)/dist/IsaacExternalItemDescriptions-Embedded.zip
 DIST := $(PROJECT_ROOT)/dist
 INCLUDE_DESCRIPTION_DB ?= 1
+DESCRIPTION_DB := $(or \
+	$(wildcard $(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json), \
+	$(wildcard $(PROJECT_ROOT)/data/descriptions.json))
 
 SOURCES := \
 	$(PROJECT_ROOT)/src/EIDBootstrap.m \
@@ -54,9 +59,9 @@ package: dylib
 	cp "$(DYLIB)" \
 		"$(DEB_STAGE)/var/jb/Library/MobileSubstrate/DynamicLibraries/IsaacExternalItemDescriptions.dylib"
 	@if test "$(INCLUDE_DESCRIPTION_DB)" = "1" && \
-		test -f "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json"; then \
+		test -f "$(DESCRIPTION_DB)"; then \
 		mkdir -p "$(DEB_STAGE)/var/jb/Library/Application Support/IsaacExternalItemDescriptions"; \
-		cp "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json" \
+		cp "$(DESCRIPTION_DB)" \
 			"$(DEB_STAGE)/var/jb/Library/Application Support/IsaacExternalItemDescriptions/descriptions.json"; \
 	fi
 	mkdir -p "$(PROJECT_ROOT)/packages"
@@ -69,9 +74,9 @@ livecontainer: dylib
 	cp "$(PROJECT_ROOT)/livecontainer/Info.plist" "$(LIVECONTAINER_FRAMEWORK)/Info.plist"
 	chmod 755 "$(LIVECONTAINER_FRAMEWORK)/IsaacExternalItemDescriptions"
 	@if test "$(INCLUDE_DESCRIPTION_DB)" = "1" && \
-		test -f "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json"; then \
+		test -f "$(DESCRIPTION_DB)"; then \
 		mkdir -p "$(LIVECONTAINER_FRAMEWORK)/Resources/IsaacEID.bundle"; \
-		cp "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json" \
+		cp "$(DESCRIPTION_DB)" \
 			"$(LIVECONTAINER_FRAMEWORK)/Resources/IsaacEID.bundle/descriptions.json"; \
 	fi
 	mkdir -p "$(PROJECT_ROOT)/packages"
@@ -90,6 +95,7 @@ audit: dylib
 
 test:
 	python3 "$(PROJECT_ROOT)/tests/test_import_eid.py"
+	python3 "$(PROJECT_ROOT)/tests/test_bundled_descriptions.py"
 	python3 -m py_compile "$(PROJECT_ROOT)/tools/import-eid.py" \
 		"$(PROJECT_ROOT)/tools/macho-add-dylib.py"
 	zsh -n "$(PROJECT_ROOT)/tools/patch-ipa.sh"
@@ -97,17 +103,26 @@ test:
 release:
 	rm -rf "$(DIST)"
 	$(MAKE) test
-	$(MAKE) package INCLUDE_DESCRIPTION_DB=0 EXTRA_CFLAGS='-Wall -Wextra -Werror'
-	$(MAKE) livecontainer INCLUDE_DESCRIPTION_DB=0 EXTRA_CFLAGS='-Wall -Wextra -Werror'
+	@test -f "$(DESCRIPTION_DB)" || (echo "Bundled descriptions database is missing"; exit 2)
+	$(MAKE) package INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
+	$(MAKE) livecontainer INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) audit EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	mkdir -p "$(DIST)"
 	cp "$(DYLIB)" "$(DIST)/IsaacExternalItemDescriptions.dylib"
 	cp "$(DEB)" "$(DIST)/IsaacExternalItemDescriptions-rootless.deb"
 	cp "$(LIVECONTAINER_ZIP)" "$(DIST)/IsaacExternalItemDescriptions-LiveContainer.framework.zip"
+	cp "$(DESCRIPTION_DB)" "$(DIST)/descriptions.json"
+	rm -rf "$(EMBEDDED_STAGE)"
+	mkdir -p "$(EMBEDDED_STAGE)/IsaacEID.bundle"
+	cp "$(DYLIB)" "$(EMBEDDED_STAGE)/IsaacExternalItemDescriptions.dylib"
+	cp "$(DESCRIPTION_DB)" "$(EMBEDDED_STAGE)/IsaacEID.bundle/descriptions.json"
+	/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$(EMBEDDED_STAGE)" "$(EMBEDDED_ZIP)"
 	cd "$(DIST)" && shasum -a 256 \
 		IsaacExternalItemDescriptions.dylib \
 		IsaacExternalItemDescriptions-rootless.deb \
-		IsaacExternalItemDescriptions-LiveContainer.framework.zip > SHA256SUMS
+		IsaacExternalItemDescriptions-LiveContainer.framework.zip \
+		IsaacExternalItemDescriptions-Embedded.zip \
+		descriptions.json > SHA256SUMS
 
 clean:
 	rm -rf "$(PROJECT_ROOT)/build" "$(PROJECT_ROOT)/package/stage" "$(DIST)"

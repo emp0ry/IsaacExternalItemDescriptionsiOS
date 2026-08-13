@@ -13,6 +13,9 @@ script_dir="${0:A:h}"
 project_root="${script_dir:h}"
 dylib="${project_root}/build/IsaacExternalItemDescriptions.dylib"
 description_db="${project_root}/build/IsaacEID.bundle/descriptions.json"
+if [[ ! -f "$description_db" ]]; then
+  description_db="${project_root}/data/descriptions.json"
+fi
 
 [[ -f "$input_ipa" ]] || { echo "Input IPA not found: $input_ipa" >&2; exit 66; }
 [[ "$input_ipa" != "$output_ipa" ]] || { echo "Input and output IPA paths must differ" >&2; exit 64; }

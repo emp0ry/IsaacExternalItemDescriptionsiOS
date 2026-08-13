@@ -11,6 +11,8 @@ from pathlib import Path
 
 
 ENTRY = re.compile(r"^\s*(?:\[(\d+)\]\s*=\s*)?\{")
+LANGUAGE_CODE = re.compile(r'^\s*local\s+languageCode\s*=\s*["\']([^"\']+)["\']')
+IGNORED_LANGUAGE_FILES = {"item_data.lua", "transformations.lua"}
 
 
 def read_lua_string(text: str, start: int) -> tuple[str, int]:
@@ -84,22 +86,50 @@ def git_commit(root: Path) -> str:
         return "unknown"
 
 
+def language_code(path: Path) -> str | None:
+    for line in path.read_text(encoding="utf-8-sig").splitlines()[:40]:
+        match = LANGUAGE_CODE.match(line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def discover_language_files(source: Path) -> dict[str, list[Path]]:
+    """Return every language loaded by upstream AB+ plus Repentance.
+
+    Some upstream languages do not have a Repentance override file. They are
+    still valid EID languages and retain their complete AB+ base descriptions,
+    exactly as the original mod's language manager does.
+    """
+    result: dict[str, list[Path]] = {}
+    for game_version in ("ab+", "rep"):
+        directory = source / "descriptions" / game_version
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.lua")):
+            if path.name in IGNORED_LANGUAGE_FILES:
+                continue
+            code = language_code(path)
+            if code:
+                result.setdefault(code, []).append(path)
+    return result
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print(f"usage: {Path(sys.argv[0]).name} EID_SOURCE OUTPUT_JSON", file=sys.stderr)
         return 2
     source = Path(sys.argv[1]).resolve()
     output = Path(sys.argv[2]).resolve()
-    language_files = {
-        "en_us": [source / "descriptions/ab+/en_us.lua", source / "descriptions/rep/en_us.lua"],
-        "ru": [source / "descriptions/ab+/ru.lua", source / "descriptions/rep/ru.lua"],
-    }
-    if not all(path.is_file() for files in language_files.values() for path in files):
+    language_files = discover_language_files(source)
+    if "en_us" not in language_files or not (source / "descriptions/rep/en_us.lua").is_file():
         print("error: source is not an External-Item-Descriptions checkout", file=sys.stderr)
         return 2
     languages: dict[str, dict[str, object]] = {}
     counts: list[str] = []
-    for code, files in language_files.items():
+    ordered_codes = ["en_us"] + sorted(code for code in language_files if code != "en_us")
+    for code in ordered_codes:
+        files = language_files[code]
         categories: dict[str, dict[str, dict[str, str]]] = {}
         category_tables = {
             "collectibles": {"collectibles", "repcollectibles"},
@@ -121,8 +151,11 @@ def main() -> int:
         counts.append(f"{code}({', '.join(category_counts)})")
     payload = {
         "format": 1,
-        "source": "user-supplied External Item Descriptions checkout",
+        "source": "https://github.com/wofsauge/External-Item-Descriptions",
         "source_commit": git_commit(source),
+        "game_version": "rep",
+        "game_version_name": "Repentance",
+        "compatible_isaac_version": "1.7.9b",
         "languages": languages,
     }
     output.parent.mkdir(parents=True, exist_ok=True)

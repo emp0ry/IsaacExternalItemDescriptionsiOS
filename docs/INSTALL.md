@@ -26,15 +26,17 @@ To build the package locally:
 make package
 ```
 
-If a local description database exists in `build/IsaacEID.bundle`, a normal
-local package build includes it automatically.
+The release package includes the complete 20-language description database.
+Local builds prefer a freshly generated database in `build/IsaacEID.bundle`
+and otherwise use the bundled `data/descriptions.json`.
 
 ## Non-jailbroken/embedded
 
-The release dylib belongs at:
+Extract `IsaacExternalItemDescriptions-Embedded.zip`. Its files belong at:
 
 ```text
 Payload/Isaac.app/Frameworks/IsaacExternalItemDescriptions.dylib
+Payload/Isaac.app/Frameworks/IsaacEID.bundle/descriptions.json
 ```
 
 The main executable must contain:
@@ -97,9 +99,9 @@ To build the private framework locally:
 make livecontainer
 ```
 
-If `build/IsaacEID.bundle/descriptions.json` exists, the local framework embeds
-that database under its own `Resources` directory. A public release build omits
-locally imported description text.
+The release framework embeds the attributed all-language database under its
+own `Resources` directory. A local build prefers a freshly generated database
+in `build/IsaacEID.bundle` and otherwise uses `data/descriptions.json`.
 
 ## Signing limitations
 
@@ -112,13 +114,17 @@ checks. Back up the application's data before replacing an existing install.
 
 ## Full description data
 
-Generate the optional English/Russian database from a local External Item
-Descriptions checkout:
+The release already includes the all-language database. To regenerate it from
+an External Item Descriptions checkout:
 
 ```sh
 make EID_SOURCE=/path/to/External-Item-Descriptions descriptions
 ```
 
-The next local package or patched IPA automatically includes the generated
-database. The public release artifacts omit this database because its upstream
-repository does not provide a redistribution license.
+The importer uses the standard Steam Repentance `rep` descriptions plus their
+`ab+` base tables. This matches the native iOS 1.4 executable's embedded version
+string, `Repentance v1.7.9b.J754`; do not use the newer Repentance+ dataset.
+
+The next local package, LiveContainer framework, or patched IPA automatically
+uses the regenerated database. The bundled text is distributed with permission
+from the original EID author and attributed in `THIRD_PARTY_NOTICES.md`.

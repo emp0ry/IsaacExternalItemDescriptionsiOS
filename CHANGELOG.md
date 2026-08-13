@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 - 2026-08-13
+
+- Added a debounced native main-menu/gameplay detector and bottom-right EID
+  settings panel that automatically hides during runs.
+- Replaced the context-menu language control with a native action-sheet picker
+  and removed the startup information banner.
+- Added selection for all 20 upstream EID languages with English fallback for
+  untranslated Repentance entries.
+- Added persistent horizontal and vertical position sliders with defaults of
+  140 px from the left and 50 px from the top.
+- Tagged generated databases for standard Repentance 1.7.9b (`rep`), matching
+  the installed iOS 1.4 executable rather than Repentance+.
+- Added in-app and project credits for wofsauge and the original EID
+  contributors.
+- Bundled the official EID Repentance description tables for all 20 supported
+  languages with permission and attribution to the original project.
+
 ## 0.2.0 - 2026-08-13
 
 - Added an app-specific framework package for LiveContainer private apps.
