@@ -1,0 +1,17 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ios-dylib:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: make test
+      - name: Build with strict warnings
+        run: make dylib EXTRA_CFLAGS='-Wall -Wextra -Werror'
+      - name: Audit dependencies
+        run: make audit EXTRA_CFLAGS='-Wall -Wextra -Werror'

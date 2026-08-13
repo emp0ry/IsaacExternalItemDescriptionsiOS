@@ -8,6 +8,8 @@ EXTRA_CFLAGS ?=
 DYLIB := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions.dylib
 DEB_STAGE := $(PROJECT_ROOT)/package/stage
 DEB := $(PROJECT_ROOT)/packages/IsaacExternalItemDescriptions-rootless.deb
+DIST := $(PROJECT_ROOT)/dist
+INCLUDE_DESCRIPTION_DB ?= 1
 
 SOURCES := \
 	$(PROJECT_ROOT)/src/EIDBootstrap.m \
@@ -16,7 +18,7 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDNativeProbe.mm \
 	$(PROJECT_ROOT)/src/EIDOverlayController.m
 
-.PHONY: all dylib descriptions package audit test clean
+.PHONY: all dylib descriptions package audit test release clean
 
 all: dylib package
 
@@ -49,7 +51,8 @@ package: dylib
 		"$(DEB_STAGE)/var/jb/Library/MobileSubstrate/DynamicLibraries/IsaacExternalItemDescriptions.plist"
 	cp "$(DYLIB)" \
 		"$(DEB_STAGE)/var/jb/Library/MobileSubstrate/DynamicLibraries/IsaacExternalItemDescriptions.dylib"
-	@if test -f "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json"; then \
+	@if test "$(INCLUDE_DESCRIPTION_DB)" = "1" && \
+		test -f "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json"; then \
 		mkdir -p "$(DEB_STAGE)/var/jb/Library/Application Support/IsaacExternalItemDescriptions"; \
 		cp "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json" \
 			"$(DEB_STAGE)/var/jb/Library/Application Support/IsaacExternalItemDescriptions/descriptions.json"; \
@@ -70,6 +73,18 @@ test:
 		"$(PROJECT_ROOT)/tools/macho-add-dylib.py"
 	zsh -n "$(PROJECT_ROOT)/tools/patch-ipa.sh"
 
+release:
+	rm -rf "$(DIST)"
+	$(MAKE) test
+	$(MAKE) package INCLUDE_DESCRIPTION_DB=0 EXTRA_CFLAGS='-Wall -Wextra -Werror'
+	$(MAKE) audit EXTRA_CFLAGS='-Wall -Wextra -Werror'
+	mkdir -p "$(DIST)"
+	cp "$(DYLIB)" "$(DIST)/IsaacExternalItemDescriptions.dylib"
+	cp "$(DEB)" "$(DIST)/IsaacExternalItemDescriptions-rootless.deb"
+	cd "$(DIST)" && shasum -a 256 \
+		IsaacExternalItemDescriptions.dylib \
+		IsaacExternalItemDescriptions-rootless.deb > SHA256SUMS
+
 clean:
-	rm -rf "$(PROJECT_ROOT)/build" "$(PROJECT_ROOT)/package/stage"
+	rm -rf "$(PROJECT_ROOT)/build" "$(PROJECT_ROOT)/package/stage" "$(DIST)"
 	find "$(PROJECT_ROOT)/packages" -maxdepth 1 -name '*.deb' -delete

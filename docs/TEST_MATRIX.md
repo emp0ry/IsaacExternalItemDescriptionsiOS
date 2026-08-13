@@ -17,14 +17,14 @@
 | Unknown-pill spoiler guard | Pass: native identified byte required |
 | Native pill color-to-effect mapping | Pass: ARM64 ItemPool layout verified |
 | Crane Game prize field | Pass: ARM64 setter/layout verified |
-| Startup-only EN/RU selector | Pending dev.22 restart/visual regression |
+| Startup-only EN/RU selector | Pass: repeated on-device launch and selection |
 | Patcher on fixture IPA | Pass |
 | Patcher idempotency | Pass: one `LC_LOAD_DYLIB` |
 | Patcher on full user-supplied Isaac IPA | Pass |
 | Dylib hash after IPA embedding | Pass |
 | Direct embedded-mode launch on device | Pending signed/direct-load regression |
 | Live card/rune entity detection | Pass: native variant 300 observed on device |
-| Untouched-card identity guard | Implemented: zero stays hidden; verified four-slot player pocket path; live pickup/drop confirmation pending play test |
+| Untouched-card identity guard | Pass: untouched cards stay hidden; held cards are learned from the four native player pocket slots |
 | Native item artwork | Pass: exact Isaac collectible/trinket paths, card-atlas crops, card fallback, and one static native white pill icon rendered beside text |
 | Live trinket, known pill, and Crane rendering | Pending suitable in-game room |
 | Curse of the Blind live regression | Pending suitable seeded floor |

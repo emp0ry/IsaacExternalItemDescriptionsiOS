@@ -1,45 +1,91 @@
 # Installation
 
+## Supported game build
+
+- Bundle identifier: `com.Nicalis.Isaac-iOS`
+- Architecture: ARM64
+- Executable UUID: `F4357753-A25F-30EE-BACF-63709F902895`
+
+The native layout is version-specific. Unsupported executables fail closed.
+
 ## Jailbroken/rootless
 
-Build and install the rootless package:
+Download `IsaacExternalItemDescriptions-rootless.deb` from the matching GitHub
+release and install it with a package manager or from a shell:
 
 ```sh
-make EID_SOURCE=/path/to/External-Item-Descriptions descriptions
+dpkg -i IsaacExternalItemDescriptions-rootless.deb
+```
+
+Restart Isaac after installation. ElleKit is used only to load the dylib into
+the game process. The dylib itself has no jailbreak-library dependency.
+
+To build the package locally:
+
+```sh
 make package
 ```
 
-The package uses ElleKit only to place and inject the dylib. The dylib does not
-link ElleKit, Substrate, libhooker, or any rootless filesystem library.
+If a local description database exists in `build/IsaacEID.bundle`, a normal
+local package build includes it automatically.
 
-## Embedded IPA
+## Non-jailbroken/embedded
 
-Start with a user-provided, legally decrypted Isaac IPA:
+The release dylib belongs at:
+
+```text
+Payload/Isaac.app/Frameworks/IsaacExternalItemDescriptions.dylib
+```
+
+The main executable must contain:
+
+```text
+@executable_path/Frameworks/IsaacExternalItemDescriptions.dylib
+```
+
+The included patcher performs those changes:
 
 ```sh
-EID_SOURCE=/path/to/External-Item-Descriptions \
+./tools/patch-ipa.sh Isaac.ipa Isaac-EID.ipa
+```
+
+By default, the output is unsigned. To sign during patching:
+
+```sh
+SIGNING_IDENTITY='Apple Development: Example' \
   ./tools/patch-ipa.sh Isaac.ipa Isaac-EID.ipa
 ```
 
-The patcher verifies the Isaac bundle identifier, rejects encrypted input,
-copies the dylib and local description database into `Frameworks`, and adds:
+An entitlements file can be supplied when required by the chosen signing
+workflow:
 
-`@executable_path/Frameworks/IsaacExternalItemDescriptions.dylib`
+```sh
+SIGNING_IDENTITY='Apple Development: Example' \
+ENTITLEMENTS=/path/to/entitlements.plist \
+  ./tools/patch-ipa.sh Isaac.ipa Isaac-EID.ipa
+```
 
-If no `SIGNING_IDENTITY` is set, the output is intentionally unsigned for a
-separate sideloading/signing workflow. The dylib requires no JIT, executable
-memory, private entitlement, daemon, or jailbreak path.
+No JIT, private entitlement, executable-memory permission, background daemon,
+or jailbreak path is required by the dylib.
+
+## Signing limitations
 
 Re-signing an App Store application can change its application identifier,
-Keychain access groups, container selection, and receipt validation. Those are
-properties of the chosen signing/install workflow, not features this project
-bypasses. This project does not modify StoreKit, receipts, purchases, or DLC
-checks. Back up the application's data container before replacing an existing
-installation.
+Keychain access groups, data-container selection, and receipt validation. Those
+results depend on the signing and installation workflow.
 
-## Description data
+This project does not alter StoreKit, receipts, DLC ownership, or purchase
+checks. Back up the application's data before replacing an existing install.
 
-The upstream EID repository currently does not provide a license file, so its
-data is not committed or shipped from this source repository. The importer
-creates a local ignored database from a checkout supplied by the user. The
-installed game remains the source of item art.
+## Full description data
+
+Generate the optional English/Russian database from a local External Item
+Descriptions checkout:
+
+```sh
+make EID_SOURCE=/path/to/External-Item-Descriptions descriptions
+```
+
+The next local package or patched IPA automatically includes the generated
+database. The public release artifacts omit this database because its upstream
+repository does not provide a redistribution license.
