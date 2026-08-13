@@ -393,10 +393,11 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
                 int32_t displayVariant = identity[1];
                 int32_t displaySubtype = identity[2];
                 // Floor cards intentionally stay unidentified until Isaac has actually
-                // picked them up. The native game preserves Touched when they are dropped.
+                // picked them up. Touched is a native flag byte, not a canonical BOOL;
+                // Isaac may preserve it as a nonzero bit value when the card is dropped.
                 if (displayVariant == EIDPickupVariantCard &&
                     (offset + kPickupTouchedOffset >= size ||
-                     bytes[offset + kPickupTouchedOffset] != 1)) continue;
+                     bytes[offset + kPickupTouchedOffset] == 0)) continue;
                 if (displayVariant == EIDPickupVariantPill &&
                     !ResolveKnownPill(displaySubtype, displayVariant, displaySubtype)) continue;
                 PickupVisibility visibility = identity[1] == EIDPickupVariantCollectible
