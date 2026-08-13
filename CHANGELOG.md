@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 - 2026-08-13
+
+- Fixed the menu/gameplay detector becoming stuck after Isaac allocated the
+  active player in a different heap region from the main-menu placeholder.
+- Resolve and cache Isaac's native player-list vector, so the EID settings
+  button hides during a run and returns after reaching a menu.
+
 ## 0.3.0 - 2026-08-13
 
 - Added a debounced native main-menu/gameplay detector and bottom-right EID
