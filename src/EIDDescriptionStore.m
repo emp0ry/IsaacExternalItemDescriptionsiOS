@@ -1,6 +1,19 @@
 #import "EIDDescriptionStore.h"
 #import "EIDLogger.h"
 #import "EIDNativeProbe.h"
+#import <dlfcn.h>
+#import <string.h>
+
+static const unsigned char kEIDDescriptionStoreImageAnchor = 0;
+
+static NSString *EIDOwnImageDirectory(void) {
+    Dl_info imageInfo = {};
+    if (!dladdr(&kEIDDescriptionStoreImageAnchor, &imageInfo) || !imageInfo.dli_fname) return nil;
+    NSString *imagePath = [[NSFileManager defaultManager]
+        stringWithFileSystemRepresentation:imageInfo.dli_fname
+                                     length:strlen(imageInfo.dli_fname)];
+    return imagePath.stringByDeletingLastPathComponent;
+}
 
 static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     return [NSString stringWithFormat:@"%ld:%ld", (long)variant, (long)subtype];
@@ -179,12 +192,21 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
                             @"Library/Application Support/IsaacExternalItemDescriptions/descriptions.json"];
     NSString *embedded = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:
                           @"Frameworks/IsaacEID.bundle/descriptions.json"];
-    return @[
-        appSupport,
-        embedded,
+    NSMutableArray<NSString *> *paths = [NSMutableArray arrayWithObjects:appSupport, embedded, nil];
+    NSString *ownImageDirectory = EIDOwnImageDirectory();
+    if (ownImageDirectory.length) {
+        // A LiveContainer app-specific tweak can be imported either as a raw
+        // dylib with a sibling bundle, or as a framework with Resources inside.
+        [paths addObject:[ownImageDirectory stringByAppendingPathComponent:
+                          @"IsaacEID.bundle/descriptions.json"]];
+        [paths addObject:[ownImageDirectory stringByAppendingPathComponent:
+                          @"Resources/IsaacEID.bundle/descriptions.json"]];
+    }
+    [paths addObjectsFromArray:@[
         @"/var/jb/Library/Application Support/IsaacExternalItemDescriptions/descriptions.json",
         @"/Library/Application Support/IsaacExternalItemDescriptions/descriptions.json"
-    ];
+    ]];
+    return paths;
 }
 
 - (void)loadImportedDescriptions {

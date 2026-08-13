@@ -41,9 +41,49 @@ static bool IsCandidateVTable(const std::array<uintptr_t, kMaxVTables>& vtables,
     return false;
 }
 
+static NSString *ExecutableUUIDForHeader(const mach_header_64 *header) {
+    if (!header || header->magic != MH_MAGIC_64 || header->ncmds > 65536 ||
+        header->sizeofcmds > 64 * 1024 * 1024) return @"UNKNOWN";
 
-static const mach_header_64 *MainExecutableHeader(intptr_t *slideOut) {
+    const uint8_t *cursor = reinterpret_cast<const uint8_t *>(header + 1);
+    const uint8_t *end = cursor + header->sizeofcmds;
+    for (uint32_t index = 0; index < header->ncmds; ++index) {
+        if (cursor > end || static_cast<size_t>(end - cursor) < sizeof(load_command)) break;
+        const load_command *command = reinterpret_cast<const load_command *>(cursor);
+        if (command->cmdsize < sizeof(load_command) ||
+            static_cast<size_t>(end - cursor) < command->cmdsize) break;
+        if (command->cmd == LC_UUID && command->cmdsize >= sizeof(uuid_command)) {
+            const uuid_command *uuidCommand = reinterpret_cast<const uuid_command *>(cursor);
+            const unsigned char *u = uuidCommand->uuid;
+            return [NSString stringWithFormat:
+                    @"%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                    u[0],u[1],u[2],u[3],u[4],u[5],u[6],u[7],u[8],u[9],u[10],u[11],u[12],u[13],u[14],u[15]];
+        }
+        cursor += command->cmdsize;
+    }
+    return @"UNKNOWN";
+}
+
+static const mach_header_64 *IsaacExecutableHeader(intptr_t *slideOut) {
     uint32_t count = _dyld_image_count();
+
+    // LiveContainer patches the guest executable's Mach-O type from MH_EXECUTE
+    // to MH_DYLIB and loads it into the LiveContainer host. Select Isaac by its
+    // exact verified UUID so native and LiveContainer loading resolve the same
+    // image without trusting an arbitrary dylib in the process.
+    for (uint32_t index = 0; index < count; ++index) {
+        const mach_header_64 *header =
+            reinterpret_cast<const mach_header_64 *>(_dyld_get_image_header(index));
+        NSString *uuid = ExecutableUUIDForHeader(header);
+        if ([uuid caseInsensitiveCompare:[NSString stringWithUTF8String:kSupportedUUID]] ==
+            NSOrderedSame) {
+            if (slideOut) *slideOut = _dyld_get_image_vmaddr_slide(index);
+            return header;
+        }
+    }
+
+    // Keep useful fail-closed diagnostics for a native game update. Fixed
+    // offsets are never enabled unless the UUID above matches.
     for (uint32_t index = 0; index < count; ++index) {
         const mach_header_64 *header =
             reinterpret_cast<const mach_header_64 *>(_dyld_get_image_header(index));
@@ -56,28 +96,13 @@ static const mach_header_64 *MainExecutableHeader(intptr_t *slideOut) {
     return nullptr;
 }
 
-static NSString *MainExecutableUUID(void) {
-    const mach_header_64 *header = MainExecutableHeader(nullptr);
-    if (!header || header->magic != MH_MAGIC_64) return @"UNKNOWN";
-    const uint8_t *cursor = reinterpret_cast<const uint8_t *>(header + 1);
-    for (uint32_t index = 0; index < header->ncmds; ++index) {
-        const load_command *command = reinterpret_cast<const load_command *>(cursor);
-        if (command->cmd == LC_UUID) {
-            const uuid_command *uuidCommand = reinterpret_cast<const uuid_command *>(cursor);
-            const unsigned char *u = uuidCommand->uuid;
-            return [NSString stringWithFormat:
-                    @"%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
-                    u[0],u[1],u[2],u[3],u[4],u[5],u[6],u[7],u[8],u[9],u[10],u[11],u[12],u[13],u[14],u[15]];
-        }
-        if (!command->cmdsize) break;
-        cursor += command->cmdsize;
-    }
-    return @"UNKNOWN";
+static NSString *IsaacExecutableUUID(void) {
+    return ExecutableUUIDForHeader(IsaacExecutableHeader(nullptr));
 }
 
 static void ForEachMainImageSegment(void (^block)(const uint8_t *address, size_t size, vm_prot_t protection)) {
     intptr_t slide = 0;
-    const mach_header_64 *header = MainExecutableHeader(&slide);
+    const mach_header_64 *header = IsaacExecutableHeader(&slide);
     if (!header || header->magic != MH_MAGIC_64) return;
     const uint8_t *cursor = reinterpret_cast<const uint8_t *>(header + 1);
     for (uint32_t index = 0; index < header->ncmds; ++index) {
@@ -264,7 +289,7 @@ static bool ResolveKnownPill(int32_t rawSubtype, int32_t& variant, int32_t& subt
     uint32_t color = rawColor & kPillColorMask;
     if (color == 0 || color > kGoldenPillColor) return false;
 
-    const mach_header_64 *header = MainExecutableHeader(nullptr);
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
     uintptr_t game = 0;
     if (!header || !ReadOwnTaskMemory(reinterpret_cast<vm_address_t>(header) + kGameGlobalOffset,
                                       &game, sizeof(game)) || !game) return false;
@@ -293,7 +318,7 @@ static bool ResolveKnownPill(int32_t rawSubtype, int32_t& variant, int32_t& subt
 
 static bool ValidateNativePillPool(NSUInteger& identifiedCount) {
     identifiedCount = 0;
-    const mach_header_64 *header = MainExecutableHeader(nullptr);
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
     uintptr_t game = 0;
     if (!header || !ReadOwnTaskMemory(reinterpret_cast<vm_address_t>(header) + kGameGlobalOffset,
                                       &game, sizeof(game)) || !game) return false;
@@ -629,7 +654,7 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _executableUUID = MainExecutableUUID();
+        _executableUUID = IsaacExecutableUUID();
         NSString *supportedUUID = [NSString stringWithUTF8String:kSupportedUUID];
         _supportedBuild = [_executableUUID caseInsensitiveCompare:supportedUUID] == NSOrderedSame;
         _status = _supportedBuild ? @"Locating native pickup RTTI" : @"Unsupported Isaac executable";
@@ -656,7 +681,11 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
                    (unsigned long)self.scanContext.pickupVTableCount,
                    (unsigned long)self.scanContext.playerVTableCount,
                    (unsigned long)self.scanContext.slotVTableCount];
-    EIDLog(@"%@; executable UUID %@", self.status, self.executableUUID);
+    const mach_header_64 *isaacHeader = IsaacExecutableHeader(nullptr);
+    NSString *imageMode = isaacHeader && isaacHeader->filetype == MH_DYLIB
+        ? @"LiveContainer guest dylib" : @"native executable";
+    EIDLog(@"%@; executable UUID %@; image mode %@", self.status,
+           self.executableUUID, imageMode);
     NSUInteger identifiedPills = 0;
     if (ValidateNativePillPool(identifiedPills)) {
         EIDLog(@"native pill state active (%lu identified colors)",

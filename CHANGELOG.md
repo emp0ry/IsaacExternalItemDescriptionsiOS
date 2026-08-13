@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 - 2026-08-13
+
+- Added an app-specific framework package for LiveContainer private apps.
+- Added exact Isaac image selection when LiveContainer loads the patched guest
+  executable as `MH_DYLIB` inside its host process.
+- Allowed the verified Isaac UUID to bootstrap EID when LiveContainer retains
+  its own bundle identifier.
+- Added framework-local description database discovery and package validation.
+
 ## 0.1.0 - 2026-08-13
 
 Initial public release.

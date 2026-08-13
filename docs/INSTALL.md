@@ -68,6 +68,39 @@ ENTITLEMENTS=/path/to/entitlements.plist \
 No JIT, private entitlement, executable-memory permission, background daemon,
 or jailbreak path is required by the dylib.
 
+## LiveContainer private app
+
+Use the primary (Blue) LiveContainer and keep Isaac in private-app mode. Tweak
+management is not available for shared apps.
+
+1. Extract `IsaacExternalItemDescriptions-LiveContainer.framework.zip` in the
+   Files app.
+2. In LiveContainer, open **Tweaks**, create a new folder such as `IsaacEID`,
+   enter it, and choose **Import Tweak**.
+3. Import the extracted `IsaacExternalItemDescriptions.framework`.
+4. Long-press Isaac, open **Settings**, and select `IsaacEID` under **Tweak
+   Folder**.
+5. Keep **Don't Inject TweakLoader** and **Don't Load TweakLoader** disabled.
+6. If LiveContainer reports a signing problem, use **Force Sign** for the
+   imported framework, then launch Isaac again.
+
+The framework is app-specific and should not be placed in Global Tweaks. It
+does not require ElleKit, Substrate, or a jailbreak library; LiveContainer's own
+TweakLoader performs the load. Current upstream instructions for tweak folders
+and app settings are available in the official
+[LiveContainer tweak guide](https://livecontainer.github.io/docs/guides/tweaks)
+and [app-settings guide](https://livecontainer.github.io/docs/guides/app-settings).
+
+To build the private framework locally:
+
+```sh
+make livecontainer
+```
+
+If `build/IsaacEID.bundle/descriptions.json` exists, the local framework embeds
+that database under its own `Resources` directory. A public release build omits
+locally imported description text.
+
 ## Signing limitations
 
 Re-signing an App Store application can change its application identifier,
