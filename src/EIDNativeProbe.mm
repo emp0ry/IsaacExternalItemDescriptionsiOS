@@ -189,6 +189,7 @@ constexpr size_t kPlayerPocketItemCount = 4;
 constexpr size_t kLayerStateSize = 0x90;
 constexpr size_t kLayerStateSpritePathOffset = 0x8;
 constexpr vm_size_t kVMReadChunk = 2 * 1024 * 1024;
+constexpr vm_size_t kGamePlayerVectorScanLimit = 512 * 1024;
 constexpr float kMaximumDescriptionDistance = 220.0f;
 constexpr uintptr_t kGameGlobalOffset = 0xac3b90;
 constexpr size_t kGameItemPoolOffset = 0x242c0;
@@ -266,6 +267,122 @@ static bool ReadOwnTaskMemory(vm_address_t address, void *destination, vm_size_t
         copied == size;
 }
 
+static bool ReadGameObjectAddress(vm_address_t& gameAddress) {
+    gameAddress = 0;
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
+    uintptr_t game = 0;
+    if (!header || !ReadOwnTaskMemory(
+            reinterpret_cast<vm_address_t>(header) + kGameGlobalOffset,
+            &game, sizeof(game)) || !game) return false;
+    gameAddress = static_cast<vm_address_t>(game);
+    return true;
+}
+
+struct RemotePointerVector {
+    uintptr_t begin = 0;
+    uintptr_t end = 0;
+    uintptr_t capacity = 0;
+};
+
+static bool ReadPlayerObject(const ScanContext& context, vm_address_t address,
+                             VMPlayer& player) {
+    uintptr_t vtable = 0;
+    if (!ReadOwnTaskMemory(address, &vtable, sizeof(vtable)) ||
+        !IsCandidateVTable(context.playerVTables, context.playerVTableCount, vtable)) {
+        return false;
+    }
+
+    std::array<uint8_t, kEntityPositionOffset + 2 * sizeof(float)> object{};
+    if (!ReadOwnTaskMemory(address, object.data(), object.size())) return false;
+    int32_t identity[3]{};
+    float x = 0;
+    float y = 0;
+    memcpy(identity, object.data() + kEntityTypeOffset, sizeof(identity));
+    memcpy(&x, object.data() + kEntityPositionOffset, sizeof(x));
+    memcpy(&y, object.data() + kEntityPositionOffset + sizeof(float), sizeof(y));
+    if (identity[0] != 1 || identity[1] != 0 || identity[2] < 0 ||
+        identity[2] >= 100 || !PlausiblePosition(x, y)) return false;
+    player = {address, x, y};
+    return true;
+}
+
+static bool ReadPlayerVector(const ScanContext& context, vm_address_t vectorAddress,
+                             bool allowEmpty, VMRegionResult& result) {
+    RemotePointerVector remote;
+    if (!ReadOwnTaskMemory(vectorAddress, &remote, sizeof(remote))) return false;
+    if (!remote.begin && !remote.end && !remote.capacity) return allowEmpty;
+    if (!remote.begin || remote.end < remote.begin || remote.capacity < remote.end ||
+        (remote.end - remote.begin) % sizeof(uintptr_t) != 0 ||
+        (remote.capacity - remote.begin) % sizeof(uintptr_t) != 0) return false;
+
+    size_t count = (remote.end - remote.begin) / sizeof(uintptr_t);
+    size_t capacity = (remote.capacity - remote.begin) / sizeof(uintptr_t);
+    if (!count) return allowEmpty && capacity <= 64;
+    if (count > kMaxPlayers || capacity < count || capacity > 64) return false;
+
+    std::array<uintptr_t, kMaxPlayers> addresses{};
+    if (!ReadOwnTaskMemory(remote.begin, addresses.data(),
+                           static_cast<vm_size_t>(count * sizeof(uintptr_t)))) return false;
+    VMRegionResult players;
+    for (size_t index = 0; index < count; ++index) {
+        VMPlayer player;
+        if (!addresses[index] ||
+            !ReadPlayerObject(context, static_cast<vm_address_t>(addresses[index]), player)) {
+            return false;
+        }
+        players.players[players.playerCount++] = player;
+    }
+    if (players.playerCount != count) return false;
+    result = players;
+    return true;
+}
+
+static bool ResolvePlayersFromGame(const ScanContext& context, NSUInteger& vectorOffset,
+                                   VMRegionResult& result) {
+    vm_address_t game = 0;
+    if (!ReadGameObjectAddress(game)) return false;
+
+    if (vectorOffset != NSUIntegerMax) {
+        if (ReadPlayerVector(context, game + vectorOffset, true, result)) return true;
+        vectorOffset = NSUIntegerMax;
+    }
+
+    vm_address_t regionAddress = game;
+    vm_size_t regionSize = 0;
+    vm_region_basic_info_data_64_t info{};
+    mach_msg_type_number_t infoCount = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t objectName = MACH_PORT_NULL;
+    kern_return_t status = vm_region_64(
+        mach_task_self(), &regionAddress, &regionSize, VM_REGION_BASIC_INFO_64,
+        reinterpret_cast<vm_region_info_t>(&info), &infoCount, &objectName);
+    if (objectName != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), objectName);
+    if (status != KERN_SUCCESS || regionAddress > game ||
+        !(info.protection & VM_PROT_READ) || regionSize <= game - regionAddress) return false;
+
+    vm_size_t available = regionSize - (game - regionAddress);
+    vm_size_t scanSize = MIN(available, kGamePlayerVectorScanLimit);
+    if (scanSize < sizeof(RemotePointerVector)) return false;
+    std::vector<uint8_t> gameBytes(static_cast<size_t>(scanSize));
+    if (!ReadOwnTaskMemory(game, gameBytes.data(), scanSize)) return false;
+
+    for (size_t offset = 0; offset + sizeof(RemotePointerVector) <= gameBytes.size();
+         offset += sizeof(uintptr_t)) {
+        RemotePointerVector remote;
+        memcpy(&remote, gameBytes.data() + offset, sizeof(remote));
+        if (!remote.begin || remote.end <= remote.begin || remote.capacity < remote.end ||
+            (remote.end - remote.begin) % sizeof(uintptr_t) != 0) continue;
+        size_t count = (remote.end - remote.begin) / sizeof(uintptr_t);
+        if (!count || count > kMaxPlayers) continue;
+        VMRegionResult candidate;
+        if (ReadPlayerVector(context, game + offset, false, candidate)) {
+            vectorOffset = offset;
+            result = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool ReadPlayerPocketItems(
     vm_address_t playerAddress,
     std::array<VMPlayerPocketItem, kPlayerPocketItemCount>& items) {
@@ -289,10 +406,8 @@ static bool ResolveKnownPill(int32_t rawSubtype, int32_t& variant, int32_t& subt
     uint32_t color = rawColor & kPillColorMask;
     if (color == 0 || color > kGoldenPillColor) return false;
 
-    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
-    uintptr_t game = 0;
-    if (!header || !ReadOwnTaskMemory(reinterpret_cast<vm_address_t>(header) + kGameGlobalOffset,
-                                      &game, sizeof(game)) || !game) return false;
+    vm_address_t game = 0;
+    if (!ReadGameObjectAddress(game)) return false;
     uintptr_t itemPool = game + kGameItemPoolOffset;
     uint8_t identified = 0;
     if (!ReadOwnTaskMemory(itemPool + kItemPoolIdentifiedPillsOffset + color,
@@ -318,10 +433,8 @@ static bool ResolveKnownPill(int32_t rawSubtype, int32_t& variant, int32_t& subt
 
 static bool ValidateNativePillPool(NSUInteger& identifiedCount) {
     identifiedCount = 0;
-    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
-    uintptr_t game = 0;
-    if (!header || !ReadOwnTaskMemory(reinterpret_cast<vm_address_t>(header) + kGameGlobalOffset,
-                                      &game, sizeof(game)) || !game) return false;
+    vm_address_t game = 0;
+    if (!ReadGameObjectAddress(game)) return false;
     uintptr_t itemPool = game + kGameItemPoolOffset;
     for (uint32_t color = 1; color < kGoldenPillColor; ++color) {
         int32_t effect = -1;
@@ -640,6 +753,7 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
 @property(nonatomic) vm_size_t pickupRegionSize;
 @property(nonatomic) vm_address_t playerRegionAddress;
 @property(nonatomic) vm_size_t playerRegionSize;
+@property(nonatomic) NSUInteger playerVectorOffset;
 @property(nonatomic) vm_address_t slotRegionAddress;
 @property(nonatomic) vm_size_t slotRegionSize;
 @property(nonatomic) BOOL loggedVMDiscovery;
@@ -661,6 +775,7 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
         _status = _supportedBuild ? @"Locating native pickup RTTI" : @"Unsupported Isaac executable";
         _lastPickups = @[];
         _knownCardSubtypes = [NSMutableSet set];
+        _playerVectorOffset = NSUIntegerMax;
     }
     return self;
 }
@@ -714,6 +829,19 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
     bool slotRegionValid = self.slotRegionAddress &&
         ScanVMRegion(self.scanContext, self.slotRegionAddress, self.slotRegionSize, slotResult) &&
         slotResult.slotVTableReferences;
+
+    // The main menu keeps an inactive Entity_Player allocation in a heap region.
+    // A run may allocate the real player in a different region, so a region cache
+    // alone can remain stuck in menu state. Resolve PlayerManager's pointer vector
+    // from the verified Game object instead; once located, its empty/non-empty state
+    // tracks menu/run transitions without repeated whole-process heap discovery.
+    VMRegionResult managedPlayers;
+    bool playerVectorResolved = ResolvePlayersFromGame(
+        self.scanContext, _playerVectorOffset, managedPlayers);
+    if (playerVectorResolved) {
+        playerResult = managedPlayers;
+        playerRegionValid = true;
+    }
 
     if (!pickupRegionValid || (pickupResult.pickupCount && !playerRegionValid) ||
         (self.slotRegionAddress && !slotRegionValid)) {
