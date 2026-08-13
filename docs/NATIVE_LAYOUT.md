@@ -27,6 +27,7 @@ allocator and does not directly dereference mutable game allocations.
 | Entity logical position | `0x310` | Player and pedestal movement matched the screen |
 | ANM2 layer-state pointer | `0x0f8` | Runtime snapshot and native spritesheet access |
 | ANM2 layer count | `0x100` | Six live pedestal layers observed |
+| Pickup touched byte | `0x560` | Native pickup init/collision/morph preservation code |
 | Pickup forced-blind byte | `0x562` | ARM64 disassembly of native `SetForceBlind` |
 | Crane Game prize collectible | `0x570` | ARM64 disassembly of `Entity_Slot::SetPrizeCollectible` |
 | Game ItemPool | `Game + 0x242c0` | Native `GetPillEffect` call sites |
@@ -49,3 +50,5 @@ structure fails closed and produces no description.
 Normal descriptions use the resolved effect plus one, matching upstream EID's
 lookup convention. Bit 11 selects the horse-pill table. Golden color 14 uses
 the upstream random-effect Golden Pill entry. Unknown pills fail closed.
+Cards additionally require the native touched byte, so a newly discovered floor
+card stays hidden until it has been collected once and subsequently dropped.

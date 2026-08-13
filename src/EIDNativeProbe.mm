@@ -156,6 +156,7 @@ constexpr size_t kEntityStateOffset = 0x1c0;
 constexpr size_t kEntityPositionOffset = 0x310;
 constexpr size_t kEntitySpriteLayerStatesOffset = 0xf8;
 constexpr size_t kEntitySpriteLayerCountOffset = 0x100;
+constexpr size_t kPickupTouchedOffset = 0x560;
 constexpr size_t kPickupForceBlindOffset = 0x562;
 constexpr size_t kCranePrizeCollectibleOffset = 0x570;
 constexpr size_t kLayerStateSize = 0x90;
@@ -391,6 +392,11 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
             if (activeObject && identity[0] == 5 && IsDescribableVariant(identity[1])) {
                 int32_t displayVariant = identity[1];
                 int32_t displaySubtype = identity[2];
+                // Floor cards intentionally stay unidentified until Isaac has actually
+                // picked them up. The native game preserves Touched when they are dropped.
+                if (displayVariant == EIDPickupVariantCard &&
+                    (offset + kPickupTouchedOffset >= size ||
+                     bytes[offset + kPickupTouchedOffset] != 1)) continue;
                 if (displayVariant == EIDPickupVariantPill &&
                     !ResolveKnownPill(displaySubtype, displayVariant, displaySubtype)) continue;
                 PickupVisibility visibility = identity[1] == EIDPickupVariantCollectible

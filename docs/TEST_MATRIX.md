@@ -24,6 +24,7 @@
 | Dylib hash after IPA embedding | Pass |
 | Direct embedded-mode launch on device | Pending signed/direct-load regression |
 | Live card/rune entity detection | Pass: native variant 300 observed on device |
+| Untouched-card identity guard | Pass: ARM64 touched-field setter/preservation verified; live drop regression pending |
 | Live trinket, known pill, and Crane rendering | Pending suitable in-game room |
 | Curse of the Blind live regression | Pending suitable seeded floor |
 

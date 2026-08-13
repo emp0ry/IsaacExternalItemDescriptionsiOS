@@ -5,6 +5,9 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
+static const CGFloat EIDOverlayLeftMargin = 24.0;
+static const CGFloat EIDOverlayRightMargin = 14.0;
+
 @interface EIDPassthroughView : UIView
 @end
 @implementation EIDPassthroughView
@@ -75,7 +78,9 @@
     root.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
     UIView *panel = [[UIView alloc] initWithFrame:CGRectZero];
-    panel.frame = CGRectMake(14, 42, MIN(340, window.bounds.size.width - 28), 80);
+    panel.frame = CGRectMake(EIDOverlayLeftMargin, 42,
+                             MIN(340, window.bounds.size.width - EIDOverlayLeftMargin - EIDOverlayRightMargin),
+                             80);
     panel.backgroundColor = UIColor.clearColor;
     panel.clipsToBounds = NO;
     panel.alpha = 0;
@@ -105,8 +110,9 @@
     languageButton.hidden = YES;
     [panel addSubview:languageButton];
 
-    UILabel *diagnostics = [[UILabel alloc] initWithFrame:CGRectMake(14, window.bounds.size.height - 50,
-                                                                     window.bounds.size.width - 28, 36)];
+    UILabel *diagnostics = [[UILabel alloc] initWithFrame:
+        CGRectMake(EIDOverlayLeftMargin, window.bounds.size.height - 50,
+                   window.bounds.size.width - EIDOverlayLeftMargin - EIDOverlayRightMargin, 36)];
     diagnostics.backgroundColor = [UIColor colorWithWhite:0 alpha:0.72];
     diagnostics.textColor = UIColor.systemGreenColor;
     diagnostics.font = [UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular];
@@ -225,7 +231,7 @@
 
 - (void)sizePanelForText {
     CGRect bounds = self.rootView.bounds;
-    CGFloat availableWidth = MAX(180, bounds.size.width - 28);
+    CGFloat availableWidth = MAX(180, bounds.size.width - EIDOverlayLeftMargin - EIDOverlayRightMargin);
     CGFloat width = MIN(390, MAX(270, bounds.size.width * 0.42));
     width = MIN(width, availableWidth);
     CGFloat buttonSpace = self.languageButton.hidden ? 0 : 50;
@@ -248,7 +254,7 @@
         textSize = [self.label sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     }
     CGFloat height = MAX(28, textSize.height);
-    self.panel.frame = CGRectMake(14, 42, width, height);
+    self.panel.frame = CGRectMake(EIDOverlayLeftMargin, 42, width, height);
     self.label.frame = CGRectMake(0, 0, textWidth, height);
     self.languageButton.frame = CGRectMake(width - 44, 0, 42, 28);
 }
