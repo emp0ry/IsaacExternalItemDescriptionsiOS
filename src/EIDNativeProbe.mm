@@ -163,6 +163,8 @@ constexpr size_t kLayerStateSize = 0x90;
 constexpr size_t kLayerStateSpritePathOffset = 0x8;
 constexpr vm_size_t kVMReadChunk = 2 * 1024 * 1024;
 constexpr float kMaximumDescriptionDistance = 220.0f;
+constexpr float kCardPickupObservationDistance = 120.0f;
+constexpr float kCardPickupPlayerContinuityDistance = 96.0f;
 constexpr uintptr_t kGameGlobalOffset = 0xac3b90;
 constexpr size_t kGameItemPoolOffset = 0x242c0;
 constexpr size_t kItemPoolPillEffectsOffset = 0xa2c;
@@ -185,6 +187,15 @@ struct VMPlayer {
     float y = 0;
 };
 
+struct VMCardObservation {
+    vm_address_t address = 0;
+    int32_t subtype = 0;
+    float x = 0;
+    float y = 0;
+    bool hasPosition = false;
+    bool touched = false;
+};
+
 struct VMRegionResult {
     vm_address_t address = 0;
     vm_size_t size = 0;
@@ -197,6 +208,8 @@ struct VMRegionResult {
     vm_address_t lastSlotVTableAddress = 0;
     std::array<VMPickup, kMaxItems> pickups{};
     size_t pickupCount = 0;
+    std::array<VMCardObservation, kMaxItems> cardObservations{};
+    size_t cardObservationCount = 0;
     size_t blindPickupCount = 0;
     size_t unreadableBlindStateCount = 0;
     std::array<VMPlayer, kMaxPlayers> players{};
@@ -352,6 +365,16 @@ static void AddVMPlayer(VMRegionResult& result, vm_address_t address, float x, f
     }
 }
 
+static void AddVMCardObservation(VMRegionResult& result, vm_address_t address, int32_t subtype,
+                                 float x, float y, bool hasPosition, bool touched) {
+    if (subtype <= 0 || subtype > 97 || result.cardObservationCount >= result.cardObservations.size()) {
+        return;
+    }
+    result.cardObservations[result.cardObservationCount++] = {
+        address, subtype, x, y, hasPosition, touched
+    };
+}
+
 static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t size,
                        size_t scanLimit, vm_address_t sourceAddress, VMRegionResult& result) {
     if (size < kEntityTypeOffset + 12) return;
@@ -392,12 +415,16 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
             if (activeObject && identity[0] == 5 && IsDescribableVariant(identity[1])) {
                 int32_t displayVariant = identity[1];
                 int32_t displaySubtype = identity[2];
-                // Floor cards intentionally stay unidentified until Isaac has actually
-                // picked them up. Touched is a native flag byte, not a canonical BOOL;
-                // Isaac may preserve it as a nonzero bit value when the card is dropped.
-                if (displayVariant == EIDPickupVariantCard &&
-                    (offset + kPickupTouchedOffset >= size ||
-                     bytes[offset + kPickupTouchedOffset] == 0)) continue;
+                if (displayVariant == EIDPickupVariantCard) {
+                    bool touched = offset + kPickupTouchedOffset < size &&
+                        bytes[offset + kPickupTouchedOffset] != 0;
+                    AddVMCardObservation(result, sourceAddress + offset, displaySubtype,
+                                         x, y, positionAvailable, touched);
+                    // Card visibility is decided after the player and pickup snapshots are
+                    // combined, allowing EID to remember a real pickup/drop transition even
+                    // when this iOS build clears the native Touched flag on the new entity.
+                    continue;
+                }
                 if (displayVariant == EIDPickupVariantPill &&
                     !ResolveKnownPill(displaySubtype, displayVariant, displaySubtype)) continue;
                 PickupVisibility visibility = identity[1] == EIDPickupVariantCollectible
@@ -568,6 +595,8 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
 @property(nonatomic) BOOL loggedPositionValidation;
 @property(nonatomic) BOOL loggedBlindPedestal;
 @property(nonatomic) BOOL loggedUnreadableBlindState;
+@property(nonatomic, strong) NSMutableSet<NSNumber *> *knownCardSubtypes;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSArray<NSNumber *> *> *pendingCardPickups;
 @property(nonatomic) NSUInteger developmentCaptureIndex;
 @end
 
@@ -580,6 +609,8 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
         _supportedBuild = [_executableUUID caseInsensitiveCompare:supportedUUID] == NSOrderedSame;
         _status = _supportedBuild ? @"Locating native pickup RTTI" : @"Unsupported Isaac executable";
         _lastPickups = @[];
+        _knownCardSubtypes = [NSMutableSet set];
+        _pendingCardPickups = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -674,6 +705,63 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
         }
     }
     if (!pickupRegionValid) return self.lastPickups;
+
+    // Some iOS card drops are created with Touched cleared. Remember a card only after
+    // observing its concrete ground entity near a player and then seeing that entity
+    // disappear while the player position remains continuous. A never-picked floor card
+    // therefore remains hidden, while the subsequently dropped card is describable.
+    NSMutableSet<NSNumber *> *currentCardAddresses = [NSMutableSet set];
+    NSMutableDictionary<NSNumber *, NSArray<NSNumber *> *> *nextPendingCards =
+        [NSMutableDictionary dictionary];
+    for (size_t index = 0; index < pickupResult.cardObservationCount; ++index) {
+        const VMCardObservation& card = pickupResult.cardObservations[index];
+        NSNumber *address = @(card.address);
+        [currentCardAddresses addObject:address];
+        if (card.touched) [self.knownCardSubtypes addObject:@(card.subtype)];
+        if (!card.hasPosition) continue;
+        float closestDistance = INFINITY;
+        const VMPlayer *closestPlayer = nullptr;
+        for (size_t playerIndex = 0; playerIndex < playerResult.playerCount; ++playerIndex) {
+            const VMPlayer& player = playerResult.players[playerIndex];
+            float dx = card.x - player.x;
+            float dy = card.y - player.y;
+            float distance = dx * dx + dy * dy;
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestPlayer = &player;
+            }
+        }
+        if (closestPlayer && closestDistance <=
+            kCardPickupObservationDistance * kCardPickupObservationDistance) {
+            nextPendingCards[address] = @[@(card.subtype), @(closestPlayer->x), @(closestPlayer->y)];
+        }
+    }
+    for (NSNumber *address in self.pendingCardPickups.allKeys) {
+        NSArray<NSNumber *> *record = self.pendingCardPickups[address];
+        if ([currentCardAddresses containsObject:address] || record.count < 3) continue;
+        float previousPlayerX = record[1].floatValue;
+        float previousPlayerY = record[2].floatValue;
+        for (size_t playerIndex = 0; playerIndex < playerResult.playerCount; ++playerIndex) {
+            const VMPlayer& player = playerResult.players[playerIndex];
+            float dx = player.x - previousPlayerX;
+            float dy = player.y - previousPlayerY;
+            if (dx * dx + dy * dy <= kCardPickupPlayerContinuityDistance *
+                kCardPickupPlayerContinuityDistance) {
+                NSNumber *subtype = record[0];
+                [self.knownCardSubtypes addObject:subtype];
+                EIDLog(@"card %@ learned from native pickup transition", subtype);
+                break;
+            }
+        }
+    }
+    self.pendingCardPickups = nextPendingCards;
+    for (size_t index = 0; index < pickupResult.cardObservationCount; ++index) {
+        const VMCardObservation& card = pickupResult.cardObservations[index];
+        if (card.touched || [self.knownCardSubtypes containsObject:@(card.subtype)]) {
+            AddVMPickup(pickupResult, EIDPickupVariantCard, card.subtype,
+                        card.x, card.y, card.hasPosition);
+        }
+    }
 
     if (pickupResult.blindPickupCount && !self.loggedBlindPedestal) {
         self.loggedBlindPedestal = YES;

@@ -50,7 +50,8 @@ structure fails closed and produces no description.
 Normal descriptions use the resolved effect plus one, matching upstream EID's
 lookup convention. Bit 11 selects the horse-pill table. Golden color 14 uses
 the upstream random-effect Golden Pill entry. Unknown pills fail closed.
-Cards additionally require a nonzero native touched flag byte, so a newly
-discovered floor card stays hidden until it has been collected once and
-subsequently dropped. The field is treated as a flag byte rather than requiring
-the canonical Boolean representation `1`.
+Cards are revealed by a nonzero native touched flag or by observing the same
+ground entity near a player disappear during a position-continuous pickup. The
+second path handles iOS drops that create a new entity with `Touched` cleared.
+This learned identity lasts only for the current Isaac process. A newly
+discovered floor card is therefore still hidden until it is actually collected.
