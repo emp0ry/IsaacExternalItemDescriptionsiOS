@@ -8,6 +8,8 @@ EXTRA_CFLAGS ?=
 DYLIB := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions.dylib
 DEB_STAGE := $(PROJECT_ROOT)/package/stage
 DEB := $(PROJECT_ROOT)/packages/IsaacExternalItemDescriptions-rootless.deb
+LIVECONTAINER_FRAMEWORK := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions.framework
+LIVECONTAINER_ZIP := $(PROJECT_ROOT)/packages/IsaacExternalItemDescriptions-LiveContainer.framework.zip
 DIST := $(PROJECT_ROOT)/dist
 INCLUDE_DESCRIPTION_DB ?= 1
 
@@ -18,7 +20,7 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDNativeProbe.mm \
 	$(PROJECT_ROOT)/src/EIDOverlayController.m
 
-.PHONY: all dylib descriptions package audit test release clean
+.PHONY: all dylib descriptions package livecontainer audit test release clean
 
 all: dylib package
 
@@ -60,6 +62,25 @@ package: dylib
 	mkdir -p "$(PROJECT_ROOT)/packages"
 	dpkg-deb --root-owner-group --build "$(DEB_STAGE)" "$(DEB)"
 
+livecontainer: dylib
+	rm -rf "$(LIVECONTAINER_FRAMEWORK)"
+	mkdir -p "$(LIVECONTAINER_FRAMEWORK)/Resources"
+	cp "$(DYLIB)" "$(LIVECONTAINER_FRAMEWORK)/IsaacExternalItemDescriptions"
+	cp "$(PROJECT_ROOT)/livecontainer/Info.plist" "$(LIVECONTAINER_FRAMEWORK)/Info.plist"
+	chmod 755 "$(LIVECONTAINER_FRAMEWORK)/IsaacExternalItemDescriptions"
+	@if test "$(INCLUDE_DESCRIPTION_DB)" = "1" && \
+		test -f "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json"; then \
+		mkdir -p "$(LIVECONTAINER_FRAMEWORK)/Resources/IsaacEID.bundle"; \
+		cp "$(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json" \
+			"$(LIVECONTAINER_FRAMEWORK)/Resources/IsaacEID.bundle/descriptions.json"; \
+	fi
+	mkdir -p "$(PROJECT_ROOT)/packages"
+	rm -f "$(LIVECONTAINER_ZIP)"
+	/usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+		"$(LIVECONTAINER_FRAMEWORK)" "$(LIVECONTAINER_ZIP)"
+	python3 "$(PROJECT_ROOT)/tests/test_livecontainer_package.py" \
+		"$(LIVECONTAINER_FRAMEWORK)" "$(LIVECONTAINER_ZIP)"
+
 audit: dylib
 	file "$(DYLIB)"
 	otool -L "$(DYLIB)"
@@ -77,14 +98,18 @@ release:
 	rm -rf "$(DIST)"
 	$(MAKE) test
 	$(MAKE) package INCLUDE_DESCRIPTION_DB=0 EXTRA_CFLAGS='-Wall -Wextra -Werror'
+	$(MAKE) livecontainer INCLUDE_DESCRIPTION_DB=0 EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) audit EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	mkdir -p "$(DIST)"
 	cp "$(DYLIB)" "$(DIST)/IsaacExternalItemDescriptions.dylib"
 	cp "$(DEB)" "$(DIST)/IsaacExternalItemDescriptions-rootless.deb"
+	cp "$(LIVECONTAINER_ZIP)" "$(DIST)/IsaacExternalItemDescriptions-LiveContainer.framework.zip"
 	cd "$(DIST)" && shasum -a 256 \
 		IsaacExternalItemDescriptions.dylib \
-		IsaacExternalItemDescriptions-rootless.deb > SHA256SUMS
+		IsaacExternalItemDescriptions-rootless.deb \
+		IsaacExternalItemDescriptions-LiveContainer.framework.zip > SHA256SUMS
 
 clean:
 	rm -rf "$(PROJECT_ROOT)/build" "$(PROJECT_ROOT)/package/stage" "$(DIST)"
 	find "$(PROJECT_ROOT)/packages" -maxdepth 1 -name '*.deb' -delete
+	find "$(PROJECT_ROOT)/packages" -maxdepth 1 -name '*.framework.zip' -delete

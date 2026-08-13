@@ -23,6 +23,9 @@
 | Patcher on full user-supplied Isaac IPA | Pass |
 | Dylib hash after IPA embedding | Pass |
 | Direct embedded-mode launch on device | Pending signed/direct-load regression |
+| LiveContainer framework layout/archive | Pass |
+| LiveContainer guest `MH_DYLIB` UUID selection | Pass: UUID `F4357753-A25F-30EE-BACF-63709F902895` selected on device |
+| LiveContainer 3.8.0 private-app launch | Pass: framework loaded, full database imported, native probe active, no crash |
 | Live card/rune entity detection | Pass: native variant 300 observed on device |
 | Untouched-card identity guard | Pass: untouched cards stay hidden; held cards are learned from the four native player pocket slots |
 | Native item artwork | Pass: exact Isaac collectible/trinket paths, card-atlas crops, card fallback, and one static native white pill icon rendered beside text |

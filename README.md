@@ -4,12 +4,13 @@ The first publicly released native gameplay mod for **The Binding of Isaac:
 Repentance on iOS**. It displays item descriptions inside the game without the
 desktop Lua mod API.
 
-The project supports two installation modes from the same ARM64 dylib:
+The project supports three loading modes from the same ARM64 code:
 
 | Device | Release file |
 | --- | --- |
 | Jailbroken iPhone or iPad | `IsaacExternalItemDescriptions-rootless.deb` |
 | Non-jailbroken iPhone or iPad | `IsaacExternalItemDescriptions.dylib` |
+| LiveContainer private app | `IsaacExternalItemDescriptions-LiveContainer.framework.zip` |
 
 The standalone dylib uses public iOS frameworks and does not link against
 ElleKit, Substrate, libhooker, or any jailbreak runtime. The rootless package
@@ -70,6 +71,20 @@ filesystem access. The included patcher automates the bundle and Mach-O changes:
 Signing is intentionally separate. See [Installation](docs/INSTALL.md) for the
 available signing variables and important app-signing limitations.
 
+### LiveContainer private app
+
+Extract `IsaacExternalItemDescriptions-LiveContainer.framework.zip`, import the
+framework into an app-specific LiveContainer tweak folder, and select that
+folder in Isaac's settings. Isaac must be a private app, and both **Don't Inject
+TweakLoader** and **Don't Load TweakLoader** must remain disabled. See the
+[LiveContainer instructions](docs/INSTALL.md#livecontainer-private-app) for the
+complete click-by-click setup.
+
+LiveContainer changes a guest executable from `MH_EXECUTE` to `MH_DYLIB`. EID
+therefore identifies the loaded Isaac image by its exact verified UUID rather
+than assuming the process's first executable image is the game. The same UUID
+gate and read-only layout checks remain active.
+
 ## Description database
 
 The dylib can read Isaac's installed item metadata without extra files. Full
@@ -93,6 +108,7 @@ Requirements: macOS, Xcode, Python 3, `dpkg-deb`, and an iOS SDK.
 make test
 make dylib EXTRA_CFLAGS='-Wall -Wextra -Werror'
 make package EXTRA_CFLAGS='-Wall -Wextra -Werror'
+make livecontainer EXTRA_CFLAGS='-Wall -Wextra -Werror'
 make audit
 ```
 
