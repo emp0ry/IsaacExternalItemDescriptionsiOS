@@ -159,12 +159,12 @@ constexpr size_t kEntitySpriteLayerCountOffset = 0x100;
 constexpr size_t kPickupTouchedOffset = 0x560;
 constexpr size_t kPickupForceBlindOffset = 0x562;
 constexpr size_t kCranePrizeCollectibleOffset = 0x570;
+constexpr size_t kPlayerPocketItemsOffset = 0x1c10;
+constexpr size_t kPlayerPocketItemCount = 4;
 constexpr size_t kLayerStateSize = 0x90;
 constexpr size_t kLayerStateSpritePathOffset = 0x8;
 constexpr vm_size_t kVMReadChunk = 2 * 1024 * 1024;
 constexpr float kMaximumDescriptionDistance = 220.0f;
-constexpr float kCardPickupObservationDistance = 120.0f;
-constexpr float kCardPickupPlayerContinuityDistance = 96.0f;
 constexpr uintptr_t kGameGlobalOffset = 0xac3b90;
 constexpr size_t kGameItemPoolOffset = 0x242c0;
 constexpr size_t kItemPoolPillEffectsOffset = 0xa2c;
@@ -195,6 +195,13 @@ struct VMCardObservation {
     bool hasPosition = false;
     bool touched = false;
 };
+
+struct VMPlayerPocketItem {
+    int32_t id = 0;
+    uint32_t type = 0;
+};
+
+static_assert(sizeof(VMPlayerPocketItem) == 8, "Unexpected native pocket-item layout");
 
 struct VMRegionResult {
     vm_address_t address = 0;
@@ -232,6 +239,24 @@ static bool ReadOwnTaskMemory(vm_address_t address, void *destination, vm_size_t
     return vm_read_overwrite(mach_task_self(), address, size,
                              reinterpret_cast<vm_address_t>(destination), &copied) == KERN_SUCCESS &&
         copied == size;
+}
+
+static bool ReadPlayerPocketItems(
+    vm_address_t playerAddress,
+    std::array<VMPlayerPocketItem, kPlayerPocketItemCount>& items) {
+    if (!ReadOwnTaskMemory(playerAddress + kPlayerPocketItemsOffset,
+                           items.data(), sizeof(items))) return false;
+
+    // Entity_Player::GetCard/GetPill in the supported ARM64 executable read four
+    // consecutive { int32 id, uint32 type } entries here. Reject the whole read if
+    // any entry is inconsistent, rather than treating unrelated memory as inventory.
+    for (const VMPlayerPocketItem& item : items) {
+        if (item.type > 2 || item.id < 0) return false;
+        if (item.type == 0 && item.id > 0xffff) return false;
+        if (item.type == 1 && item.id > 97) return false;
+        if (item.type == 2 && item.id > 4096) return false;
+    }
+    return true;
 }
 
 static bool ResolveKnownPill(int32_t rawSubtype, int32_t& variant, int32_t& subtype) {
@@ -596,7 +621,7 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
 @property(nonatomic) BOOL loggedBlindPedestal;
 @property(nonatomic) BOOL loggedUnreadableBlindState;
 @property(nonatomic, strong) NSMutableSet<NSNumber *> *knownCardSubtypes;
-@property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSArray<NSNumber *> *> *pendingCardPickups;
+@property(nonatomic) BOOL loggedUnreadablePocketItems;
 @property(nonatomic) NSUInteger developmentCaptureIndex;
 @end
 
@@ -610,7 +635,6 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
         _status = _supportedBuild ? @"Locating native pickup RTTI" : @"Unsupported Isaac executable";
         _lastPickups = @[];
         _knownCardSubtypes = [NSMutableSet set];
-        _pendingCardPickups = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -706,57 +730,36 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
     }
     if (!pickupRegionValid) return self.lastPickups;
 
-    // Some iOS card drops are created with Touched cleared. Remember a card only after
-    // observing its concrete ground entity near a player and then seeing that entity
-    // disappear while the player position remains continuous. A never-picked floor card
-    // therefore remains hidden, while the subsequently dropped card is describable.
-    NSMutableSet<NSNumber *> *currentCardAddresses = [NSMutableSet set];
-    NSMutableDictionary<NSNumber *, NSArray<NSNumber *> *> *nextPendingCards =
-        [NSMutableDictionary dictionary];
+    // Some iOS card drops are created with Touched cleared. Read the game's four native
+    // pocket slots first, so a concrete card is learned while the player actually holds
+    // it. The learned identity then remains visible if that card is dropped later, while
+    // a never-held floor card remains hidden.
+    if (playerResult.playerCount) {
+        for (size_t playerIndex = 0; playerIndex < playerResult.playerCount; ++playerIndex) {
+            std::array<VMPlayerPocketItem, kPlayerPocketItemCount> pocketItems{};
+            if (!ReadPlayerPocketItems(playerResult.players[playerIndex].address, pocketItems)) {
+                if (!self.loggedUnreadablePocketItems) {
+                    self.loggedUnreadablePocketItems = YES;
+                    EIDLog(@"native player pocket slots unreadable; card learning suppressed");
+                }
+                continue;
+            }
+            for (size_t slot = 0; slot < pocketItems.size(); ++slot) {
+                const VMPlayerPocketItem& item = pocketItems[slot];
+                if (item.type != 1 || item.id <= 0 || item.id > 97) continue;
+                NSNumber *subtype = @(item.id);
+                if (![self.knownCardSubtypes containsObject:subtype]) {
+                    [self.knownCardSubtypes addObject:subtype];
+                    EIDLog(@"card %@ learned from native player pocket slot %lu",
+                           subtype, (unsigned long)slot);
+                }
+            }
+        }
+    }
+
     for (size_t index = 0; index < pickupResult.cardObservationCount; ++index) {
         const VMCardObservation& card = pickupResult.cardObservations[index];
-        NSNumber *address = @(card.address);
-        [currentCardAddresses addObject:address];
         if (card.touched) [self.knownCardSubtypes addObject:@(card.subtype)];
-        if (!card.hasPosition) continue;
-        float closestDistance = INFINITY;
-        const VMPlayer *closestPlayer = nullptr;
-        for (size_t playerIndex = 0; playerIndex < playerResult.playerCount; ++playerIndex) {
-            const VMPlayer& player = playerResult.players[playerIndex];
-            float dx = card.x - player.x;
-            float dy = card.y - player.y;
-            float distance = dx * dx + dy * dy;
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestPlayer = &player;
-            }
-        }
-        if (closestPlayer && closestDistance <=
-            kCardPickupObservationDistance * kCardPickupObservationDistance) {
-            nextPendingCards[address] = @[@(card.subtype), @(closestPlayer->x), @(closestPlayer->y)];
-        }
-    }
-    for (NSNumber *address in self.pendingCardPickups.allKeys) {
-        NSArray<NSNumber *> *record = self.pendingCardPickups[address];
-        if ([currentCardAddresses containsObject:address] || record.count < 3) continue;
-        float previousPlayerX = record[1].floatValue;
-        float previousPlayerY = record[2].floatValue;
-        for (size_t playerIndex = 0; playerIndex < playerResult.playerCount; ++playerIndex) {
-            const VMPlayer& player = playerResult.players[playerIndex];
-            float dx = player.x - previousPlayerX;
-            float dy = player.y - previousPlayerY;
-            if (dx * dx + dy * dy <= kCardPickupPlayerContinuityDistance *
-                kCardPickupPlayerContinuityDistance) {
-                NSNumber *subtype = record[0];
-                [self.knownCardSubtypes addObject:subtype];
-                EIDLog(@"card %@ learned from native pickup transition", subtype);
-                break;
-            }
-        }
-    }
-    self.pendingCardPickups = nextPendingCards;
-    for (size_t index = 0; index < pickupResult.cardObservationCount; ++index) {
-        const VMCardObservation& card = pickupResult.cardObservations[index];
         if (card.touched || [self.knownCardSubtypes containsObject:@(card.subtype)]) {
             AddVMPickup(pickupResult, EIDPickupVariantCard, card.subtype,
                         card.x, card.y, card.hasPosition);
