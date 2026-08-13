@@ -5,8 +5,10 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
-static const CGFloat EIDOverlayLeftMargin = 24.0;
+static const CGFloat EIDOverlayLeftMargin = 34.0;
 static const CGFloat EIDOverlayRightMargin = 14.0;
+static const CGFloat EIDItemIconSize = 28.0;
+static const CGFloat EIDItemIconSpacing = 6.0;
 
 @interface EIDPassthroughView : UIView
 @end
@@ -22,6 +24,7 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
 @property(nonatomic, strong) EIDNativeProbe *probe;
 @property(nonatomic, strong) EIDPassthroughView *rootView;
 @property(nonatomic, strong) UIView *panel;
+@property(nonatomic, strong) UIImageView *itemIconView;
 @property(nonatomic, strong) UILabel *label;
 @property(nonatomic, strong) UILabel *diagnosticsLabel;
 @property(nonatomic, strong) UIButton *languageButton;
@@ -98,6 +101,14 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
     label.userInteractionEnabled = NO;
     [panel addSubview:label];
 
+    UIImageView *itemIcon = [[UIImageView alloc] initWithFrame:CGRectZero];
+    itemIcon.contentMode = UIViewContentModeScaleAspectFit;
+    itemIcon.layer.magnificationFilter = kCAFilterNearest;
+    itemIcon.layer.minificationFilter = kCAFilterNearest;
+    itemIcon.userInteractionEnabled = NO;
+    itemIcon.hidden = YES;
+    [panel insertSubview:itemIcon belowSubview:label];
+
     UIButton *languageButton = [UIButton buttonWithType:UIButtonTypeSystem];
     languageButton.frame = CGRectMake(panel.bounds.size.width - 48, 6, 42, 28);
     languageButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
@@ -127,6 +138,7 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
     [window addSubview:root];
     self.rootView = root;
     self.panel = panel;
+    self.itemIconView = itemIcon;
     self.label = label;
     self.diagnosticsLabel = diagnostics;
     self.languageButton = languageButton;
@@ -156,6 +168,8 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
 }
 
 - (void)updateStartupBannerText {
+    self.itemIconView.image = nil;
+    self.itemIconView.hidden = YES;
     BOOL russian = [self.store.languageCode isEqualToString:@"ru"];
     NSString *title = russian ? @"Описание предметов" : @"External Item Descriptions";
     NSString *status = self.probe.supportedBuild
@@ -197,10 +211,13 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
 
 - (void)renderPickups:(NSArray<EIDPickupIdentity *> *)pickups {
     if (!pickups.count) {
+        self.itemIconView.image = nil;
+        self.itemIconView.hidden = YES;
         [UIView animateWithDuration:0.15 animations:^{ self.panel.alpha = 0; }];
         return;
     }
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    EIDDescription *displayItem = nil;
     NSUInteger shown = MIN(pickups.count, 1);
     for (NSUInteger index = 0; index < shown; ++index) {
         EIDPickupIdentity *pickup = pickups[index];
@@ -208,6 +225,7 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
             ? (pickup.subtype & 0x7fff) : pickup.subtype;
         EIDDescription *item = [self.store descriptionForPickupVariant:pickup.variant
                                                                 subtype:pickup.subtype];
+        if (index == 0) displayItem = item;
         NSString *kind = [self kindNameForVariant:pickup.variant];
         NSString *name = item.name.length ? item.name
             : [NSString stringWithFormat:@"%@ %ld", kind, (long)displaySubtype];
@@ -224,6 +242,10 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
         [lines addObject:[NSString stringWithFormat:@"+ %lu %@",
                           (unsigned long)(pickups.count - shown), more]];
     }
+    UIImage *itemImage = displayItem.iconPath.length
+        ? [UIImage imageWithContentsOfFile:displayItem.iconPath] : nil;
+    self.itemIconView.image = itemImage;
+    self.itemIconView.hidden = itemImage == nil;
     self.label.text = [lines componentsJoinedByString:@"\n\n"];
     [self sizePanelForText];
     [UIView animateWithDuration:0.15 animations:^{ self.panel.alpha = 1; }];
@@ -235,7 +257,8 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
     CGFloat width = MIN(390, MAX(270, bounds.size.width * 0.42));
     width = MIN(width, availableWidth);
     CGFloat buttonSpace = self.languageButton.hidden ? 0 : 50;
-    CGFloat textWidth = MAX(120, width - buttonSpace);
+    CGFloat iconSpace = self.itemIconView.hidden ? 0 : EIDItemIconSize + EIDItemIconSpacing;
+    CGFloat textWidth = MAX(120, width - buttonSpace - iconSpace);
     CGFloat maximumHeight = MAX(100, bounds.size.height - 58);
 
     CGFloat fontSize = self.startupBannerVisible ? 11.0 : 10.5;
@@ -250,12 +273,13 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
     // clipped to an arbitrary character or line count.
     if (textSize.height > maximumHeight && width < availableWidth) {
         width = MIN(availableWidth, MAX(width, bounds.size.width * 0.58));
-        textWidth = MAX(120, width - buttonSpace);
+        textWidth = MAX(120, width - buttonSpace - iconSpace);
         textSize = [self.label sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     }
-    CGFloat height = MAX(28, textSize.height);
+    CGFloat height = MAX(EIDItemIconSize, textSize.height);
     self.panel.frame = CGRectMake(EIDOverlayLeftMargin, 42, width, height);
-    self.label.frame = CGRectMake(0, 0, textWidth, height);
+    self.itemIconView.frame = CGRectMake(0, 1, EIDItemIconSize, EIDItemIconSize);
+    self.label.frame = CGRectMake(iconSpace, 0, textWidth, height);
     self.languageButton.frame = CGRectMake(width - 44, 0, 42, 28);
 }
 
