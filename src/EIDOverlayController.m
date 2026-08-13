@@ -298,7 +298,19 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     NSString *cardPath = EIDGameResourcePath(@"gfx/items/pick ups/pickup_017_card.png");
     NSString *pillPath = EIDGameResourcePath(@"gfx/items/pick ups/pickup_007_pill.png");
     self.genericCardIcon = cardPath.length ? [UIImage imageWithContentsOfFile:cardPath] : nil;
-    self.genericPillIcon = pillPath.length ? [UIImage imageWithContentsOfFile:pillPath] : nil;
+    UIImage *pillAtlas = pillPath.length ? [UIImage imageWithContentsOfFile:pillPath] : nil;
+    if (pillAtlas.CGImage) {
+        // Isaac's white-white pill is the 32x32 frame at (0, 32). Use one
+        // stable icon for every identified normal and horse pill.
+        CGRect whitePillFrame = CGRectMake(0, 32, 32, 32);
+        CGImageRef cropped = CGImageCreateWithImageInRect(pillAtlas.CGImage, whitePillFrame);
+        if (cropped) {
+            self.genericPillIcon = [UIImage imageWithCGImage:cropped
+                                                       scale:1
+                                                 orientation:UIImageOrientationUp];
+            CGImageRelease(cropped);
+        }
+    }
     EIDLog(@"pocket artwork loaded: %lu card frames, atlas %@, card fallback %@, pill fallback %@",
            (unsigned long)self.cardAtlasFrames.count,
            self.cardAtlas ? @"yes" : @"no", self.genericCardIcon ? @"yes" : @"no",
