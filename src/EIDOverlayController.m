@@ -10,6 +10,70 @@ static const CGFloat EIDOverlayRightMargin = 14.0;
 static const CGFloat EIDItemIconSize = 28.0;
 static const CGFloat EIDItemIconSpacing = 6.0;
 
+static NSString *EIDGameResourcePath(NSString *relativePath) {
+    NSArray<NSString *> *roots = @[@"repentance-resources", @"afterbirthplus-resources",
+                                    @"afterbirth-resources", @"rebirth-resources"];
+    for (NSString *root in roots) {
+        NSString *candidate = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"%@/data/%@", root, relativePath]];
+        if ([[NSFileManager defaultManager] isReadableFileAtPath:candidate]) return candidate;
+    }
+    return nil;
+}
+
+@interface EIDCardAtlasParser : NSObject <NSXMLParserDelegate>
+@property(nonatomic, strong) NSMutableArray *frames;
+@property(nonatomic) BOOL readingCardAnimation;
+@property(nonatomic) BOOL readingCardLayer;
+@end
+
+@implementation EIDCardAtlasParser
+- (instancetype)init {
+    self = [super init];
+    if (self) _frames = [NSMutableArray array];
+    return self;
+}
+
+- (void)parser:(NSXMLParser *)parser
+ didStartElement:(NSString *)elementName
+    namespaceURI:(NSString *)namespaceURI
+   qualifiedName:(NSString *)qualifiedName
+      attributes:(NSDictionary<NSString *, NSString *> *)attributes {
+    (void)parser; (void)namespaceURI; (void)qualifiedName;
+    if ([elementName isEqualToString:@"Animation"]) {
+        self.readingCardAnimation = [attributes[@"Name"] isEqualToString:@"CardFronts"];
+        self.readingCardLayer = NO;
+        return;
+    }
+    if (self.readingCardAnimation && [elementName isEqualToString:@"LayerAnimation"]) {
+        self.readingCardLayer = [attributes[@"LayerId"] integerValue] == 0;
+        return;
+    }
+    if (!self.readingCardLayer || ![elementName isEqualToString:@"Frame"]) return;
+    CGFloat x = [attributes[@"XCrop"] doubleValue];
+    CGFloat y = [attributes[@"YCrop"] doubleValue];
+    CGFloat width = [attributes[@"Width"] doubleValue];
+    CGFloat height = [attributes[@"Height"] doubleValue];
+    BOOL visible = ![attributes[@"Visible"] isEqualToString:@"false"];
+    if (visible && width > 0 && height > 0) {
+        [self.frames addObject:[NSValue valueWithCGRect:CGRectMake(x, y, width, height)]];
+    } else {
+        [self.frames addObject:NSNull.null];
+    }
+}
+
+- (void)parser:(NSXMLParser *)parser
+   didEndElement:(NSString *)elementName
+    namespaceURI:(NSString *)namespaceURI
+   qualifiedName:(NSString *)qualifiedName {
+    (void)parser; (void)namespaceURI; (void)qualifiedName;
+    if ([elementName isEqualToString:@"LayerAnimation"]) self.readingCardLayer = NO;
+    if ([elementName isEqualToString:@"Animation"] && self.readingCardAnimation) {
+        self.readingCardAnimation = NO;
+    }
+}
+@end
+
 @interface EIDPassthroughView : UIView
 @end
 @implementation EIDPassthroughView
@@ -30,9 +94,15 @@ static const CGFloat EIDItemIconSpacing = 6.0;
 @property(nonatomic, strong) UIButton *languageButton;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, copy) NSArray<EIDPickupIdentity *> *lastPickups;
+@property(nonatomic, strong) UIImage *cardAtlas;
+@property(nonatomic, copy) NSArray *cardAtlasFrames;
+@property(nonatomic, strong) UIImage *genericCardIcon;
+@property(nonatomic, strong) UIImage *genericPillIcon;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, id> *pocketIconCache;
 @property(nonatomic) BOOL diagnosticsEnabled;
 @property(nonatomic) BOOL scanInProgress;
 @property(nonatomic) BOOL startupBannerVisible;
+@property(nonatomic) BOOL loggedOverlayLayout;
 @end
 
 @implementation EIDOverlayController
@@ -42,6 +112,7 @@ static const CGFloat EIDItemIconSpacing = 6.0;
         _store = store;
         _probe = probe;
         _lastPickups = @[];
+        _pocketIconCache = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -209,6 +280,64 @@ static const CGFloat EIDItemIconSpacing = 6.0;
     return russian ? @"Артефакт" : @"Collectible";
 }
 
+- (void)loadPocketArtworkIfNeeded {
+    if (self.cardAtlasFrames) return;
+    NSString *animationPath = EIDGameResourcePath(@"gfx/ui/ui_cardspills.anm2");
+    NSString *atlasPath = EIDGameResourcePath(@"gfx/ui/ui_cardfronts.png");
+    NSData *animationData = animationPath.length
+        ? [NSData dataWithContentsOfFile:animationPath] : nil;
+    EIDCardAtlasParser *delegate = [[EIDCardAtlasParser alloc] init];
+    if (animationData.length) {
+        NSXMLParser *parser = [[NSXMLParser alloc] initWithData:animationData];
+        parser.delegate = delegate;
+        if (![parser parse]) [delegate.frames removeAllObjects];
+    }
+    self.cardAtlasFrames = delegate.frames.copy ?: @[];
+    self.cardAtlas = atlasPath.length ? [UIImage imageWithContentsOfFile:atlasPath] : nil;
+
+    NSString *cardPath = EIDGameResourcePath(@"gfx/items/pick ups/pickup_017_card.png");
+    NSString *pillPath = EIDGameResourcePath(@"gfx/items/pick ups/pickup_007_pill.png");
+    self.genericCardIcon = cardPath.length ? [UIImage imageWithContentsOfFile:cardPath] : nil;
+    self.genericPillIcon = pillPath.length ? [UIImage imageWithContentsOfFile:pillPath] : nil;
+    EIDLog(@"pocket artwork loaded: %lu card frames, atlas %@, card fallback %@, pill fallback %@",
+           (unsigned long)self.cardAtlasFrames.count,
+           self.cardAtlas ? @"yes" : @"no", self.genericCardIcon ? @"yes" : @"no",
+           self.genericPillIcon ? @"yes" : @"no");
+}
+
+- (UIImage *)pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype {
+    if (variant != EIDPickupVariantCard && variant != EIDPickupVariantPill &&
+        variant != EIDPickupVariantHorsePill) return nil;
+    NSString *key = [NSString stringWithFormat:@"%ld:%ld", (long)variant, (long)subtype];
+    id cached = self.pocketIconCache[key];
+    if (cached) return cached == NSNull.null ? nil : cached;
+    [self loadPocketArtworkIfNeeded];
+
+    UIImage *image = nil;
+    if (variant == EIDPickupVariantCard) {
+        if (subtype > 0 && subtype < (NSInteger)self.cardAtlasFrames.count && self.cardAtlas.CGImage) {
+            id frameValue = self.cardAtlasFrames[(NSUInteger)subtype];
+            if ([frameValue isKindOfClass:NSValue.class]) {
+                CGRect frame = [frameValue CGRectValue];
+                CGRect imageBounds = CGRectMake(0, 0, CGImageGetWidth(self.cardAtlas.CGImage),
+                                                 CGImageGetHeight(self.cardAtlas.CGImage));
+                if (CGRectContainsRect(imageBounds, frame)) {
+                    CGImageRef cropped = CGImageCreateWithImageInRect(self.cardAtlas.CGImage, frame);
+                    if (cropped) {
+                        image = [UIImage imageWithCGImage:cropped scale:1 orientation:UIImageOrientationUp];
+                        CGImageRelease(cropped);
+                    }
+                }
+            }
+        }
+        if (!image) image = self.genericCardIcon;
+    } else {
+        image = self.genericPillIcon;
+    }
+    self.pocketIconCache[key] = image ?: NSNull.null;
+    return image;
+}
+
 - (void)renderPickups:(NSArray<EIDPickupIdentity *> *)pickups {
     if (!pickups.count) {
         self.itemIconView.image = nil;
@@ -244,6 +373,10 @@ static const CGFloat EIDItemIconSpacing = 6.0;
     }
     UIImage *itemImage = displayItem.iconPath.length
         ? [UIImage imageWithContentsOfFile:displayItem.iconPath] : nil;
+    if (!itemImage) {
+        EIDPickupIdentity *pickup = pickups.firstObject;
+        itemImage = [self pocketIconForVariant:pickup.variant subtype:pickup.subtype];
+    }
     self.itemIconView.image = itemImage;
     self.itemIconView.hidden = itemImage == nil;
     self.label.text = [lines componentsJoinedByString:@"\n\n"];
@@ -281,6 +414,12 @@ static const CGFloat EIDItemIconSpacing = 6.0;
     self.itemIconView.frame = CGRectMake(0, 1, EIDItemIconSize, EIDItemIconSize);
     self.label.frame = CGRectMake(iconSpace, 0, textWidth, height);
     self.languageButton.frame = CGRectMake(width - 44, 0, 42, 28);
+    if (!self.loggedOverlayLayout) {
+        self.loggedOverlayLayout = YES;
+        EIDLog(@"overlay layout fixed at x %.0f, icon origin x %.0f",
+               self.panel.frame.origin.x,
+               self.panel.frame.origin.x + self.itemIconView.frame.origin.x);
+    }
 }
 
 - (NSString *)renderMarkup:(NSString *)input {

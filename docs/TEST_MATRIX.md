@@ -24,8 +24,8 @@
 | Dylib hash after IPA embedding | Pass |
 | Direct embedded-mode launch on device | Pending signed/direct-load regression |
 | Live card/rune entity detection | Pass: native variant 300 observed on device |
-| Untouched-card identity guard | Implemented: zero stays hidden; verified four-slot player pocket path; live pickup/drop confirmation pending dev.30 play test |
-| Native item artwork | Pass: exact Isaac collectible/trinket icon path rendered beside text |
+| Untouched-card identity guard | Implemented: zero stays hidden; verified four-slot player pocket path; live pickup/drop confirmation pending play test |
+| Native item artwork | Pass: exact Isaac collectible/trinket paths, card-atlas crops, and card/pill fallbacks rendered beside text |
 | Live trinket, known pill, and Crane rendering | Pending suitable in-game room |
 | Curse of the Blind live regression | Pending suitable seeded floor |
 
