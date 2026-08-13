@@ -18,6 +18,7 @@
 namespace {
 constexpr const char *kPickupRTTIName = "N15IsaacRepentance13Entity_PickupE";
 constexpr const char *kPlayerRTTIName = "N15IsaacRepentance13Entity_PlayerE";
+constexpr const char *kSlotRTTIName = "N15IsaacRepentance11Entity_SlotE";
 constexpr const char *kSupportedUUID = "F4357753-A25F-30EE-BACF-63709F902895";
 constexpr size_t kMaxVTables = 8;
 constexpr size_t kMaxItems = 32;
@@ -28,6 +29,8 @@ struct ScanContext {
     size_t pickupVTableCount = 0;
     std::array<uintptr_t, kMaxVTables> playerVTables{};
     size_t playerVTableCount = 0;
+    std::array<uintptr_t, kMaxVTables> slotVTables{};
+    size_t slotVTableCount = 0;
 };
 
 static bool IsCandidateVTable(const std::array<uintptr_t, kMaxVTables>& vtables,
@@ -144,6 +147,7 @@ static ScanContext LocateEntityVTables(void) {
     ScanContext context;
     LocateVTables(kPickupRTTIName, context.pickupVTables, context.pickupVTableCount);
     LocateVTables(kPlayerRTTIName, context.playerVTables, context.playerVTableCount);
+    LocateVTables(kSlotRTTIName, context.slotVTables, context.slotVTableCount);
     return context;
 }
 
@@ -153,10 +157,18 @@ constexpr size_t kEntityPositionOffset = 0x310;
 constexpr size_t kEntitySpriteLayerStatesOffset = 0xf8;
 constexpr size_t kEntitySpriteLayerCountOffset = 0x100;
 constexpr size_t kPickupForceBlindOffset = 0x562;
+constexpr size_t kCranePrizeCollectibleOffset = 0x570;
 constexpr size_t kLayerStateSize = 0x90;
 constexpr size_t kLayerStateSpritePathOffset = 0x8;
 constexpr vm_size_t kVMReadChunk = 2 * 1024 * 1024;
 constexpr float kMaximumDescriptionDistance = 220.0f;
+constexpr uintptr_t kGameGlobalOffset = 0xac3b90;
+constexpr size_t kGameItemPoolOffset = 0x242c0;
+constexpr size_t kItemPoolPillEffectsOffset = 0xa2c;
+constexpr size_t kItemPoolIdentifiedPillsOffset = 0xa68;
+constexpr uint32_t kPillColorMask = 0x7ff;
+constexpr uint32_t kHorsePillFlag = 1u << 11;
+constexpr uint32_t kGoldenPillColor = 14;
 
 struct VMPickup {
     int32_t variant = 0;
@@ -177,8 +189,11 @@ struct VMRegionResult {
     vm_size_t size = 0;
     size_t pickupVTableReferences = 0;
     size_t playerVTableReferences = 0;
+    size_t slotVTableReferences = 0;
     vm_address_t firstPickupVTableAddress = 0;
     vm_address_t lastPickupVTableAddress = 0;
+    vm_address_t firstSlotVTableAddress = 0;
+    vm_address_t lastSlotVTableAddress = 0;
     std::array<VMPickup, kMaxItems> pickups{};
     size_t pickupCount = 0;
     size_t blindPickupCount = 0;
@@ -203,6 +218,57 @@ static bool ReadOwnTaskMemory(vm_address_t address, void *destination, vm_size_t
     return vm_read_overwrite(mach_task_self(), address, size,
                              reinterpret_cast<vm_address_t>(destination), &copied) == KERN_SUCCESS &&
         copied == size;
+}
+
+static bool ResolveKnownPill(int32_t rawSubtype, int32_t& variant, int32_t& subtype) {
+    uint32_t rawColor = static_cast<uint32_t>(rawSubtype);
+    uint32_t color = rawColor & kPillColorMask;
+    if (color == 0 || color > kGoldenPillColor) return false;
+
+    const mach_header_64 *header = MainExecutableHeader(nullptr);
+    uintptr_t game = 0;
+    if (!header || !ReadOwnTaskMemory(reinterpret_cast<vm_address_t>(header) + kGameGlobalOffset,
+                                      &game, sizeof(game)) || !game) return false;
+    uintptr_t itemPool = game + kGameItemPoolOffset;
+    uint8_t identified = 0;
+    if (!ReadOwnTaskMemory(itemPool + kItemPoolIdentifiedPillsOffset + color,
+                           &identified, sizeof(identified))) return false;
+    if (identified > 1) return false;
+
+    // Golden pills are visibly golden and intentionally have random effects.
+    if (color == kGoldenPillColor) {
+        variant = (rawColor & kHorsePillFlag) ? EIDPickupVariantHorsePill
+                                              : EIDPickupVariantPill;
+        subtype = 9999;
+        return true;
+    }
+    if (identified != 1) return false;
+
+    int32_t effect = -1;
+    if (!ReadOwnTaskMemory(itemPool + kItemPoolPillEffectsOffset + color * sizeof(effect),
+                           &effect, sizeof(effect)) || effect < 0 || effect > 63) return false;
+    variant = (rawColor & kHorsePillFlag) ? EIDPickupVariantHorsePill : EIDPickupVariantPill;
+    subtype = effect + 1;
+    return true;
+}
+
+static bool ValidateNativePillPool(NSUInteger& identifiedCount) {
+    identifiedCount = 0;
+    const mach_header_64 *header = MainExecutableHeader(nullptr);
+    uintptr_t game = 0;
+    if (!header || !ReadOwnTaskMemory(reinterpret_cast<vm_address_t>(header) + kGameGlobalOffset,
+                                      &game, sizeof(game)) || !game) return false;
+    uintptr_t itemPool = game + kGameItemPoolOffset;
+    for (uint32_t color = 1; color < kGoldenPillColor; ++color) {
+        int32_t effect = -1;
+        uint8_t identified = 0xff;
+        if (!ReadOwnTaskMemory(itemPool + kItemPoolPillEffectsOffset + color * sizeof(effect),
+                               &effect, sizeof(effect)) || effect < 0 || effect > 63 ||
+            !ReadOwnTaskMemory(itemPool + kItemPoolIdentifiedPillsOffset + color,
+                               &identified, sizeof(identified)) || identified > 1) return false;
+        if (identified == 1) identifiedCount++;
+    }
+    return true;
 }
 
 static bool RemoteLibCppStringEquals(const uint8_t *stringObject, const char *expected,
@@ -259,13 +325,16 @@ static PickupVisibility PickupVisibilityState(const uint8_t *object, size_t avai
 }
 
 static bool IsDescribableVariant(int32_t variant) {
-    return variant == EIDPickupVariantCollectible || variant == EIDPickupVariantCard ||
+    return variant == EIDPickupVariantPill || variant == EIDPickupVariantCollectible ||
+        variant == EIDPickupVariantHorsePill || variant == EIDPickupVariantCard ||
         variant == EIDPickupVariantTrinket;
 }
 
 static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype,
                         float x, float y, bool hasPosition) {
     if (!IsDescribableVariant(variant) || subtype <= 0 || subtype > 65535) return;
+    // Subtype zero and out-of-range tarot IDs are unknown/hidden card identities.
+    if (variant == EIDPickupVariantCard && subtype > 97) return;
     // Keep duplicate identities: two equal cards/trinkets may exist at different positions,
     // and proximity must choose the actual nearest entity rather than the first copy.
     if (result.pickupCount < result.pickups.size()) {
@@ -292,7 +361,8 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
         memcpy(&vtable, bytes + offset, sizeof(vtable));
         bool pickupVTable = IsCandidateVTable(context.pickupVTables, context.pickupVTableCount, vtable);
         bool playerVTable = IsCandidateVTable(context.playerVTables, context.playerVTableCount, vtable);
-        if (!pickupVTable && !playerVTable) continue;
+        bool slotVTable = IsCandidateVTable(context.slotVTables, context.slotVTableCount, vtable);
+        if (!pickupVTable && !playerVTable && !slotVTable) continue;
 
         int32_t identity[3];
         memcpy(identity, bytes + offset + kEntityTypeOffset, sizeof(identity));
@@ -319,11 +389,15 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
                 result.lastPickupVTableAddress = referenceAddress;
             }
             if (activeObject && identity[0] == 5 && IsDescribableVariant(identity[1])) {
+                int32_t displayVariant = identity[1];
+                int32_t displaySubtype = identity[2];
+                if (displayVariant == EIDPickupVariantPill &&
+                    !ResolveKnownPill(displaySubtype, displayVariant, displaySubtype)) continue;
                 PickupVisibility visibility = identity[1] == EIDPickupVariantCollectible
                     ? PickupVisibilityState(bytes + offset, size - offset)
                     : PickupVisibility::Visible;
                 if (visibility == PickupVisibility::Visible) {
-                    AddVMPickup(result, identity[1], identity[2], x, y, positionAvailable);
+                    AddVMPickup(result, displayVariant, displaySubtype, x, y, positionAvailable);
                 } else if (visibility == PickupVisibility::Blind) {
                     result.blindPickupCount++;
                 } else {
@@ -348,6 +422,26 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
                     memcpy(result.playerSnapshot.data(), bytes + offset, result.playerSnapshotSize);
                 }
 #endif
+            }
+        }
+        if (slotVTable) {
+            result.slotVTableReferences++;
+            vm_address_t referenceAddress = sourceAddress + offset;
+            if (!result.firstSlotVTableAddress || referenceAddress < result.firstSlotVTableAddress) {
+                result.firstSlotVTableAddress = referenceAddress;
+            }
+            if (referenceAddress > result.lastSlotVTableAddress) {
+                result.lastSlotVTableAddress = referenceAddress;
+            }
+            if (activeObject && identity[0] == 6 && identity[1] == 16 &&
+                offset + kCranePrizeCollectibleOffset + sizeof(int32_t) <= size) {
+                int32_t collectible = 0;
+                memcpy(&collectible, bytes + offset + kCranePrizeCollectibleOffset,
+                       sizeof(collectible));
+                if (collectible > 0 && collectible <= 4096) {
+                    AddVMPickup(result, EIDPickupVariantCollectible, collectible,
+                                x, y, positionAvailable);
+                }
             }
         }
     }
@@ -379,6 +473,7 @@ static bool ScanVMRegion(const ScanContext& context, vm_address_t address,
 struct VMDiscovery {
     VMRegionResult pickupRegion;
     VMRegionResult playerRegion;
+    VMRegionResult slotRegion;
 };
 
 static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
@@ -409,6 +504,9 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
                 if ((candidate.playerCount && !discovery.playerRegion.playerCount) ||
                     candidate.playerVTableReferences > discovery.playerRegion.playerVTableReferences) {
                     discovery.playerRegion = candidate;
+                }
+                if (candidate.slotVTableReferences > discovery.slotRegion.slotVTableReferences) {
+                    discovery.slotRegion = candidate;
                 }
             }
         }
@@ -457,6 +555,8 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
 @property(nonatomic) vm_size_t pickupRegionSize;
 @property(nonatomic) vm_address_t playerRegionAddress;
 @property(nonatomic) vm_size_t playerRegionSize;
+@property(nonatomic) vm_address_t slotRegionAddress;
+@property(nonatomic) vm_size_t slotRegionSize;
 @property(nonatomic) BOOL loggedVMDiscovery;
 @property(nonatomic) BOOL loggedPositionValidation;
 @property(nonatomic) BOOL loggedBlindPedestal;
@@ -490,10 +590,18 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
         EIDLog(@"%@", self.status);
         return;
     }
-    self.status = [NSString stringWithFormat:@"Native probe active (pickup:%lu player:%lu)",
+    self.status = [NSString stringWithFormat:@"Native probe active (pickup:%lu player:%lu slot:%lu)",
                    (unsigned long)self.scanContext.pickupVTableCount,
-                   (unsigned long)self.scanContext.playerVTableCount];
+                   (unsigned long)self.scanContext.playerVTableCount,
+                   (unsigned long)self.scanContext.slotVTableCount];
     EIDLog(@"%@; executable UUID %@", self.status, self.executableUUID);
+    NSUInteger identifiedPills = 0;
+    if (ValidateNativePillPool(identifiedPills)) {
+        EIDLog(@"native pill state active (%lu identified colors)",
+               (unsigned long)identifiedPills);
+    } else {
+        EIDLog(@"native pill state is not ready; pill descriptions remain hidden");
+    }
 }
 
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups {
@@ -501,14 +609,19 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
 
     VMRegionResult pickupResult;
     VMRegionResult playerResult;
+    VMRegionResult slotResult;
     bool pickupRegionValid = self.pickupRegionAddress &&
         ScanVMRegion(self.scanContext, self.pickupRegionAddress, self.pickupRegionSize, pickupResult) &&
         pickupResult.pickupVTableReferences;
     bool playerRegionValid = self.playerRegionAddress &&
         ScanVMRegion(self.scanContext, self.playerRegionAddress, self.playerRegionSize, playerResult) &&
         playerResult.playerVTableReferences;
+    bool slotRegionValid = self.slotRegionAddress &&
+        ScanVMRegion(self.scanContext, self.slotRegionAddress, self.slotRegionSize, slotResult) &&
+        slotResult.slotVTableReferences;
 
-    if (!pickupRegionValid || (pickupResult.pickupCount && !playerRegionValid)) {
+    if (!pickupRegionValid || (pickupResult.pickupCount && !playerRegionValid) ||
+        (self.slotRegionAddress && !slotRegionValid)) {
         VMDiscovery discovery = DiscoverEntityRegions(self.scanContext);
         if (discovery.pickupRegion.pickupVTableReferences) {
             pickupResult = discovery.pickupRegion;
@@ -530,11 +643,26 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
             self.playerRegionSize = firstPlayerAddress ? 0x3000 : playerResult.size;
             playerRegionValid = true;
         }
+        if (discovery.slotRegion.slotVTableReferences) {
+            slotResult = discovery.slotRegion;
+            if (slotResult.firstSlotVTableAddress &&
+                slotResult.lastSlotVTableAddress >= slotResult.firstSlotVTableAddress) {
+                self.slotRegionAddress = slotResult.firstSlotVTableAddress;
+                self.slotRegionSize = slotResult.lastSlotVTableAddress -
+                    slotResult.firstSlotVTableAddress + 0x1000;
+            } else {
+                self.slotRegionAddress = slotResult.address;
+                self.slotRegionSize = slotResult.size;
+            }
+            slotRegionValid = true;
+        }
         if (!self.loggedVMDiscovery && pickupRegionValid) {
             self.loggedVMDiscovery = YES;
-            EIDLog(@"safe VM entity discovery: pickup refs %lu, player refs %lu, cache %.1f MiB",
+            EIDLog(@"safe VM entity discovery: pickup refs %lu, player refs %lu, slot refs %lu, "
+                   "cache %.1f MiB",
                    (unsigned long)pickupResult.pickupVTableReferences,
                    (unsigned long)playerResult.playerVTableReferences,
+                   (unsigned long)slotResult.slotVTableReferences,
                    (double)self.pickupRegionSize / (1024.0 * 1024.0));
         }
     }
@@ -582,20 +710,23 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
     }
 
     NSMutableArray<EIDPickupIdentity *> *pickups = [NSMutableArray array];
-    if (playerResult.playerCount && pickupResult.pickupCount) {
+    if (playerResult.playerCount && (pickupResult.pickupCount || slotResult.pickupCount)) {
         const VMPickup *closest = nullptr;
         float closestDistance = INFINITY;
-        for (size_t index = 0; index < pickupResult.pickupCount; ++index) {
-            const VMPickup& pickup = pickupResult.pickups[index];
-            if (!pickup.hasPosition) continue;
-            for (size_t playerIndex = 0; playerIndex < playerResult.playerCount; ++playerIndex) {
-                const VMPlayer& player = playerResult.players[playerIndex];
-                float dx = pickup.x - player.x;
-                float dy = pickup.y - player.y;
-                float distance = dx * dx + dy * dy;
-                if (distance < closestDistance) {
-                    closestDistance = distance;
-                    closest = &pickup;
+        const VMRegionResult *sources[] = {&pickupResult, &slotResult};
+        for (const VMRegionResult *source : sources) {
+            for (size_t index = 0; index < source->pickupCount; ++index) {
+                const VMPickup& pickup = source->pickups[index];
+                if (!pickup.hasPosition) continue;
+                for (size_t playerIndex = 0; playerIndex < playerResult.playerCount; ++playerIndex) {
+                    const VMPlayer& player = playerResult.players[playerIndex];
+                    float dx = pickup.x - player.x;
+                    float dy = pickup.y - player.y;
+                    float distance = dx * dx + dy * dy;
+                    if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closest = &pickup;
+                    }
                 }
             }
         }
@@ -607,6 +738,11 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
     if (!pickups.count && !playerResult.playerCount) {
         for (size_t index = 0; index < pickupResult.pickupCount; ++index) {
             const VMPickup& pickup = pickupResult.pickups[index];
+            [pickups addObject:[[EIDPickupIdentity alloc] initWithVariant:pickup.variant
+                                                                  subtype:pickup.subtype]];
+        }
+        for (size_t index = 0; index < slotResult.pickupCount; ++index) {
+            const VMPickup& pickup = slotResult.pickups[index];
             [pickups addObject:[[EIDPickupIdentity alloc] initWithVariant:pickup.variant
                                                                   subtype:pickup.subtype]];
         }

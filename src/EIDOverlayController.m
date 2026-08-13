@@ -18,15 +18,15 @@
 @property(nonatomic, strong) EIDDescriptionStore *store;
 @property(nonatomic, strong) EIDNativeProbe *probe;
 @property(nonatomic, strong) EIDPassthroughView *rootView;
-@property(nonatomic, strong) UIVisualEffectView *panel;
+@property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UILabel *label;
 @property(nonatomic, strong) UILabel *diagnosticsLabel;
-@property(nonatomic, strong) UIImageView *itemIconView;
 @property(nonatomic, strong) UIButton *languageButton;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, copy) NSArray<EIDPickupIdentity *> *lastPickups;
 @property(nonatomic) BOOL diagnosticsEnabled;
 @property(nonatomic) BOOL scanInProgress;
+@property(nonatomic) BOOL startupBannerVisible;
 @end
 
 @implementation EIDOverlayController
@@ -74,39 +74,36 @@
     root.userInteractionEnabled = YES;
     root.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
-    UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark];
-    UIVisualEffectView *panel = [[UIVisualEffectView alloc] initWithEffect:blur];
+    UIView *panel = [[UIView alloc] initWithFrame:CGRectZero];
     panel.frame = CGRectMake(14, 42, MIN(340, window.bounds.size.width - 28), 80);
-    panel.layer.cornerRadius = 10;
-    panel.layer.masksToBounds = YES;
+    panel.backgroundColor = UIColor.clearColor;
+    panel.clipsToBounds = NO;
     panel.alpha = 0;
     panel.userInteractionEnabled = YES;
     panel.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin;
 
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectInset(panel.bounds, 12, 9)];
+    UILabel *label = [[UILabel alloc] initWithFrame:panel.bounds];
     label.textColor = UIColor.whiteColor;
     label.numberOfLines = 0;
-    label.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    label.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightSemibold];
     label.adjustsFontSizeToFitWidth = NO;
-    label.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    label.lineBreakMode = NSLineBreakByWordWrapping;
+    label.shadowColor = [UIColor colorWithWhite:0 alpha:0.95];
+    label.shadowOffset = CGSizeMake(1, 1);
     label.userInteractionEnabled = NO;
-    [panel.contentView addSubview:label];
-
-    UIImageView *itemIcon = [[UIImageView alloc] initWithFrame:CGRectMake(10, 13, 38, 38)];
-    itemIcon.contentMode = UIViewContentModeScaleAspectFit;
-    itemIcon.layer.magnificationFilter = kCAFilterNearest;
-    itemIcon.hidden = YES;
-    [panel.contentView addSubview:itemIcon];
+    [panel addSubview:label];
 
     UIButton *languageButton = [UIButton buttonWithType:UIButtonTypeSystem];
     languageButton.frame = CGRectMake(panel.bounds.size.width - 48, 6, 42, 28);
     languageButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
-    languageButton.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
-    languageButton.layer.cornerRadius = 7;
+    languageButton.backgroundColor = UIColor.clearColor;
     languageButton.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
+    languageButton.titleLabel.shadowColor = [UIColor colorWithWhite:0 alpha:0.95];
+    languageButton.titleLabel.shadowOffset = CGSizeMake(1, 1);
     [languageButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     [languageButton addTarget:self action:@selector(toggleLanguage:) forControlEvents:UIControlEventTouchUpInside];
-    [panel.contentView addSubview:languageButton];
+    languageButton.hidden = YES;
+    [panel addSubview:languageButton];
 
     UILabel *diagnostics = [[UILabel alloc] initWithFrame:CGRectMake(14, window.bounds.size.height - 50,
                                                                      window.bounds.size.width - 28, 36)];
@@ -126,12 +123,33 @@
     self.panel = panel;
     self.label = label;
     self.diagnosticsLabel = diagnostics;
-    self.itemIconView = itemIcon;
     self.languageButton = languageButton;
     [self updateLanguageButton];
+    if (self.startupBannerVisible) {
+        self.languageButton.hidden = NO;
+        [self updateStartupBannerText];
+        self.panel.alpha = 1;
+    }
 }
 
 - (void)showStartupBanner {
+    self.startupBannerVisible = YES;
+    self.languageButton.hidden = NO;
+    [self updateStartupBannerText];
+    [UIView animateWithDuration:0.2 animations:^{ self.panel.alpha = 1; }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        self.startupBannerVisible = NO;
+        self.languageButton.hidden = YES;
+        if (self.lastPickups.count) {
+            [self renderPickups:self.lastPickups];
+        } else {
+            [UIView animateWithDuration:0.25 animations:^{ self.panel.alpha = 0; }];
+        }
+    });
+}
+
+- (void)updateStartupBannerText {
     BOOL russian = [self.store.languageCode isEqualToString:@"ru"];
     NSString *title = russian ? @"Описание предметов" : @"External Item Descriptions";
     NSString *status = self.probe.supportedBuild
@@ -139,9 +157,6 @@
         : (russian ? @"Эта версия Isaac не поддерживается" : @"Unsupported Isaac version");
     self.label.text = [NSString stringWithFormat:@"%@\n%@", title, status];
     [self sizePanelForText];
-    [UIView animateWithDuration:0.2 animations:^{ self.panel.alpha = 1; } completion:^(__unused BOOL finished) {
-        [UIView animateWithDuration:0.25 delay:3 options:0 animations:^{ self.panel.alpha = 0; } completion:nil];
-    }];
 }
 
 - (void)tick:(NSTimer *)timer {
@@ -158,7 +173,7 @@
             self.scanInProgress = NO;
             if (![pickups isEqualToArray:self.lastPickups]) {
                 self.lastPickups = pickups;
-                [self renderPickups:pickups];
+                if (!self.startupBannerVisible) [self renderPickups:pickups];
                 EIDLog(@"visible describable pickups: %@", pickups);
             }
         });
@@ -169,6 +184,8 @@
     BOOL russian = [self.store.languageCode isEqualToString:@"ru"];
     if (variant == EIDPickupVariantTrinket) return russian ? @"Брелок" : @"Trinket";
     if (variant == EIDPickupVariantCard) return russian ? @"Карта / руна" : @"Card / rune";
+    if (variant == EIDPickupVariantPill) return russian ? @"Таблетка" : @"Pill";
+    if (variant == EIDPickupVariantHorsePill) return russian ? @"Большая таблетка" : @"Horse pill";
     return russian ? @"Артефакт" : @"Collectible";
 }
 
@@ -178,15 +195,13 @@
         return;
     }
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    EIDDescription *firstItem = nil;
-    NSUInteger shown = MIN(pickups.count, 3);
+    NSUInteger shown = MIN(pickups.count, 1);
     for (NSUInteger index = 0; index < shown; ++index) {
         EIDPickupIdentity *pickup = pickups[index];
         NSInteger displaySubtype = pickup.variant == EIDPickupVariantTrinket
             ? (pickup.subtype & 0x7fff) : pickup.subtype;
         EIDDescription *item = [self.store descriptionForPickupVariant:pickup.variant
                                                                 subtype:pickup.subtype];
-        if (!firstItem) firstItem = item;
         NSString *kind = [self kindNameForVariant:pickup.variant];
         NSString *name = item.name.length ? item.name
             : [NSString stringWithFormat:@"%@ %ld", kind, (long)displaySubtype];
@@ -204,25 +219,38 @@
                           (unsigned long)(pickups.count - shown), more]];
     }
     self.label.text = [lines componentsJoinedByString:@"\n\n"];
-    UIImage *icon = firstItem.iconPath.length ? [UIImage imageWithContentsOfFile:firstItem.iconPath] : nil;
-    self.itemIconView.image = icon;
-    self.itemIconView.hidden = icon == nil;
     [self sizePanelForText];
     [UIView animateWithDuration:0.15 animations:^{ self.panel.alpha = 1; }];
 }
 
 - (void)sizePanelForText {
-    CGFloat width = MIN(360, MAX(260, self.rootView.bounds.size.width * 0.43));
-    CGSize size = [self.label sizeThatFits:CGSizeMake(width - 24, 260)];
-    CGFloat height = MIN(278, MAX(62, size.height + 18));
-    self.panel.frame = CGRectMake(14, 42, width, height);
-    CGRect labelFrame = CGRectInset(self.panel.bounds, 12, 9);
-    if (!self.itemIconView.hidden) {
-        labelFrame.origin.x += 44;
-        labelFrame.size.width -= 44;
+    CGRect bounds = self.rootView.bounds;
+    CGFloat availableWidth = MAX(180, bounds.size.width - 28);
+    CGFloat width = MIN(390, MAX(270, bounds.size.width * 0.42));
+    width = MIN(width, availableWidth);
+    CGFloat buttonSpace = self.languageButton.hidden ? 0 : 50;
+    CGFloat textWidth = MAX(120, width - buttonSpace);
+    CGFloat maximumHeight = MAX(100, bounds.size.height - 58);
+
+    CGFloat fontSize = self.startupBannerVisible ? 11.0 : 10.5;
+    CGSize textSize = CGSizeZero;
+    do {
+        self.label.font = [UIFont systemFontOfSize:fontSize weight:UIFontWeightSemibold];
+        textSize = [self.label sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
+        fontSize -= 0.5;
+    } while (textSize.height > maximumHeight && fontSize >= 7.5);
+
+    // Very long imported descriptions can use more horizontal room, but are never
+    // clipped to an arbitrary character or line count.
+    if (textSize.height > maximumHeight && width < availableWidth) {
+        width = MIN(availableWidth, MAX(width, bounds.size.width * 0.58));
+        textWidth = MAX(120, width - buttonSpace);
+        textSize = [self.label sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     }
-    labelFrame.size.width -= 42;
-    self.label.frame = labelFrame;
+    CGFloat height = MAX(28, textSize.height);
+    self.panel.frame = CGRectMake(14, 42, width, height);
+    self.label.frame = CGRectMake(0, 0, textWidth, height);
+    self.languageButton.frame = CGRectMake(width - 44, 0, 42, 28);
 }
 
 - (NSString *)renderMarkup:(NSString *)input {
@@ -266,7 +294,8 @@
     NSString *next = [self.store.languageCode isEqualToString:@"ru"] ? @"en_us" : @"ru";
     [self.store setLanguageCode:next];
     [self updateLanguageButton];
-    [self renderPickups:self.lastPickups];
+    if (self.startupBannerVisible) [self updateStartupBannerText];
+    else [self renderPickups:self.lastPickups];
 }
 
 - (void)showCollectibleID:(NSInteger)collectibleID {

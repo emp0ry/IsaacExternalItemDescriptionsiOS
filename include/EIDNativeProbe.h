@@ -3,9 +3,12 @@
 NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, EIDPickupVariant) {
+    EIDPickupVariantPill = 70,
     EIDPickupVariantCollectible = 100,
     EIDPickupVariantCard = 300,
     EIDPickupVariantTrinket = 350,
+    // Internal display variant. Native pickups still use variant 70 with bit 11 set.
+    EIDPickupVariantHorsePill = 1070,
 };
 
 @interface EIDPickupIdentity : NSObject

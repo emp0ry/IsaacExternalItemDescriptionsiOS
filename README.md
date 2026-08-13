@@ -43,11 +43,13 @@ The unsigned output can be signed by a normal sideloading workflow, or set
 The original EID repository currently has no license file. Its code and data are
 therefore not vendored here. `tools/import-eid.py` lets a user import an existing
 checkout into a local, git-ignored build artifact. All 732 collectibles, 189
-trinkets, and 97 cards/runes are imported in both English and Russian, and the
-in-game panel provides a persistent `EN / RU` switch. Without that import, the
-overlay falls back to names, icons, and short descriptions from the installed
-game's own `items.xml` files. Pills are intentionally omitted until the native
-"identified pill" state can be checked, avoiding spoilers for unknown pills.
+trinkets, 97 cards/runes, 51 normal pill effects, and 51 horse-pill effects are
+imported in both English and Russian. The startup banner provides an `EN / RU`
+switch and then removes the control during gameplay. Without that import, the
+overlay falls back to names and short descriptions from the installed
+game's own `items.xml` files. Pill colors are resolved through Isaac's native
+ItemPool only after its identified byte is set, avoiding spoilers for unknown
+pills. Crane Game prizes are read from the native `Entity_Slot` prize field.
 Collectible descriptions also fail closed when the native forced-blind flag or
 question-mark spritesheet indicates a hidden pedestal.
 

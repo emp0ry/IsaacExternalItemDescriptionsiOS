@@ -13,13 +13,18 @@
 | English/Russian collectible import | Pass: 732 / 732 each |
 | English/Russian trinket import | Pass: 189 / 189 each |
 | English/Russian card/rune import | Pass: 97 / 97 each |
-| Persistent EN/RU selector | Pass on device |
+| English/Russian pill import | Pass: 51 normal + 51 horse each |
+| Unknown-pill spoiler guard | Pass: native identified byte required |
+| Native pill color-to-effect mapping | Pass: ARM64 ItemPool layout verified |
+| Crane Game prize field | Pass: ARM64 setter/layout verified |
+| Startup-only EN/RU selector | Pending dev.22 restart/visual regression |
 | Patcher on fixture IPA | Pass |
 | Patcher idempotency | Pass: one `LC_LOAD_DYLIB` |
 | Patcher on full user-supplied Isaac IPA | Pass |
 | Dylib hash after IPA embedding | Pass |
 | Direct embedded-mode launch on device | Pending signed/direct-load regression |
-| Live trinket and card/rune rendering | Pending next suitable in-game pickups |
+| Live card/rune entity detection | Pass: native variant 300 observed on device |
+| Live trinket, known pill, and Crane rendering | Pending suitable in-game room |
 | Curse of the Blind live regression | Pending suitable seeded floor |
 
 The old allocator-enumeration development prototype was removed after it proved

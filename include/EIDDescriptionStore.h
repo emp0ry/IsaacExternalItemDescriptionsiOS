@@ -24,6 +24,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) NSUInteger collectibleCount;
 @property(nonatomic, readonly) NSUInteger trinketCount;
 @property(nonatomic, readonly) NSUInteger cardCount;
+@property(nonatomic, readonly) NSUInteger pillCount;
+@property(nonatomic, readonly) NSUInteger horsePillCount;
 @property(nonatomic, copy, readonly) NSString *languageCode;
 - (void)reload;
 - (void)setLanguageCode:(NSString *)languageCode;

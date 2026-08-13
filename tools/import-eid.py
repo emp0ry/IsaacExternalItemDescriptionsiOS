@@ -35,7 +35,9 @@ def read_lua_string(text: str, start: int) -> tuple[str, int]:
     raise ValueError("unterminated Lua string")
 
 
-def parse_description_table(path: Path, table_names: set[str]) -> dict[int, dict[str, str]]:
+def parse_description_table(
+    path: Path, table_names: set[str], *, pill_effect_ids: bool = False
+) -> dict[int, dict[str, str]]:
     result: dict[int, dict[str, str]] = {}
     in_table = False
     for line_number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
@@ -62,7 +64,13 @@ def parse_description_table(path: Path, table_names: set[str]) -> dict[int, dict
                 cursor = comma + 1
         except ValueError:
             continue
-        item_id = int(match.group(1) or fields[0])
+        if pill_effect_ids:
+            # EID's pill lookup table is keyed by effect + 1. The Lua source's
+            # unkeyed entries contain the zero-based effect in field zero, while
+            # Repentance overrides already use their adjusted explicit key.
+            item_id = int(match.group(1)) if match.group(1) else int(fields[0]) + 1
+        else:
+            item_id = int(match.group(1) or fields[0])
         result[item_id] = {"name": fields[1], "description": fields[2]}
     return result
 
@@ -97,12 +105,16 @@ def main() -> int:
             "collectibles": {"collectibles", "repcollectibles"},
             "trinkets": {"trinkets", "reptrinkets"},
             "cards": {"cards", "repcards"},
+            "pills": {"pills", "reppills"},
+            "horsepills": {"horsepills"},
         }
         category_counts: list[str] = []
         for category, table_names in category_tables.items():
             entries: dict[int, dict[str, str]] = {}
             for path in files:
-                entries.update(parse_description_table(path, table_names))
+                entries.update(parse_description_table(
+                    path, table_names, pill_effect_ids=category in {"pills", "horsepills"}
+                ))
             categories[category] = {str(key): entries[key] for key in sorted(entries)}
             category_counts.append(f"{category}={len(entries)}")
         languages[code] = categories

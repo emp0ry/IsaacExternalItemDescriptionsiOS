@@ -115,14 +115,18 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 - (NSUInteger)collectibleCount { return [self countForVariant:EIDPickupVariantCollectible]; }
 - (NSUInteger)trinketCount { return [self countForVariant:EIDPickupVariantTrinket]; }
 - (NSUInteger)cardCount { return [self countForVariant:EIDPickupVariantCard]; }
+- (NSUInteger)pillCount { return [self countForVariant:EIDPickupVariantPill]; }
+- (NSUInteger)horsePillCount { return [self countForVariant:EIDPickupVariantHorsePill]; }
 
 - (void)reload {
     [self.items removeAllObjects];
     [self loadGameItemMetadata];
     [self loadImportedDescriptions];
-    EIDLog(@"descriptions loaded: %lu collectibles, %lu trinkets, %lu cards/runes",
+    EIDLog(@"descriptions loaded: %lu collectibles, %lu trinkets, %lu cards/runes, "
+           "%lu pills, %lu horse pills",
            (unsigned long)self.collectibleCount, (unsigned long)self.trinketCount,
-           (unsigned long)self.cardCount);
+           (unsigned long)self.cardCount, (unsigned long)self.pillCount,
+           (unsigned long)self.horsePillCount);
 }
 
 - (EIDDescription *)descriptionForCollectibleID:(NSInteger)collectibleID {
@@ -204,6 +208,8 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
         @"collectibles": @(EIDPickupVariantCollectible),
         @"trinkets": @(EIDPickupVariantTrinket),
         @"cards": @(EIDPickupVariantCard),
+        @"pills": @(EIDPickupVariantPill),
+        @"horsepills": @(EIDPickupVariantHorsePill),
     };
     [categories enumerateKeysAndObjectsUsingBlock:^(NSString *category, NSNumber *variantNumber,
                                                      __unused BOOL *categoryStop) {
