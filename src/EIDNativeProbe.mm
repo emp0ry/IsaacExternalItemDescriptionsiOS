@@ -631,6 +631,7 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
 @property(nonatomic, copy) NSString *executableUUID;
 @property(nonatomic, copy) NSString *status;
 @property(nonatomic, getter=isSupportedBuild) BOOL supportedBuild;
+@property(atomic, getter=isGameplayActive) BOOL gameplayActive;
 @property(nonatomic, strong) NSArray<EIDPickupIdentity *> *lastPickups;
 @property(nonatomic) ScanContext scanContext;
 @property(nonatomic) BOOL started;
@@ -696,7 +697,10 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
 }
 
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups {
-    if (!self.started || !self.scanContext.pickupVTableCount) return @[];
+    if (!self.started || !self.scanContext.pickupVTableCount) {
+        self.gameplayActive = NO;
+        return @[];
+    }
 
     VMRegionResult pickupResult;
     VMRegionResult playerResult;
@@ -757,7 +761,11 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
                    (double)self.pickupRegionSize / (1024.0 * 1024.0));
         }
     }
-    if (!pickupRegionValid) return self.lastPickups;
+    if (!pickupRegionValid) {
+        self.gameplayActive = NO;
+        return self.lastPickups;
+    }
+    self.gameplayActive = playerRegionValid && playerResult.playerCount > 0;
 
     // Some iOS card drops are created with Touched cleared. Read the game's four native
     // pocket slots first, so a concrete card is learned while the player actually holds

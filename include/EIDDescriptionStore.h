@@ -27,8 +27,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) NSUInteger pillCount;
 @property(nonatomic, readonly) NSUInteger horsePillCount;
 @property(nonatomic, copy, readonly) NSString *languageCode;
+@property(nonatomic, copy, readonly) NSArray<NSString *> *availableLanguageCodes;
+@property(nonatomic, copy, readonly) NSString *descriptionDataSet;
 - (void)reload;
 - (void)setLanguageCode:(NSString *)languageCode;
+- (NSString *)displayNameForLanguageCode:(NSString *)languageCode;
 - (nullable EIDDescription *)descriptionForCollectibleID:(NSInteger)collectibleID;
 - (nullable EIDDescription *)descriptionForPickupVariant:(NSInteger)variant
                                                   subtype:(NSInteger)subtype;

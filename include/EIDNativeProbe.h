@@ -21,6 +21,7 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 @property(nonatomic, copy, readonly) NSString *executableUUID;
 @property(nonatomic, copy, readonly) NSString *status;
 @property(nonatomic, readonly, getter=isSupportedBuild) BOOL supportedBuild;
+@property(atomic, readonly, getter=isGameplayActive) BOOL gameplayActive;
 - (void)start;
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups;
 // Compatibility API used by early integrations and exported diagnostic helpers.

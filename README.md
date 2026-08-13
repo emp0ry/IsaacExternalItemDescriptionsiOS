@@ -4,12 +4,14 @@ The first publicly released native gameplay mod for **The Binding of Isaac:
 Repentance on iOS**. It displays item descriptions inside the game without the
 desktop Lua mod API.
 
+![External Item Descriptions running in native iOS Repentance](docs/images/eid-gameplay.png)
+
 The project supports three loading modes from the same ARM64 code:
 
 | Device | Release file |
 | --- | --- |
 | Jailbroken iPhone or iPad | `IsaacExternalItemDescriptions-rootless.deb` |
-| Non-jailbroken iPhone or iPad | `IsaacExternalItemDescriptions.dylib` |
+| Non-jailbroken iPhone or iPad | `IsaacExternalItemDescriptions-Embedded.zip` |
 | LiveContainer private app | `IsaacExternalItemDescriptions-LiveContainer.framework.zip` |
 
 The standalone dylib uses public iOS frameworks and does not link against
@@ -19,7 +21,8 @@ uses ElleKit only as a loader.
 ## Features
 
 - Native in-game overlay with no external application or server
-- English and Russian descriptions
+- All 20 languages currently exposed by the original EID language manager,
+  with English fallback for untranslated Repentance entries
 - Collectibles, trinkets, cards, runes, known pills, horse pills, and Crane
   Game prizes
 - Original collectible, trinket, and card artwork from the installed game
@@ -27,8 +30,9 @@ uses ElleKit only as a loader.
 - Descriptions for previously held cards after they are dropped
 - Spoiler protection for untouched cards, unidentified pills, and Curse of the
   Blind pedestals
-- Startup language selector that disappears during gameplay
-- Transparent text-only layout positioned away from Isaac's left-side HUD
+- Bottom-right, menu-only settings button with a native 20-language picker
+- Transparent text-only layout with configurable horizontal and vertical
+  position (140 px from the left and 50 px from the top by default)
 - Safe executable-version gate and read-only native entity snapshots
 
 ## Compatibility
@@ -53,9 +57,9 @@ with `dpkg`, then restart Isaac. The package targets rootless ElleKit layouts.
 
 ### Non-jailbroken devices
 
-Place `IsaacExternalItemDescriptions.dylib` in the app's `Frameworks` directory,
-add this Mach-O load command to the main executable, and sign the complete app
-bundle:
+Extract `IsaacExternalItemDescriptions-Embedded.zip`. Place its dylib and
+`IsaacEID.bundle` in the app's `Frameworks` directory, add this Mach-O load
+command to the main executable, and sign the complete app bundle:
 
 ```text
 @executable_path/Frameworks/IsaacExternalItemDescriptions.dylib
@@ -87,8 +91,8 @@ gate and read-only layout checks remain active.
 
 ## Description database
 
-The dylib can read Isaac's installed item metadata without extra files. Full
-English and Russian EID text can be generated locally from an existing
+The dylib can read Isaac's installed item metadata without extra files. The
+original EID language packs can be generated locally from an existing
 [External Item Descriptions](https://github.com/wofsauge/External-Item-Descriptions)
 checkout:
 
@@ -96,9 +100,16 @@ checkout:
 make EID_SOURCE=/path/to/External-Item-Descriptions descriptions
 ```
 
-The generated database is used automatically by local package and IPA builds.
-It is ignored by Git and is not included in public release assets because the
-upstream repository does not publish a redistribution license.
+The importer combines the upstream `ab+` base tables with the standard
+Repentance `rep` overrides and includes every available language. The installed
+iOS 1.4 executable identifies itself as `Repentance v1.7.9b.J754`, so the
+correct Steam-equivalent dataset is **Repentance (`rep`)**, not Repentance+.
+
+The complete 20-language database is bundled in the rootless package,
+LiveContainer framework, and embedded archive. It is also published as
+`descriptions.json` for advanced/manual installations. The database is derived
+from the original EID project and distributed with permission from its author;
+see [Third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Build
 
@@ -118,7 +129,8 @@ Create clean public release artifacts in `dist/`:
 make release
 ```
 
-The release target deliberately excludes locally imported description data.
+The release target includes the attributed all-language description database
+in every packaged loading mode.
 
 ## Technical notes
 
@@ -133,11 +145,20 @@ is recorded in [Test matrix](docs/TEST_MATRIX.md).
 
 ## Credits and legal
 
-Full description text is imported from the External Item Descriptions project
-when supplied locally by the user. Item artwork is loaded at runtime from the
-installed game and is never stored in this repository.
+Special thanks to **wofsauge and every External Item Descriptions contributor**
+for the original mod, its descriptions, translations, markup, and years of
+maintenance. Visit the original
+[GitHub project](https://github.com/wofsauge/External-Item-Descriptions) or
+[Steam Workshop mod](https://steamcommunity.com/sharedfiles/filedetails/?id=836319872).
+This iOS bridge would not exist without their work.
+
+The bundled description text and translations come from the original External
+Item Descriptions project and remain credited to wofsauge and its contributors.
+Item artwork is loaded at runtime from the installed game and is never stored
+in this repository.
 
 This is an unofficial project and is not affiliated with Nicalis, Edmund
 McMillen, Valve, or the External Item Descriptions maintainers. No game files,
 DLC, receipts, or purchase bypasses are distributed. Project source code is
-available under the [MIT License](LICENSE).
+available under the [MIT License](LICENSE). The attributed upstream description
+data is covered separately in [Third-party notices](THIRD_PARTY_NOTICES.md).

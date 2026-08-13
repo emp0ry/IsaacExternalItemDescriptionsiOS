@@ -1,10 +1,10 @@
 Package: com.emp0ry.isaaceid
 Name: Isaac External Item Descriptions
-Version: 0.2.0
+Version: 0.3.0
 Architecture: iphoneos-arm64
 Description: Native External Item Descriptions bridge for Isaac Repentance on iOS.
 Maintainer: emp0ry
 Author: emp0ry
 Section: Tweaks
 Depends: firmware (>= 15.0), ellekit
-Homepage: https://github.com/emp0ry/IsaacExternalItemDescriptions
+Homepage: https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS

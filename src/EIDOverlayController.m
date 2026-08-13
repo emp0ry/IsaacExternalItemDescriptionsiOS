@@ -5,10 +5,15 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
-static const CGFloat EIDOverlayLeftMargin = 120.0;
+static const CGFloat EIDDefaultOverlayLeftMargin = 140.0;
+static const CGFloat EIDDefaultOverlayTopMargin = 50.0;
+static const CGFloat EIDMinimumOverlayLeftMargin = 20.0;
+static const CGFloat EIDMinimumOverlayTopMargin = 20.0;
 static const CGFloat EIDOverlayRightMargin = 14.0;
 static const CGFloat EIDItemIconSize = 28.0;
 static const CGFloat EIDItemIconSpacing = 6.0;
+static NSString *const EIDHorizontalPositionKey = @"IsaacEIDHorizontalPosition";
+static NSString *const EIDVerticalPositionKey = @"IsaacEIDVerticalPosition";
 
 static NSString *EIDGameResourcePath(NSString *relativePath) {
     NSArray<NSString *> *roots = @[@"repentance-resources", @"afterbirthplus-resources",
@@ -91,7 +96,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, strong) UIImageView *itemIconView;
 @property(nonatomic, strong) UILabel *label;
 @property(nonatomic, strong) UILabel *diagnosticsLabel;
-@property(nonatomic, strong) UIButton *languageButton;
+@property(nonatomic, strong) UIButton *settingsButton;
+@property(nonatomic, strong) UIView *settingsCard;
+@property(nonatomic, strong) UIButton *settingsLanguageButton;
+@property(nonatomic, strong) UILabel *settingsPositionLabel;
+@property(nonatomic, strong) UILabel *settingsVersionLabel;
+@property(nonatomic, strong) UISlider *settingsPositionSlider;
+@property(nonatomic, strong) UILabel *settingsVerticalPositionLabel;
+@property(nonatomic, strong) UISlider *settingsVerticalPositionSlider;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, copy) NSArray<EIDPickupIdentity *> *lastPickups;
 @property(nonatomic, strong) UIImage *cardAtlas;
@@ -101,8 +113,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id> *pocketIconCache;
 @property(nonatomic) BOOL diagnosticsEnabled;
 @property(nonatomic) BOOL scanInProgress;
-@property(nonatomic) BOOL startupBannerVisible;
 @property(nonatomic) BOOL loggedOverlayLayout;
+@property(nonatomic) BOOL menuMode;
+@property(nonatomic) NSUInteger consecutiveMenuScans;
 @end
 
 @implementation EIDOverlayController
@@ -117,6 +130,22 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     return self;
 }
 
+- (CGFloat)overlayLeftMargin {
+    NSNumber *saved = [[NSUserDefaults standardUserDefaults] objectForKey:EIDHorizontalPositionKey];
+    CGFloat value = saved ? saved.doubleValue : EIDDefaultOverlayLeftMargin;
+    CGFloat maximum = self.rootView.bounds.size.width > 0
+        ? MAX(EIDDefaultOverlayLeftMargin, self.rootView.bounds.size.width - 220.0) : 360.0;
+    return MIN(maximum, MAX(EIDMinimumOverlayLeftMargin, round(value)));
+}
+
+- (CGFloat)overlayTopMargin {
+    NSNumber *saved = [[NSUserDefaults standardUserDefaults] objectForKey:EIDVerticalPositionKey];
+    CGFloat value = saved ? saved.doubleValue : EIDDefaultOverlayTopMargin;
+    CGFloat maximum = self.rootView.bounds.size.height > 0
+        ? MAX(EIDDefaultOverlayTopMargin, self.rootView.bounds.size.height - 120.0) : 300.0;
+    return MIN(maximum, MAX(EIDMinimumOverlayTopMargin, round(value)));
+}
+
 - (void)start {
     dispatch_async(dispatch_get_main_queue(), ^{
         [self attachOverlayIfNeeded];
@@ -126,7 +155,6 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                                                    selector:@selector(tick:)
                                                    userInfo:nil
                                                     repeats:YES];
-        [self showStartupBanner];
     });
 }
 
@@ -151,9 +179,10 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     root.userInteractionEnabled = YES;
     root.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
+    CGFloat leftMargin = [self overlayLeftMargin];
     UIView *panel = [[UIView alloc] initWithFrame:CGRectZero];
-    panel.frame = CGRectMake(EIDOverlayLeftMargin, 42,
-                             MIN(340, window.bounds.size.width - EIDOverlayLeftMargin - EIDOverlayRightMargin),
+    panel.frame = CGRectMake(leftMargin, [self overlayTopMargin],
+                             MIN(340, window.bounds.size.width - leftMargin - EIDOverlayRightMargin),
                              80);
     panel.backgroundColor = UIColor.clearColor;
     panel.clipsToBounds = NO;
@@ -180,21 +209,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     itemIcon.hidden = YES;
     [panel insertSubview:itemIcon belowSubview:label];
 
-    UIButton *languageButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    languageButton.frame = CGRectMake(panel.bounds.size.width - 48, 6, 42, 28);
-    languageButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
-    languageButton.backgroundColor = UIColor.clearColor;
-    languageButton.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
-    languageButton.titleLabel.shadowColor = [UIColor colorWithWhite:0 alpha:0.95];
-    languageButton.titleLabel.shadowOffset = CGSizeMake(1, 1);
-    [languageButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    [languageButton addTarget:self action:@selector(toggleLanguage:) forControlEvents:UIControlEventTouchUpInside];
-    languageButton.hidden = YES;
-    [panel addSubview:languageButton];
-
     UILabel *diagnostics = [[UILabel alloc] initWithFrame:
-        CGRectMake(EIDOverlayLeftMargin, window.bounds.size.height - 50,
-                   window.bounds.size.width - EIDOverlayLeftMargin - EIDOverlayRightMargin, 36)];
+        CGRectMake(leftMargin, window.bounds.size.height - 50,
+                   window.bounds.size.width - leftMargin - EIDOverlayRightMargin, 36)];
     diagnostics.backgroundColor = [UIColor colorWithWhite:0 alpha:0.72];
     diagnostics.textColor = UIColor.systemGreenColor;
     diagnostics.font = [UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular];
@@ -204,50 +221,145 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     diagnostics.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
     diagnostics.hidden = !self.diagnosticsEnabled;
 
+    UIButton *settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    settingsButton.frame = CGRectMake(window.bounds.size.width - 78,
+                                      window.bounds.size.height - 46, 64, 32);
+    settingsButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
+    settingsButton.backgroundColor = [UIColor colorWithWhite:0 alpha:0.72];
+    settingsButton.layer.cornerRadius = 8;
+    settingsButton.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [settingsButton setTitle:@"EID ⚙" forState:UIControlStateNormal];
+    [settingsButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [settingsButton addTarget:self action:@selector(toggleSettings:) forControlEvents:UIControlEventTouchUpInside];
+    settingsButton.hidden = !self.menuMode;
+
+    CGFloat cardWidth = MIN(410, window.bounds.size.width - 40);
+    CGFloat cardHeight = MIN(310, window.bounds.size.height - 30);
+    UIView *settingsCard = [[UIView alloc] initWithFrame:
+        CGRectMake((window.bounds.size.width - cardWidth) * 0.5,
+                   (window.bounds.size.height - cardHeight) * 0.5, cardWidth, cardHeight)];
+    settingsCard.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
+        UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin |
+        UIViewAutoresizingFlexibleBottomMargin;
+    settingsCard.backgroundColor = [UIColor colorWithWhite:0.035 alpha:0.94];
+    settingsCard.layer.cornerRadius = 14;
+    settingsCard.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
+    settingsCard.layer.borderWidth = 1;
+    settingsCard.hidden = YES;
+
+    UILabel *settingsTitle = [[UILabel alloc] initWithFrame:CGRectMake(18, 10, cardWidth - 72, 27)];
+    settingsTitle.text = @"Isaac EID Settings";
+    settingsTitle.textColor = UIColor.whiteColor;
+    settingsTitle.font = [UIFont systemFontOfSize:17 weight:UIFontWeightBold];
+    [settingsCard addSubview:settingsTitle];
+
+    UIButton *closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    closeButton.frame = CGRectMake(cardWidth - 48, 7, 38, 32);
+    closeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    closeButton.titleLabel.font = [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold];
+    [closeButton setTitle:@"×" forState:UIControlStateNormal];
+    [closeButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [closeButton addTarget:self action:@selector(closeSettings:) forControlEvents:UIControlEventTouchUpInside];
+    [settingsCard addSubview:closeButton];
+
+    UILabel *versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(18, 37, cardWidth - 36, 20)];
+    versionLabel.textColor = [UIColor colorWithWhite:0.78 alpha:1];
+    versionLabel.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightRegular];
+    [settingsCard addSubview:versionLabel];
+
+    UILabel *languageLabel = [[UILabel alloc] initWithFrame:CGRectMake(18, 66, 90, 32)];
+    languageLabel.text = @"Language";
+    languageLabel.textColor = UIColor.whiteColor;
+    languageLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    [settingsCard addSubview:languageLabel];
+
+    UIButton *languageSelector = [UIButton buttonWithType:UIButtonTypeSystem];
+    languageSelector.frame = CGRectMake(110, 66, cardWidth - 128, 32);
+    languageSelector.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    languageSelector.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
+    languageSelector.layer.cornerRadius = 7;
+    languageSelector.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+    [languageSelector setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [languageSelector addTarget:self action:@selector(showLanguagePicker:)
+               forControlEvents:UIControlEventTouchUpInside];
+    [settingsCard addSubview:languageSelector];
+
+    UILabel *positionLabel = [[UILabel alloc] initWithFrame:CGRectMake(18, 108, cardWidth - 36, 22)];
+    positionLabel.textColor = UIColor.whiteColor;
+    positionLabel.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightSemibold];
+    [settingsCard addSubview:positionLabel];
+
+    UISlider *positionSlider = [[UISlider alloc] initWithFrame:CGRectMake(18, 132, cardWidth - 104, 32)];
+    positionSlider.minimumValue = EIDMinimumOverlayLeftMargin;
+    positionSlider.maximumValue = MAX(EIDDefaultOverlayLeftMargin, window.bounds.size.width - 220.0);
+    positionSlider.value = [self overlayLeftMargin];
+    [positionSlider addTarget:self action:@selector(positionChanged:) forControlEvents:UIControlEventValueChanged];
+    [settingsCard addSubview:positionSlider];
+
+    UIButton *resetButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    resetButton.frame = CGRectMake(cardWidth - 78, 132, 60, 32);
+    resetButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    resetButton.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+    [resetButton setTitle:@"Reset" forState:UIControlStateNormal];
+    [resetButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [resetButton addTarget:self action:@selector(resetPosition:) forControlEvents:UIControlEventTouchUpInside];
+    [settingsCard addSubview:resetButton];
+
+    UILabel *verticalPositionLabel = [[UILabel alloc] initWithFrame:
+        CGRectMake(18, 168, cardWidth - 36, 22)];
+    verticalPositionLabel.textColor = UIColor.whiteColor;
+    verticalPositionLabel.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightSemibold];
+    [settingsCard addSubview:verticalPositionLabel];
+
+    UISlider *verticalPositionSlider = [[UISlider alloc] initWithFrame:
+        CGRectMake(18, 192, cardWidth - 104, 32)];
+    verticalPositionSlider.minimumValue = EIDMinimumOverlayTopMargin;
+    verticalPositionSlider.maximumValue = MAX(EIDDefaultOverlayTopMargin,
+                                               window.bounds.size.height - 120.0);
+    verticalPositionSlider.value = [self overlayTopMargin];
+    [verticalPositionSlider addTarget:self action:@selector(verticalPositionChanged:)
+                      forControlEvents:UIControlEventValueChanged];
+    [settingsCard addSubview:verticalPositionSlider];
+
+    UIButton *verticalResetButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    verticalResetButton.frame = CGRectMake(cardWidth - 78, 192, 60, 32);
+    verticalResetButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    verticalResetButton.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+    [verticalResetButton setTitle:@"Reset" forState:UIControlStateNormal];
+    [verticalResetButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [verticalResetButton addTarget:self action:@selector(resetVerticalPosition:)
+                  forControlEvents:UIControlEventTouchUpInside];
+    [settingsCard addSubview:verticalResetButton];
+
+    UILabel *creditsLabel = [[UILabel alloc] initWithFrame:CGRectMake(18, cardHeight - 68,
+                                                                      cardWidth - 36, 54)];
+    creditsLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    creditsLabel.text = @"Descriptions: External Item Descriptions\nby wofsauge and contributors · github.com/wofsauge/External-Item-Descriptions";
+    creditsLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1];
+    creditsLabel.font = [UIFont systemFontOfSize:9.5 weight:UIFontWeightRegular];
+    creditsLabel.numberOfLines = 3;
+    creditsLabel.textAlignment = NSTextAlignmentCenter;
+    [settingsCard addSubview:creditsLabel];
+
     [root addSubview:panel];
     [root addSubview:diagnostics];
+    [root addSubview:settingsButton];
+    [root addSubview:settingsCard];
     [window addSubview:root];
     self.rootView = root;
     self.panel = panel;
     self.itemIconView = itemIcon;
     self.label = label;
     self.diagnosticsLabel = diagnostics;
-    self.languageButton = languageButton;
-    [self updateLanguageButton];
-    if (self.startupBannerVisible) {
-        self.languageButton.hidden = NO;
-        [self updateStartupBannerText];
-        self.panel.alpha = 1;
-    }
-}
-
-- (void)showStartupBanner {
-    self.startupBannerVisible = YES;
-    self.languageButton.hidden = NO;
-    [self updateStartupBannerText];
-    [UIView animateWithDuration:0.2 animations:^{ self.panel.alpha = 1; }];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.5 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        self.startupBannerVisible = NO;
-        self.languageButton.hidden = YES;
-        if (self.lastPickups.count) {
-            [self renderPickups:self.lastPickups];
-        } else {
-            [UIView animateWithDuration:0.25 animations:^{ self.panel.alpha = 0; }];
-        }
-    });
-}
-
-- (void)updateStartupBannerText {
-    self.itemIconView.image = nil;
-    self.itemIconView.hidden = YES;
-    BOOL russian = [self.store.languageCode isEqualToString:@"ru"];
-    NSString *title = russian ? @"Описание предметов" : @"External Item Descriptions";
-    NSString *status = self.probe.supportedBuild
-        ? (russian ? @"Нативный сканер активен" : @"Native scanner active")
-        : (russian ? @"Эта версия Isaac не поддерживается" : @"Unsupported Isaac version");
-    self.label.text = [NSString stringWithFormat:@"%@\n%@", title, status];
-    [self sizePanelForText];
+    self.settingsButton = settingsButton;
+    self.settingsCard = settingsCard;
+    self.settingsLanguageButton = languageSelector;
+    self.settingsPositionLabel = positionLabel;
+    self.settingsVersionLabel = versionLabel;
+    self.settingsPositionSlider = positionSlider;
+    self.settingsVerticalPositionLabel = verticalPositionLabel;
+    self.settingsVerticalPositionSlider = verticalPositionSlider;
+    [self updateSettingsControls];
 }
 
 - (void)tick:(NSTimer *)timer {
@@ -262,13 +374,152 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         NSArray<EIDPickupIdentity *> *pickups = [self.probe currentDescribablePickups];
         dispatch_async(dispatch_get_main_queue(), ^{
             self.scanInProgress = NO;
+            [self updateMenuModeForGameplay:self.probe.gameplayActive];
             if (![pickups isEqualToArray:self.lastPickups]) {
                 self.lastPickups = pickups;
-                if (!self.startupBannerVisible) [self renderPickups:pickups];
+                if (!self.menuMode) [self renderPickups:pickups];
                 EIDLog(@"visible describable pickups: %@", pickups);
             }
         });
     });
+}
+
+- (void)updateMenuModeForGameplay:(BOOL)gameplayActive {
+    if (gameplayActive) {
+        self.consecutiveMenuScans = 0;
+        self.settingsButton.hidden = YES;
+        self.settingsCard.hidden = YES;
+        if (!self.menuMode) return;
+        self.menuMode = NO;
+        [self updateSettingsControls];
+        EIDLog(@"game state: gameplay active; settings hidden");
+        return;
+    }
+    if (self.consecutiveMenuScans < 12) self.consecutiveMenuScans++;
+    if (self.consecutiveMenuScans < 12) return;
+    self.settingsButton.hidden = NO;
+    if (self.menuMode) return;
+    self.menuMode = YES;
+    self.lastPickups = @[];
+    self.panel.alpha = 0;
+    EIDLog(@"game state: menu detected; settings available");
+}
+
+- (void)updateSettingsControls {
+    NSString *languageName = [self.store displayNameForLanguageCode:self.store.languageCode];
+    [self.settingsLanguageButton setTitle:
+        [NSString stringWithFormat:@"%@ · %@  ▾", languageName, self.store.languageCode]
+                                  forState:UIControlStateNormal];
+    CGFloat position = [self overlayLeftMargin];
+    self.settingsPositionSlider.value = position;
+    self.settingsPositionLabel.text = [NSString stringWithFormat:@"Horizontal position: %.0f px", position];
+    CGFloat verticalPosition = [self overlayTopMargin];
+    self.settingsVerticalPositionSlider.value = verticalPosition;
+    self.settingsVerticalPositionLabel.text = [NSString stringWithFormat:
+        @"Vertical position: %.0f px", verticalPosition];
+    NSString *appVersion = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"unknown";
+    self.settingsVersionLabel.text = [NSString stringWithFormat:
+        @"%@ · iOS %@ · dataset: %@ · not Repentance+",
+        self.probe.gameplayActive ? @"In game" : @"Menu", appVersion,
+        self.store.descriptionDataSet];
+}
+
+- (UIViewController *)topViewControllerFrom:(UIViewController *)viewController {
+    UIViewController *current = viewController;
+    while (current.presentedViewController) current = current.presentedViewController;
+    if ([current isKindOfClass:UINavigationController.class]) {
+        return [self topViewControllerFrom:((UINavigationController *)current).visibleViewController];
+    }
+    if ([current isKindOfClass:UITabBarController.class]) {
+        return [self topViewControllerFrom:((UITabBarController *)current).selectedViewController];
+    }
+    return current;
+}
+
+- (void)showLanguagePicker:(UIButton *)sender {
+    UIWindow *window = [self gameWindow];
+    UIViewController *presenter = [self topViewControllerFrom:window.rootViewController];
+    if (!presenter) {
+        EIDLog(@"language picker unavailable: no game view controller");
+        return;
+    }
+
+    UIAlertController *picker = [UIAlertController alertControllerWithTitle:@"Description Language"
+                                                                    message:nil
+                                                             preferredStyle:UIAlertControllerStyleActionSheet];
+    __weak typeof(self) weakSelf = self;
+    for (NSString *code in self.store.availableLanguageCodes) {
+        NSString *name = [self.store displayNameForLanguageCode:code];
+        NSString *checkmark = [code isEqualToString:self.store.languageCode] ? @"✓ " : @"";
+        NSString *title = [NSString stringWithFormat:@"%@%@ · %@", checkmark, name, code];
+        [picker addAction:[UIAlertAction actionWithTitle:title
+                                                   style:UIAlertActionStyleDefault
+                                                 handler:^(__unused UIAlertAction *action) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            [self.store setLanguageCode:code];
+            [self updateSettingsControls];
+            EIDLog(@"description language changed to %@", code);
+        }]];
+    }
+    [picker addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                               style:UIAlertActionStyleCancel
+                                             handler:nil]];
+    UIPopoverPresentationController *popover = picker.popoverPresentationController;
+    popover.sourceView = sender;
+    popover.sourceRect = sender.bounds;
+    popover.permittedArrowDirections = UIPopoverArrowDirectionAny;
+    [presenter presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)toggleSettings:(UIButton *)sender {
+    (void)sender;
+    self.settingsCard.hidden = !self.settingsCard.hidden;
+    if (!self.settingsCard.hidden) {
+        [self updateSettingsControls];
+        [self.rootView bringSubviewToFront:self.settingsCard];
+        self.panel.alpha = 0;
+    }
+}
+
+- (void)closeSettings:(UIButton *)sender {
+    (void)sender;
+    self.settingsCard.hidden = YES;
+}
+
+- (void)positionChanged:(UISlider *)slider {
+    CGFloat position = round(slider.value);
+    slider.value = position;
+    [[NSUserDefaults standardUserDefaults] setDouble:position forKey:EIDHorizontalPositionKey];
+    self.settingsPositionLabel.text = [NSString stringWithFormat:@"Horizontal position: %.0f px", position];
+    [self sizePanelForText];
+    CGRect diagnosticsFrame = self.diagnosticsLabel.frame;
+    diagnosticsFrame.origin.x = position;
+    diagnosticsFrame.size.width = MAX(100, self.rootView.bounds.size.width - position - EIDOverlayRightMargin);
+    self.diagnosticsLabel.frame = diagnosticsFrame;
+}
+
+- (void)verticalPositionChanged:(UISlider *)slider {
+    CGFloat position = round(slider.value);
+    slider.value = position;
+    [[NSUserDefaults standardUserDefaults] setDouble:position forKey:EIDVerticalPositionKey];
+    self.settingsVerticalPositionLabel.text = [NSString stringWithFormat:
+        @"Vertical position: %.0f px", position];
+    [self sizePanelForText];
+}
+
+- (void)resetPosition:(UIButton *)sender {
+    (void)sender;
+    self.settingsPositionSlider.value = EIDDefaultOverlayLeftMargin;
+    [self positionChanged:self.settingsPositionSlider];
+    EIDLog(@"overlay horizontal position reset to %.0f px", EIDDefaultOverlayLeftMargin);
+}
+
+- (void)resetVerticalPosition:(UIButton *)sender {
+    (void)sender;
+    self.settingsVerticalPositionSlider.value = EIDDefaultOverlayTopMargin;
+    [self verticalPositionChanged:self.settingsVerticalPositionSlider];
+    EIDLog(@"overlay vertical position reset to %.0f px", EIDDefaultOverlayTopMargin);
 }
 
 - (NSString *)kindNameForVariant:(NSInteger)variant {
@@ -398,15 +649,16 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
 - (void)sizePanelForText {
     CGRect bounds = self.rootView.bounds;
-    CGFloat availableWidth = MAX(180, bounds.size.width - EIDOverlayLeftMargin - EIDOverlayRightMargin);
+    CGFloat leftMargin = [self overlayLeftMargin];
+    CGFloat availableWidth = MAX(180, bounds.size.width - leftMargin - EIDOverlayRightMargin);
     CGFloat width = MIN(390, MAX(270, bounds.size.width * 0.42));
     width = MIN(width, availableWidth);
-    CGFloat buttonSpace = self.languageButton.hidden ? 0 : 50;
     CGFloat iconSpace = self.itemIconView.hidden ? 0 : EIDItemIconSize + EIDItemIconSpacing;
-    CGFloat textWidth = MAX(120, width - buttonSpace - iconSpace);
-    CGFloat maximumHeight = MAX(100, bounds.size.height - 58);
+    CGFloat textWidth = MAX(120, width - iconSpace);
+    CGFloat topMargin = [self overlayTopMargin];
+    CGFloat maximumHeight = MAX(100, bounds.size.height - topMargin - 16);
 
-    CGFloat fontSize = self.startupBannerVisible ? 11.0 : 10.5;
+    CGFloat fontSize = 10.5;
     CGSize textSize = CGSizeZero;
     do {
         self.label.font = [UIFont systemFontOfSize:fontSize weight:UIFontWeightSemibold];
@@ -418,18 +670,18 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     // clipped to an arbitrary character or line count.
     if (textSize.height > maximumHeight && width < availableWidth) {
         width = MIN(availableWidth, MAX(width, bounds.size.width * 0.58));
-        textWidth = MAX(120, width - buttonSpace - iconSpace);
+        textWidth = MAX(120, width - iconSpace);
         textSize = [self.label sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     }
     CGFloat height = MAX(EIDItemIconSize, textSize.height);
-    self.panel.frame = CGRectMake(EIDOverlayLeftMargin, 42, width, height);
+    self.panel.frame = CGRectMake(leftMargin, topMargin, width, height);
     self.itemIconView.frame = CGRectMake(0, 1, EIDItemIconSize, EIDItemIconSize);
     self.label.frame = CGRectMake(iconSpace, 0, textWidth, height);
-    self.languageButton.frame = CGRectMake(width - 44, 0, 42, 28);
     if (!self.loggedOverlayLayout) {
         self.loggedOverlayLayout = YES;
-        EIDLog(@"overlay layout fixed at x %.0f, icon origin x %.0f",
+        EIDLog(@"overlay layout fixed at x %.0f y %.0f, icon origin x %.0f",
                self.panel.frame.origin.x,
+               self.panel.frame.origin.y,
                self.panel.frame.origin.x + self.itemIconView.frame.origin.x);
     }
 }
@@ -463,20 +715,6 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         [output replaceCharactersInRange:match.range withString:replacement];
     }
     return output;
-}
-
-- (void)updateLanguageButton {
-    NSString *title = [self.store.languageCode isEqualToString:@"ru"] ? @"RU" : @"EN";
-    [self.languageButton setTitle:title forState:UIControlStateNormal];
-}
-
-- (void)toggleLanguage:(UIButton *)sender {
-    (void)sender;
-    NSString *next = [self.store.languageCode isEqualToString:@"ru"] ? @"en_us" : @"ru";
-    [self.store setLanguageCode:next];
-    [self updateLanguageButton];
-    if (self.startupBannerVisible) [self updateStartupBannerText];
-    else [self renderPickups:self.lastPickups];
 }
 
 - (void)showCollectibleID:(NSInteger)collectibleID {
