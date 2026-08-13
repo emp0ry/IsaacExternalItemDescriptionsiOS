@@ -5,7 +5,7 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
-static const CGFloat EIDOverlayLeftMargin = 112.0;
+static const CGFloat EIDOverlayLeftMargin = 120.0;
 static const CGFloat EIDOverlayRightMargin = 14.0;
 static const CGFloat EIDItemIconSize = 28.0;
 static const CGFloat EIDItemIconSpacing = 6.0;
