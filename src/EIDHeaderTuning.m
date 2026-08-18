@@ -119,11 +119,12 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
 
     UIImageView *logo = EIDHeaderLogoForController(self, panel);
     CGFloat logoSize = 22.0 * scale;
+    CGFloat logoYOffset = 2.0 * scale;
     CGFloat textInset = 27.0 * scale;
     if (itemAttachment && itemAttachment.image) {
         logo.image = EIDTrimTransparentPadding(itemAttachment.image);
         logo.hidden = NO;
-        logo.frame = CGRectMake(0, 0, logoSize, logoSize);
+        logo.frame = CGRectMake(0, logoYOffset, logoSize, logoSize);
 
         NSUInteger removeStart = itemAttachmentRange.location;
         NSUInteger removeEnd = NSMaxRange(itemAttachmentRange);
@@ -169,7 +170,7 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
     panelFrame.size.height = headerHeight + gap + MAX(1, ceil(bodySize.height));
     panel.frame = panelFrame;
 
-    logo.frame = CGRectMake(0, 0, logoSize, logoSize);
+    logo.frame = CGRectMake(0, logoYOffset, logoSize, logoSize);
     headerLabel.frame = CGRectMake(textInset, 0, textWidth, headerHeight);
     bodyLabel.frame = CGRectMake(textInset, headerHeight + gap, textWidth, MAX(1, ceil(bodySize.height)));
 }
