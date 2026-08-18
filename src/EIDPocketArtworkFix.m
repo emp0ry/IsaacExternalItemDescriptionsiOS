@@ -173,6 +173,25 @@ static UIImage *EIDCropImage(UIImage *atlas, id frameValue) {
     if (index >= 0 && index < (NSInteger)self.cardFrames.count) {
         image = EIDCropImage(self.cardAtlas, self.cardFrames[(NSUInteger)index]);
     }
+
+    // Some iOS resource packs expose ui_cardfronts.png but the CardFronts
+    // animation does not enumerate every card/rune frame. The atlas itself is
+    // a 32x32 grid in subtype order, so crop exactly one cell as a safe fallback.
+    if (!image && self.cardAtlas.CGImage) {
+        size_t width = CGImageGetWidth(self.cardAtlas.CGImage);
+        size_t height = CGImageGetHeight(self.cardAtlas.CGImage);
+        const NSInteger cell = 32;
+        NSInteger columns = (NSInteger)(width / cell);
+        NSInteger rows = (NSInteger)(height / cell);
+        NSInteger frameCount = columns * rows;
+        if (columns > 0 && rows > 0 && index >= 0 && index < frameCount) {
+            CGRect frame = CGRectMake((index % columns) * cell,
+                                      (index / columns) * cell,
+                                      cell, cell);
+            image = EIDCropImage(self.cardAtlas, [NSValue valueWithCGRect:frame]);
+        }
+    }
+
     if (!image) {
         EIDLog(@"no exact card/rune sprite frame for subtype %ld", (long)subtype);
     }
@@ -235,13 +254,11 @@ static UIImage *EIDCropImage(UIImage *atlas, id frameValue) {
 @implementation NSObject (EIDPocketArtworkFix)
 - (UIImage *)eid_fixed_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype {
     if (variant == EIDPickupVariantCard) {
-        // Never fall back to pickup_017_card.png: that file is a full sheet and was
-        // the reason runes/cards could appear as the entire atlas in the overlay.
+        // Cards and runes share variant 300; subtype selects their exact face.
+        // Never return the full pickup sheet as a fallback.
         return [[EIDPocketArtworkResolver shared] cardImageForSubtype:subtype];
     }
     if (variant == EIDPickupVariantPill || variant == EIDPickupVariantHorsePill) {
-        // Likewise, never fall back to the old static white-pill crop. If the exact
-        // native color cannot be resolved, omit the icon rather than show a wrong one.
         return [[EIDPocketArtworkResolver shared] pillImageForEffectSubtype:subtype
                                                                      horse:(variant == EIDPickupVariantHorsePill)];
     }
