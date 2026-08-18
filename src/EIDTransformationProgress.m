@@ -28,6 +28,8 @@ static NSString *EIDTransformResourcePath(void) {
 
 @interface EIDTransformationProgress : NSObject
 @property(nonatomic, copy) NSDictionary<NSString *, NSArray<NSNumber *> *> *assignments;
+@property(nonatomic, copy) NSDictionary<NSString *, NSString *> *englishNames;
+@property(nonatomic, copy) NSDictionary<NSString *, NSDictionary<NSString *, NSString *> *> *namesByLanguage;
 @property(nonatomic) NSInteger required;
 @property(nonatomic, strong) NSMutableSet<NSNumber *> *takenCollectibles;
 @property(nonatomic, strong) NSSet<NSNumber *> *previousVisibleCollectibles;
@@ -36,6 +38,8 @@ static NSString *EIDTransformResourcePath(void) {
 + (instancetype)shared;
 - (NSArray<NSNumber *> *)transformationsForCollectible:(NSInteger)collectible;
 - (NSInteger)progressForTransformation:(NSInteger)transformation;
+- (NSString *)localizedNameForTransformation:(NSInteger)transformation;
+- (NSString *)englishNameForTransformation:(NSInteger)transformation;
 - (void)observePickups:(NSArray<EIDPickupIdentity *> *)pickups gameplayActive:(BOOL)gameplayActive;
 - (void)observeGameplayActive:(BOOL)gameplayActive;
 @end
@@ -59,10 +63,14 @@ static NSString *EIDTransformResourcePath(void) {
     NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
     NSDictionary *rawAssignments = [json[@"assignments"] isKindOfClass:NSDictionary.class] ? json[@"assignments"] : nil;
     if (rawAssignments) _assignments = rawAssignments;
+    NSDictionary *rawNames = [json[@"names"] isKindOfClass:NSDictionary.class] ? json[@"names"] : nil;
+    if (rawNames) _englishNames = rawNames;
+    NSDictionary *rawLocalized = [json[@"names_by_language"] isKindOfClass:NSDictionary.class] ? json[@"names_by_language"] : nil;
+    if (rawLocalized) _namesByLanguage = rawLocalized;
     NSNumber *required = [json[@"required"] isKindOfClass:NSNumber.class] ? json[@"required"] : nil;
     if (required.integerValue > 0) _required = required.integerValue;
-    EIDLog(@"temporary transformation tracker loaded %lu assignments; requirement %ld",
-           (unsigned long)_assignments.count, (long)_required);
+    EIDLog(@"temporary transformation tracker loaded %lu assignments, %lu languages; requirement %ld",
+           (unsigned long)_assignments.count, (unsigned long)_namesByLanguage.count, (long)_required);
     return self;
 }
 
@@ -70,6 +78,25 @@ static NSString *EIDTransformResourcePath(void) {
     if (collectible <= 0) return @[];
     NSArray *values = self.assignments[[NSString stringWithFormat:@"100:%ld", (long)collectible]];
     return [values isKindOfClass:NSArray.class] ? values : @[];
+}
+
+- (NSString *)englishNameForTransformation:(NSInteger)transformation {
+    NSString *key = [NSString stringWithFormat:@"%ld", (long)transformation];
+    NSString *name = self.englishNames[key];
+    return [name isKindOfClass:NSString.class] ? name : @"";
+}
+
+- (NSString *)localizedNameForTransformation:(NSInteger)transformation {
+    NSString *key = [NSString stringWithFormat:@"%ld", (long)transformation];
+    NSString *language = [[NSUserDefaults standardUserDefaults] stringForKey:@"IsaacEIDLanguage"] ?: @"en_us";
+    NSDictionary *localized = self.namesByLanguage[language];
+    NSString *name = [localized isKindOfClass:NSDictionary.class] ? localized[key] : nil;
+    if ([name isKindOfClass:NSString.class] && name.length) return name;
+
+    NSDictionary *english = self.namesByLanguage[@"en_us"];
+    name = [english isKindOfClass:NSDictionary.class] ? english[key] : nil;
+    if ([name isKindOfClass:NSString.class] && name.length) return name;
+    return [self englishNameForTransformation:transformation];
 }
 
 - (NSInteger)progressForTransformation:(NSInteger)transformation {
@@ -102,11 +129,6 @@ static NSString *EIDTransformResourcePath(void) {
         self.resetDuringCurrentNonGameplayPeriod = NO;
         return;
     }
-
-    // Death, Restart and "new run" can leave gameplay for much less than the old
-    // ~3 second threshold. PlayerManager already reports zero active players during
-    // that transition, so reset on the first confirmed non-gameplay scan after a run.
-    // Only do it once per non-gameplay period so menu polling cannot repeatedly reset.
     if (self.sawGameplay && !self.resetDuringCurrentNonGameplayPeriod) {
         [self resetForNewRun];
         self.resetDuringCurrentNonGameplayPeriod = YES;
@@ -147,24 +169,41 @@ static NSString *EIDTransformResourcePath(void) {
 }
 @end
 
-static NSAttributedString *EIDReplaceProgressInText(NSAttributedString *source,
-                                                     NSArray<NSNumber *> *transforms) {
+static void EIDReplacePreservingAttributes(NSMutableAttributedString *result,
+                                            NSRange range, NSString *replacement) {
+    if (range.location == NSNotFound || !replacement) return;
+    NSDictionary *attributes = range.location < result.length
+        ? [result attributesAtIndex:range.location effectiveRange:nil] : @{};
+    [result replaceCharactersInRange:range withAttributedString:
+        [[NSAttributedString alloc] initWithString:replacement attributes:attributes]];
+}
+
+static NSAttributedString *EIDLocalizeAndReplaceProgressInText(NSAttributedString *source,
+                                                               NSArray<NSNumber *> *transforms) {
     if (!source.length || !transforms.count) return source;
     NSMutableAttributedString *result = [source mutableCopy];
-    NSString *needle = @"(0/3)";
+    EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
+
+    for (NSNumber *transform in transforms) {
+        NSString *english = [tracker englishNameForTransformation:transform.integerValue];
+        NSString *localized = [tracker localizedNameForTransformation:transform.integerValue];
+        if (english.length && localized.length && ![english isEqualToString:localized]) {
+            NSRange range = [result.string rangeOfString:english];
+            if (range.location != NSNotFound) EIDReplacePreservingAttributes(result, range, localized);
+        }
+    }
+
     NSUInteger searchStart = 0;
     for (NSNumber *transform in transforms) {
         if (searchStart >= result.length) break;
         NSRange searchRange = NSMakeRange(searchStart, result.length - searchStart);
-        NSRange range = [result.string rangeOfString:needle options:0 range:searchRange];
-        if (range.location == NSNotFound) break;
-        NSInteger progress = [[EIDTransformationProgress shared] progressForTransformation:transform.integerValue];
-        NSInteger required = [EIDTransformationProgress shared].required;
-        NSString *replacement = [NSString stringWithFormat:@"(%ld/%ld)", (long)progress, (long)required];
-        NSDictionary *attributes = range.location < result.length ? [result attributesAtIndex:range.location effectiveRange:nil] : @{};
-        [result replaceCharactersInRange:range withAttributedString:
-            [[NSAttributedString alloc] initWithString:replacement attributes:attributes]];
-        searchStart = range.location + replacement.length;
+        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"\\([0-9]+/[0-9]+\\)" options:0 error:nil];
+        NSTextCheckingResult *match = [regex firstMatchInString:result.string options:0 range:searchRange];
+        if (!match) break;
+        NSInteger progress = [tracker progressForTransformation:transform.integerValue];
+        NSString *replacement = [NSString stringWithFormat:@"(%ld/%ld)", (long)progress, (long)tracker.required];
+        EIDReplacePreservingAttributes(result, match.range, replacement);
+        searchStart = match.range.location + replacement.length;
     }
     return result;
 }
@@ -195,7 +234,7 @@ static NSAttributedString *EIDReplaceProgressInText(NSAttributedString *source,
         UILabel *label = nil;
         @try { label = [strongSelf valueForKey:@"label"]; } @catch (__unused NSException *exception) {}
         if (![label isKindOfClass:UILabel.class] || !label.attributedText.length) return;
-        label.attributedText = EIDReplaceProgressInText(label.attributedText, transforms);
+        label.attributedText = EIDLocalizeAndReplaceProgressInText(label.attributedText, transforms);
     });
 }
 
