@@ -20,12 +20,8 @@ jobs:
 
       - name: Install packaging tools
         run: |
-          if ! command -v dpkg-deb >/dev/null 2>&1; then
-            brew install dpkg
-          fi
-          if ! command -v rg >/dev/null 2>&1; then
-            brew install ripgrep
-          fi
+          if ! command -v dpkg-deb >/dev/null 2>&1; then brew install dpkg; fi
+          if ! command -v rg >/dev/null 2>&1; then brew install ripgrep; fi
 
       - name: Run tests
         run: make test
@@ -36,7 +32,7 @@ jobs:
       - name: Build full release
         run: make release EID_SOURCE="$GITHUB_WORKSPACE/upstream-eid"
 
-      - name: Verify bundled EID data
+      - name: Verify bundled EID data and visuals
         run: |
           test -f dist/IsaacExternalItemDescriptions-Embedded.zip
           test -f dist/IsaacExternalItemDescriptions-rootless.deb
@@ -45,10 +41,14 @@ jobs:
           test -f build/IsaacEID.bundle/eid_inline_icons.png
           test -f build/IsaacEID.bundle/eid_inline_icons.anm2
           test -f build/IsaacEID.bundle/eid_inline_icons.json
+          test -f build/IsaacEID.bundle/PixelMplus10-Regular.ttf
+          grep -q '"Quality0"' build/IsaacEID.bundle/eid_inline_icons.json
+          grep -q '"Quality4"' build/IsaacEID.bundle/eid_inline_icons.json
           unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/descriptions.json'
           unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.png'
           unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.anm2'
           unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.json'
+          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/PixelMplus10-Regular.ttf'
 
       - name: Create one full downloadable archive
         run: |
