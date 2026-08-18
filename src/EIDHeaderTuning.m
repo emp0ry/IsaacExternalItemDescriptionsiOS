@@ -4,6 +4,7 @@
 #import <stdlib.h>
 
 static const void *EIDHeaderLabelKey = &EIDHeaderLabelKey;
+static const void *EIDHeaderLogoKey = &EIDHeaderLogoKey;
 
 static UIImage *EIDTrimTransparentPadding(UIImage *image) {
     CGImageRef cg = image.CGImage;
@@ -54,7 +55,6 @@ static UIImage *EIDTrimTransparentPadding(UIImage *image) {
 static UILabel *EIDHeaderLabelForController(id controller, UIView *panel) {
     UILabel *header = objc_getAssociatedObject(controller, EIDHeaderLabelKey);
     if (header) return header;
-
     header = [[UILabel alloc] initWithFrame:CGRectZero];
     header.numberOfLines = 1;
     header.backgroundColor = UIColor.clearColor;
@@ -66,6 +66,19 @@ static UILabel *EIDHeaderLabelForController(id controller, UIView *panel) {
     [panel addSubview:header];
     objc_setAssociatedObject(controller, EIDHeaderLabelKey, header, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return header;
+}
+
+static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
+    UIImageView *logo = objc_getAssociatedObject(controller, EIDHeaderLogoKey);
+    if (logo) return logo;
+    logo = [[UIImageView alloc] initWithFrame:CGRectZero];
+    logo.contentMode = UIViewContentModeScaleAspectFit;
+    logo.layer.magnificationFilter = kCAFilterNearest;
+    logo.layer.minificationFilter = kCAFilterNearest;
+    logo.userInteractionEnabled = NO;
+    [panel addSubview:logo];
+    objc_setAssociatedObject(controller, EIDHeaderLogoKey, logo, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return logo;
 }
 
 @interface NSObject (EIDHeaderTuning)
@@ -90,53 +103,75 @@ static UILabel *EIDHeaderLabelForController(id controller, UIView *panel) {
     scale = MIN(1.8, MAX(0.5, scale));
 
     NSMutableAttributedString *headerText = [[rendered attributedSubstringFromRange:NSMakeRange(0, headerLength)] mutableCopy];
-    UIFont *titleFont = [UIFont systemFontOfSize:20.0 * scale weight:UIFontWeightHeavy];
+
+    __block NSTextAttachment *itemAttachment = nil;
+    __block NSRange itemAttachmentRange = NSMakeRange(NSNotFound, 0);
+    [headerText enumerateAttribute:NSAttachmentAttributeName
+                          inRange:NSMakeRange(0, headerText.length)
+                          options:0
+                       usingBlock:^(NSTextAttachment *attachment, NSRange range, BOOL *stop) {
+        if ([attachment isKindOfClass:NSTextAttachment.class]) {
+            itemAttachment = attachment;
+            itemAttachmentRange = range;
+            *stop = YES;
+        }
+    }];
+
+    UIImageView *logo = EIDHeaderLogoForController(self, panel);
+    CGFloat logoSize = 22.0 * scale;
+    CGFloat textInset = 27.0 * scale;
+    if (itemAttachment && itemAttachment.image) {
+        logo.image = EIDTrimTransparentPadding(itemAttachment.image);
+        logo.hidden = NO;
+        logo.frame = CGRectMake(0, 0, logoSize, logoSize);
+
+        NSUInteger removeStart = itemAttachmentRange.location;
+        NSUInteger removeEnd = NSMaxRange(itemAttachmentRange);
+        while (removeEnd < headerText.length && [[headerText.string substringWithRange:NSMakeRange(removeEnd, 1)] isEqualToString:@" "]) removeEnd++;
+        [headerText deleteCharactersInRange:NSMakeRange(removeStart, removeEnd - removeStart)];
+    } else {
+        logo.hidden = YES;
+        textInset = 0;
+    }
+
+    UIFont *titleFont = [UIFont systemFontOfSize:16.0 * scale weight:UIFontWeightBold];
     [headerText addAttribute:NSFontAttributeName value:titleFont range:NSMakeRange(0, headerText.length)];
 
-    __block NSUInteger attachmentIndex = 0;
     [headerText enumerateAttribute:NSAttachmentAttributeName
                           inRange:NSMakeRange(0, headerText.length)
                           options:0
                        usingBlock:^(NSTextAttachment *attachment, NSRange range, BOOL *stop) {
         (void)range; (void)stop;
         if (![attachment isKindOfClass:NSTextAttachment.class]) return;
-        attachmentIndex++;
-        if (attachmentIndex == 1) {
-            UIImage *trimmed = EIDTrimTransparentPadding(attachment.image);
-            attachment.image = trimmed;
-            CGFloat h = 26.0 * scale;
-            CGFloat ratio = trimmed.size.height > 0 ? trimmed.size.width / trimmed.size.height : 1.0;
-            attachment.bounds = CGRectMake(0, -5.0 * scale, h * ratio, h);
-        } else {
-            UIImage *quality = attachment.image;
-            CGFloat h = 11.5 * scale;
-            CGFloat ratio = quality.size.height > 0 ? quality.size.width / quality.size.height : 1.0;
-            attachment.bounds = CGRectMake(0, -1.0 * scale, h * ratio, h);
-        }
+        UIImage *quality = attachment.image;
+        CGFloat h = 16.0 * scale;
+        CGFloat ratio = quality.size.height > 0 ? quality.size.width / quality.size.height : 1.0;
+        attachment.bounds = CGRectMake(0, -3.0 * scale, h * ratio, h);
     }];
 
     UILabel *headerLabel = EIDHeaderLabelForController(self, panel);
     headerLabel.attributedText = headerText;
 
-    CGFloat headerHeight = 29.0 * scale;
-    CGFloat gap = 6.0 * scale;
-    headerLabel.frame = CGRectMake(0, 0, panel.bounds.size.width, headerHeight);
+    CGFloat headerHeight = 23.0 * scale;
+    CGFloat gap = 5.0 * scale;
+    CGFloat textWidth = MAX(1, panel.bounds.size.width - textInset);
+    headerLabel.frame = CGRectMake(textInset, 0, textWidth, headerHeight);
 
     if (newline.location != NSNotFound && NSMaxRange(newline) < rendered.length) {
         NSAttributedString *body = [rendered attributedSubstringFromRange:NSMakeRange(NSMaxRange(newline), rendered.length - NSMaxRange(newline))];
         bodyLabel.attributedText = body;
-        bodyLabel.frame = CGRectMake(0, headerHeight + gap, panel.bounds.size.width, MAX(1, panel.bounds.size.height - headerHeight - gap));
     } else {
         bodyLabel.attributedText = nil;
-        bodyLabel.frame = CGRectMake(0, headerHeight + gap, panel.bounds.size.width, 1);
     }
 
-    CGSize bodySize = [bodyLabel sizeThatFits:CGSizeMake(panel.bounds.size.width, CGFLOAT_MAX)];
+    CGSize bodySize = [bodyLabel sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     CGRect panelFrame = panel.frame;
     panelFrame.size.height = headerHeight + gap + MAX(1, ceil(bodySize.height));
     panel.frame = panelFrame;
-    headerLabel.frame = CGRectMake(0, 0, panel.bounds.size.width, headerHeight);
-    bodyLabel.frame = CGRectMake(0, headerHeight + gap, panel.bounds.size.width, MAX(1, ceil(bodySize.height)));
+
+    logo.frame = CGRectMake(0, 0, logoSize, logoSize);
+    headerLabel.frame = CGRectMake(textInset, 0, textWidth, headerHeight);
+    bodyLabel.frame = CGRectMake(textInset, headerHeight + gap, textWidth, MAX(1, ceil(bodySize.height)));
 }
 @end
 
