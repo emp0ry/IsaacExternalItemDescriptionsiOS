@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
+#import <stdlib.h>
 
 static UIImage *EIDTrimTransparentPadding(UIImage *image) {
     CGImageRef cg = image.CGImage;
@@ -35,7 +37,6 @@ static UIImage *EIDTrimTransparentPadding(UIImage *image) {
     free(pixels);
     if (!found) return image;
 
-    // Keep a tiny safety border so pixel art is never clipped.
     minX = minX > 1 ? minX - 1 : 0;
     minY = minY > 1 ? minY - 1 : 0;
     maxX = MIN(width - 1, maxX + 1);
@@ -76,7 +77,7 @@ static UIImage *EIDTrimTransparentPadding(UIImage *image) {
                      inRange:NSMakeRange(0, text.length)
                      options:0
                   usingBlock:^(NSTextAttachment *attachment, NSRange range, BOOL *stop) {
-        (void)range; (void)stop;
+        (void)stop;
         if (![attachment isKindOfClass:NSTextAttachment.class]) return;
         attachmentIndex++;
 
