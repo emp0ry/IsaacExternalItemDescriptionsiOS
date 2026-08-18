@@ -26,7 +26,8 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDNativeProbe.mm \
 	$(PROJECT_ROOT)/src/EIDOverlayController.m \
 	$(PROJECT_ROOT)/src/EIDParityPresentation.m \
-	$(PROJECT_ROOT)/src/EIDHeaderTuning.m
+	$(PROJECT_ROOT)/src/EIDHeaderTuning.m \
+	$(PROJECT_ROOT)/src/EIDTransformationProgress.m
 
 .PHONY: all dylib descriptions parity-assets stage-release-bundle package livecontainer audit test release clean
 
