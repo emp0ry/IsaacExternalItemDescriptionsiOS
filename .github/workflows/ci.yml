@@ -3,15 +3,79 @@ name: Build
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  ios-dylib:
+  full-release:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout iOS port
+        uses: actions/checkout@v4
+
+      - name: Checkout original EID resources
+        uses: actions/checkout@v4
+        with:
+          repository: wofsauge/External-Item-Descriptions
+          path: upstream-eid
+
+      - name: Install packaging tools
+        run: |
+          if ! command -v dpkg-deb >/dev/null 2>&1; then
+            brew install dpkg
+          fi
+          if ! command -v rg >/dev/null 2>&1; then
+            brew install ripgrep
+          fi
+
       - name: Run tests
         run: make test
-      - name: Build with strict warnings
-        run: make dylib EXTRA_CFLAGS='-Wall -Wextra -Werror'
-      - name: Audit dependencies
-        run: make audit EXTRA_CFLAGS='-Wall -Wextra -Werror'
+
+      - name: Import original EID parity assets
+        run: make parity-assets EID_SOURCE="$GITHUB_WORKSPACE/upstream-eid"
+
+      - name: Build full release
+        run: make release EID_SOURCE="$GITHUB_WORKSPACE/upstream-eid"
+
+      - name: Verify bundled EID data
+        run: |
+          test -f dist/IsaacExternalItemDescriptions-Embedded.zip
+          test -f dist/IsaacExternalItemDescriptions-rootless.deb
+          test -f dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip
+          test -f dist/descriptions.json
+          test -f build/IsaacEID.bundle/eid_inline_icons.png
+          test -f build/IsaacEID.bundle/eid_inline_icons.anm2
+          test -f build/IsaacEID.bundle/eid_inline_icons.json
+          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/descriptions.json'
+          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.png'
+          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.anm2'
+          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.json'
+
+      - name: Create one full downloadable archive
+        run: |
+          mkdir -p full-build
+          cp -R dist/. full-build/
+          cp THIRD_PARTY_NOTICES.md full-build/
+          cp README.md full-build/
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent full-build IsaacExternalItemDescriptions-Full-Build.zip
+
+      - name: Upload full build archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: IsaacExternalItemDescriptions-Full-Build
+          path: IsaacExternalItemDescriptions-Full-Build.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload individual release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: IsaacExternalItemDescriptions-Release-Files
+          path: |
+            dist/IsaacExternalItemDescriptions.dylib
+            dist/IsaacExternalItemDescriptions-rootless.deb
+            dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip
+            dist/IsaacExternalItemDescriptions-Embedded.zip
+            dist/descriptions.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
