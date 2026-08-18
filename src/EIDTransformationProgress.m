@@ -31,7 +31,8 @@ static NSString *EIDTransformResourcePath(void) {
 @property(nonatomic) NSInteger required;
 @property(nonatomic, strong) NSMutableSet<NSNumber *> *takenCollectibles;
 @property(nonatomic, strong) NSSet<NSNumber *> *previousVisibleCollectibles;
-@property(nonatomic) NSUInteger nonGameplayScans;
+@property(nonatomic) BOOL sawGameplay;
+@property(nonatomic) BOOL resetDuringCurrentNonGameplayPeriod;
 + (instancetype)shared;
 - (NSArray<NSNumber *> *)transformationsForCollectible:(NSInteger)collectible;
 - (NSInteger)progressForTransformation:(NSInteger)transformation;
@@ -96,12 +97,20 @@ static NSString *EIDTransformResourcePath(void) {
 }
 
 - (void)observeGameplayActive:(BOOL)gameplayActive {
-    if (!gameplayActive) {
-        if (self.nonGameplayScans < 1000) self.nonGameplayScans++;
+    if (gameplayActive) {
+        self.sawGameplay = YES;
+        self.resetDuringCurrentNonGameplayPeriod = NO;
         return;
     }
-    if (self.nonGameplayScans >= 12) [self resetForNewRun];
-    self.nonGameplayScans = 0;
+
+    // Death, Restart and "new run" can leave gameplay for much less than the old
+    // ~3 second threshold. PlayerManager already reports zero active players during
+    // that transition, so reset on the first confirmed non-gameplay scan after a run.
+    // Only do it once per non-gameplay period so menu polling cannot repeatedly reset.
+    if (self.sawGameplay && !self.resetDuringCurrentNonGameplayPeriod) {
+        [self resetForNewRun];
+        self.resetDuringCurrentNonGameplayPeriod = YES;
+    }
 }
 
 - (void)observePickups:(NSArray<EIDPickupIdentity *> *)pickups gameplayActive:(BOOL)gameplayActive {
