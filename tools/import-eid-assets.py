@@ -10,6 +10,9 @@ from pathlib import Path
 
 ICON = re.compile(r'^\s*\["([^"]+)"\]\s*=\s*\{\s*"([^"]+)"\s*,\s*(\d+)')
 TRANSFORM = re.compile(r'^\s*\["5\.(\d+)\.(\d+)"\]\s*=\s*"([0-9,]+)"')
+LANGUAGE_CODE = re.compile(r'^\s*local\s+languageCode\s*=\s*"([^"]+)"')
+TRANSFORM_BLOCK = re.compile(r'EID\.descriptions\[languageCode\]\.transformations\s*=\s*\{')
+QUOTED_VALUE = re.compile(r'^\s*"((?:\\.|[^"\\])*)"\s*,?')
 
 TRANSFORM_NAMES = {
     1: "Guppy", 2: "Fun Guy", 3: "Lord of the Flies", 4: "Conjoined",
@@ -28,6 +31,71 @@ def parse_transformations(path: Path, result: dict[str, list[int]]) -> None:
             continue
         variant, subtype, ids = match.groups()
         result[f"{variant}:{subtype}"] = [int(value) for value in ids.split(",")]
+
+
+def lua_unescape(value: str) -> str:
+    return value.replace(r'\"', '"').replace(r'\\', '\\')
+
+
+def parse_transformation_names(path: Path) -> tuple[str, dict[str, str]] | None:
+    if not path.is_file():
+        return None
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    language = None
+    for line in lines:
+        match = LANGUAGE_CODE.match(line)
+        if match:
+            language = match.group(1)
+            break
+    if not language:
+        return None
+
+    start = None
+    for index, line in enumerate(lines):
+        if TRANSFORM_BLOCK.search(line):
+            start = index + 1
+            break
+    if start is None:
+        return None
+
+    values: list[str] = []
+    for line in lines[start:]:
+        if line.strip().startswith("}"):
+            break
+        match = QUOTED_VALUE.match(line)
+        if match:
+            values.append(lua_unescape(match.group(1)))
+
+    # EID arrays include index 0 (empty/none) first; transformations 1..15 follow.
+    names: dict[str, str] = {}
+    for transform_id in range(1, 16):
+        value_index = transform_id
+        if value_index < len(values) and values[value_index]:
+            names[str(transform_id)] = values[value_index]
+    return language, names
+
+
+def collect_localized_names(source: Path) -> dict[str, dict[str, str]]:
+    result: dict[str, dict[str, str]] = {
+        "en_us": {str(key): value for key, value in TRANSFORM_NAMES.items()}
+    }
+    # Base AB+ language packs contain the complete classic transformation table.
+    # Later packs may override/add localized names, so process them afterwards.
+    for directory in ("ab+", "rep", "rep+"):
+        root = source / "descriptions" / directory
+        if not root.is_dir():
+            continue
+        for path in sorted(root.glob("*.lua")):
+            parsed = parse_transformation_names(path)
+            if not parsed:
+                continue
+            language, names = parsed
+            if not names:
+                continue
+            merged = dict(result.get(language, {}))
+            merged.update(names)
+            result[language] = merged
+    return result
 
 
 def main() -> int:
@@ -66,8 +134,10 @@ def main() -> int:
     assignments: dict[str, list[int]] = {}
     parse_transformations(source / "descriptions/ab+/transformations.lua", assignments)
     parse_transformations(source / "descriptions/rep/transformations.lua", assignments)
+    localized_names = collect_localized_names(source)
     transform_payload = {
         "names": {str(key): value for key, value in TRANSFORM_NAMES.items()},
+        "names_by_language": localized_names,
         "assignments": assignments,
         "required": 3,
     }
@@ -84,7 +154,10 @@ def main() -> int:
         "External Item Descriptions\nhttps://github.com/wofsauge/External-Item-Descriptions\n",
         encoding="utf-8",
     )
-    print(f"imported {len(mapping)} inline icons and {len(assignments)} transformation assignments")
+    print(
+        f"imported {len(mapping)} inline icons, {len(assignments)} transformation assignments, "
+        f"and {len(localized_names)} transformation languages"
+    )
     return 0
 
 
