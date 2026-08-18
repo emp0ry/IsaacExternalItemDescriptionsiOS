@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Import the visual resources needed for close EID presentation parity.
-
-The user supplies an upstream External-Item-Descriptions checkout. This keeps the
-port repository source-only while allowing release builds to bundle the original
-atlas under upstream's license/attribution.
-"""
+"""Import the visual resources needed for close EID presentation parity."""
 from __future__ import annotations
 
 import json
@@ -25,13 +20,15 @@ def main() -> int:
     anm2 = source / "resources/gfx/eid_inline_icons.anm2"
     png = source / "resources/gfx/eid_inline_icons.png"
     data = source / "features/eid_data.lua"
-    if not all(path.is_file() for path in (anm2, png, data)):
+    font = source / "resources/font/PixelMplus10-Regular.ttf"
+    if not all(path.is_file() for path in (anm2, png, data, font)):
         print("error: source is not a compatible External-Item-Descriptions checkout", file=sys.stderr)
         return 2
 
     output.mkdir(parents=True, exist_ok=True)
     shutil.copy2(anm2, output / anm2.name)
     shutil.copy2(png, output / png.name)
+    shutil.copy2(font, output / font.name)
 
     mapping: dict[str, dict[str, object]] = {}
     for line in data.read_text(encoding="utf-8-sig").splitlines():
@@ -40,8 +37,6 @@ def main() -> int:
             token, animation, frame = match.groups()
             mapping[token] = {"animation": animation, "frame": int(frame)}
 
-    # Quality icons are defined upstream as function-generated aliases for the
-    # Quality animation, one frame per quality. Materialize those aliases here.
     for quality in range(5):
         mapping[f"Quality{quality}"] = {"animation": "Quality", "frame": quality}
 
@@ -57,7 +52,7 @@ def main() -> int:
         "External Item Descriptions\nhttps://github.com/wofsauge/External-Item-Descriptions\n",
         encoding="utf-8",
     )
-    print(f"imported {len(mapping)} inline icon mappings and original EID atlas")
+    print(f"imported {len(mapping)} inline icon mappings, original EID atlas, and PixelMplus10 font")
     return 0
 
 
