@@ -1,0 +1,94 @@
+name: Release v0.4.0
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release-v0.4.0.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - name: Checkout iOS port
+        uses: actions/checkout@v4
+
+      - name: Checkout original EID resources
+        uses: actions/checkout@v4
+        with:
+          repository: wofsauge/External-Item-Descriptions
+          path: upstream-eid
+
+      - name: Install packaging tools
+        run: |
+          if ! command -v dpkg-deb >/dev/null 2>&1; then
+            brew install dpkg
+          fi
+          if ! command -v rg >/dev/null 2>&1; then
+            brew install ripgrep
+          fi
+
+      # Intentionally no `make test` for this release, per release request.
+      - name: Stage bundled EID resources
+        run: make stage-release-bundle EID_SOURCE="$GITHUB_WORKSPACE/upstream-eid"
+
+      - name: Build rootless package
+        run: make package INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
+
+      - name: Build LiveContainer package
+        run: make livecontainer INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
+
+      - name: Dependency audit
+        run: make audit EXTRA_CFLAGS='-Wall -Wextra -Werror'
+
+      - name: Assemble release files
+        run: |
+          rm -rf dist build/IsaacExternalItemDescriptions-Embedded full-build
+          mkdir -p dist build/IsaacExternalItemDescriptions-Embedded/IsaacEID.bundle
+
+          cp build/IsaacExternalItemDescriptions.dylib dist/IsaacExternalItemDescriptions.dylib
+          cp packages/IsaacExternalItemDescriptions-rootless.deb dist/IsaacExternalItemDescriptions-rootless.deb
+          cp packages/IsaacExternalItemDescriptions-LiveContainer.framework.zip dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip
+          cp build/IsaacEID.bundle/descriptions.json dist/descriptions.json
+
+          cp build/IsaacExternalItemDescriptions.dylib build/IsaacExternalItemDescriptions-Embedded/IsaacExternalItemDescriptions.dylib
+          cp -R build/IsaacEID.bundle/. build/IsaacExternalItemDescriptions-Embedded/IsaacEID.bundle/
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            build/IsaacExternalItemDescriptions-Embedded \
+            dist/IsaacExternalItemDescriptions-Embedded.zip
+
+          cd dist
+          shasum -a 256 \
+            IsaacExternalItemDescriptions.dylib \
+            IsaacExternalItemDescriptions-rootless.deb \
+            IsaacExternalItemDescriptions-LiveContainer.framework.zip \
+            IsaacExternalItemDescriptions-Embedded.zip \
+            descriptions.json > SHA256SUMS
+          cd ..
+
+          mkdir -p full-build
+          cp -R dist/. full-build/
+          cp README.md THIRD_PARTY_NOTICES.md docs/RELEASE_NOTES_v0.4.0.md full-build/
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            full-build IsaacExternalItemDescriptions-Full-Build.zip
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.4.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Isaac External Item Descriptions v0.4.0" \
+            --notes-file docs/RELEASE_NOTES_v0.4.0.md \
+            dist/IsaacExternalItemDescriptions.dylib \
+            dist/IsaacExternalItemDescriptions-rootless.deb \
+            dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip \
+            dist/IsaacExternalItemDescriptions-Embedded.zip \
+            dist/descriptions.json \
+            dist/SHA256SUMS \
+            IsaacExternalItemDescriptions-Full-Build.zip
