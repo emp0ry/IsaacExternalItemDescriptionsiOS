@@ -27,6 +27,7 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDOverlayController.m \
 	$(PROJECT_ROOT)/src/EIDPocketArtworkFix.m \
 	$(PROJECT_ROOT)/src/EIDCardFrameFix.m \
+	$(PROJECT_ROOT)/src/EIDPillFrameFix.m \
 	$(PROJECT_ROOT)/src/EIDParityPresentation.m \
 	$(PROJECT_ROOT)/src/EIDHeaderTuning.m \
 	$(PROJECT_ROOT)/src/EIDTransformationProgress.m
