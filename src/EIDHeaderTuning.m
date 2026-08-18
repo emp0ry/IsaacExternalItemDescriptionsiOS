@@ -134,7 +134,7 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
         textInset = 0;
     }
 
-    UIFont *titleFont = [UIFont systemFontOfSize:14.0 * scale weight:UIFontWeightBold];
+    UIFont *titleFont = [UIFont systemFontOfSize:12.0 * scale weight:UIFontWeightBold];
     [headerText addAttribute:NSFontAttributeName value:titleFont range:NSMakeRange(0, headerText.length)];
 
     [headerText enumerateAttribute:NSAttachmentAttributeName
@@ -144,15 +144,15 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
         (void)range; (void)stop;
         if (![attachment isKindOfClass:NSTextAttachment.class]) return;
         UIImage *quality = attachment.image;
-        CGFloat h = 14.0 * scale;
+        CGFloat h = 12.0 * scale;
         CGFloat ratio = quality.size.height > 0 ? quality.size.width / quality.size.height : 1.0;
-        attachment.bounds = CGRectMake(0, -2.2 * scale, h * ratio, h);
+        attachment.bounds = CGRectMake(0, -1.8 * scale, h * ratio, h);
     }];
 
     UILabel *headerLabel = EIDHeaderLabelForController(self, panel);
     headerLabel.attributedText = headerText;
 
-    CGFloat headerHeight = 21.0 * scale;
+    CGFloat headerHeight = 19.0 * scale;
     CGFloat gap = 5.0 * scale;
     CGFloat textWidth = MAX(1, panel.bounds.size.width - textInset);
     headerLabel.frame = CGRectMake(textInset, 0, textWidth, headerHeight);
