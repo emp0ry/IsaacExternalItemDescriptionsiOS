@@ -22,9 +22,6 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 @property(nonatomic, copy, readonly) NSString *status;
 @property(nonatomic, readonly, getter=isSupportedBuild) BOOL supportedBuild;
 @property(atomic, readonly, getter=isGameplayActive) BOOL gameplayActive;
-// Changes when the native player object for the active run changes.
-// Nil/empty while no active player is resolved.
-@property(atomic, copy, readonly, nullable) NSString *runSessionToken;
 - (void)start;
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups;
 // Compatibility API used by early integrations and exported diagnostic helpers.
