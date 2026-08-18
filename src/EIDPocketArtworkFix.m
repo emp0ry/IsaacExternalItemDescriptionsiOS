@@ -177,19 +177,11 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
 
     NSInteger index = subtype - 1;
     UIImage *image = nil;
-
-    // Tarot/suit cards: use the UI card-front mapping first because this is already
-    // confirmed working on-device.
     if (index >= 0 && index < (NSInteger)self.cardFrames.count) {
         image = EIDCropImage(self.cardFrontAtlas, self.cardFrames[(NSUInteger)index]);
     }
-
-    // Runes and any card IDs not represented by CardFronts: crop ONE frame from the
-    // actual pickup card sheet. Never return pickup_017_card.png as a whole image.
     if (!image) image = EIDGridCrop(self.cardPickupAtlas, index, 32);
     if (!image) image = EIDGridCrop(self.cardPickupAtlas, index, 16);
-
-    // Keep the existing safe UI-grid fallback for unusual card resource layouts.
     if (!image) image = EIDGridCrop(self.cardFrontAtlas, index, 32);
     if (!image) image = EIDGridCrop(self.cardFrontAtlas, index, 16);
 
@@ -221,10 +213,8 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
     id cached = self.cache[key];
     if (cached) return cached == NSNull.null ? nil : cached;
 
-    // PillColor is 1-based (1..13 standard, 14 gold). The pickup sheet is treated
-    // strictly as an ordered frame sheet here. Most importantly, pills never touch
-    // ui_cardspills.png, so a rune/card frame cannot be returned as a pill again.
-    NSInteger index = color - 1;
+    // Use Isaac's PillColor ID directly as the sheet index. Do not subtract 1.
+    NSInteger index = color;
     UIImage *image = EIDGridCrop(self.pillPickupAtlas, index, 32);
     if (!image) image = EIDGridCrop(self.pillPickupAtlas, index, 16);
 
