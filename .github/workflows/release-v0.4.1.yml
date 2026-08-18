@@ -1,0 +1,54 @@
+name: Release v0.4.1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/release-v0.4.1.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - name: Checkout iOS port
+        uses: actions/checkout@v4
+
+      - name: Checkout original EID resources
+        uses: actions/checkout@v4
+        with:
+          repository: wofsauge/External-Item-Descriptions
+          path: upstream-eid
+
+      - name: Install packaging tools
+        run: |
+          if ! command -v dpkg-deb >/dev/null 2>&1; then brew install dpkg; fi
+          if ! command -v rg >/dev/null 2>&1; then brew install ripgrep; fi
+
+      - name: Build release
+        run: make release EID_SOURCE="$GITHUB_WORKSPACE/upstream-eid"
+
+      - name: Create full build archive
+        run: |
+          mkdir -p full-build
+          cp -R dist/. full-build/
+          cp THIRD_PARTY_NOTICES.md full-build/
+          cp README.md full-build/
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent full-build IsaacExternalItemDescriptions-Full-Build.zip
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.4.1 \
+            --target "$GITHUB_SHA" \
+            --title "Isaac External Item Descriptions iOS v0.4.1" \
+            --notes-file docs/RELEASE_NOTES_v0.4.1.md \
+            dist/IsaacExternalItemDescriptions.dylib \
+            dist/IsaacExternalItemDescriptions-rootless.deb \
+            dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip \
+            dist/IsaacExternalItemDescriptions-Embedded.zip \
+            dist/descriptions.json \
+            dist/SHA256SUMS \
+            IsaacExternalItemDescriptions-Full-Build.zip
