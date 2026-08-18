@@ -22,6 +22,7 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDBootstrap.m \
 	$(PROJECT_ROOT)/src/EIDLogger.m \
 	$(PROJECT_ROOT)/src/EIDDescriptionStore.m \
+	$(PROJECT_ROOT)/src/EIDQualityFix.m \
 	$(PROJECT_ROOT)/src/EIDNativeProbe.mm \
 	$(PROJECT_ROOT)/src/EIDOverlayController.m \
 	$(PROJECT_ROOT)/src/EIDParityPresentation.m \
