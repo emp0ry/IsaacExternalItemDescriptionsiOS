@@ -1,9 +1,11 @@
 name: Release v0.4.1
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '.github/workflows/release-v0.4.1.yml'
+      - 'src/EIDCardFrameFix.m'
 
 permissions:
   contents: write
