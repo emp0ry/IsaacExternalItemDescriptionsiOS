@@ -168,11 +168,13 @@ static UIImage *EIDCropImage(UIImage *atlas, id frameValue) {
     id cached = self.cache[key];
     if (cached) return cached == NSNull.null ? nil : cached;
 
-    // Isaac card/rune SubType IDs are 1-based; ANM2 frames are zero-based.
     NSInteger index = subtype - 1;
     UIImage *image = nil;
     if (index >= 0 && index < (NSInteger)self.cardFrames.count) {
         image = EIDCropImage(self.cardAtlas, self.cardFrames[(NSUInteger)index]);
+    }
+    if (!image) {
+        EIDLog(@"no exact card/rune sprite frame for subtype %ld", (long)subtype);
     }
     self.cache[key] = image ?: NSNull.null;
     return image;
@@ -206,10 +208,6 @@ static UIImage *EIDCropImage(UIImage *atlas, id frameValue) {
     if (index >= 0 && index < (NSInteger)self.pillFrames.count) {
         image = EIDCropImage(self.pillAtlas, self.pillFrames[(NSUInteger)index]);
     }
-
-    // Some Isaac resource packs do not expose the pickup animation frames in ANM2.
-    // The pill sheet is still a 32x32 frame grid; use the native color ID as the
-    // frame index rather than falling back to one hard-coded white pill.
     if (!image && self.pillAtlas.CGImage) {
         size_t width = CGImageGetWidth(self.pillAtlas.CGImage);
         size_t height = CGImageGetHeight(self.pillAtlas.CGImage);
@@ -222,6 +220,9 @@ static UIImage *EIDCropImage(UIImage *atlas, id frameValue) {
             image = EIDCropImage(self.pillAtlas, [NSValue valueWithCGRect:frame]);
         }
     }
+    if (!image) {
+        EIDLog(@"no exact pill sprite for effect %ld (color %ld)", (long)subtype, (long)color);
+    }
     self.cache[key] = image ?: NSNull.null;
     return image;
 }
@@ -233,14 +234,18 @@ static UIImage *EIDCropImage(UIImage *atlas, id frameValue) {
 
 @implementation NSObject (EIDPocketArtworkFix)
 - (UIImage *)eid_fixed_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype {
-    UIImage *fixed = nil;
     if (variant == EIDPickupVariantCard) {
-        fixed = [[EIDPocketArtworkResolver shared] cardImageForSubtype:subtype];
-    } else if (variant == EIDPickupVariantPill || variant == EIDPickupVariantHorsePill) {
-        fixed = [[EIDPocketArtworkResolver shared] pillImageForEffectSubtype:subtype
-                                                                      horse:(variant == EIDPickupVariantHorsePill)];
+        // Never fall back to pickup_017_card.png: that file is a full sheet and was
+        // the reason runes/cards could appear as the entire atlas in the overlay.
+        return [[EIDPocketArtworkResolver shared] cardImageForSubtype:subtype];
     }
-    return fixed ?: [self eid_fixed_pocketIconForVariant:variant subtype:subtype];
+    if (variant == EIDPickupVariantPill || variant == EIDPickupVariantHorsePill) {
+        // Likewise, never fall back to the old static white-pill crop. If the exact
+        // native color cannot be resolved, omit the icon rather than show a wrong one.
+        return [[EIDPocketArtworkResolver shared] pillImageForEffectSubtype:subtype
+                                                                     horse:(variant == EIDPickupVariantHorsePill)];
+    }
+    return [self eid_fixed_pocketIconForVariant:variant subtype:subtype];
 }
 @end
 
