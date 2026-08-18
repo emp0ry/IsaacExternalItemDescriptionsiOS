@@ -15,11 +15,11 @@
 static const char *kEIDRunResetSupportedUUID = "F4357753-A25F-30EE-BACF-63709F902895";
 static const uintptr_t kEIDRunResetGameGlobalOffset = 0xac3b90;
 
-struct EIDRemotePointerVector {
+typedef struct {
     uintptr_t begin;
     uintptr_t end;
     uintptr_t capacity;
-};
+} EIDRemotePointerVector;
 
 static BOOL EIDRunResetRead(vm_address_t address, void *destination, vm_size_t size) {
     if (!address || !destination || !size) return NO;
@@ -73,7 +73,7 @@ static uintptr_t EIDCurrentRunIdentity(id probe) {
     if (!EIDRunResetRead((vm_address_t)header + kEIDRunResetGameGlobalOffset,
                          &game, sizeof(game)) || !game) return 0;
 
-    EIDRemotePointerVector vector = {};
+    EIDRemotePointerVector vector = {0};
     if (!EIDRunResetRead(game + playerVectorOffset, &vector, sizeof(vector))) return 0;
     if (!vector.begin || vector.end <= vector.begin || vector.capacity < vector.end) return 0;
     if ((vector.end - vector.begin) % sizeof(uintptr_t) != 0) return 0;
