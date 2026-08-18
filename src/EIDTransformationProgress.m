@@ -200,16 +200,20 @@ static void EIDInstallProgressHook(void) {
     Class cls = NSClassFromString(@"EIDOverlayController");
     if (!cls) return;
 
-    struct Hook { SEL original; SEL replacement; } hooks[] = {
-        { NSSelectorFromString(@"renderPickups:"), @selector(eid_progress_renderPickups:) },
-        { NSSelectorFromString(@"updateMenuModeForGameplay:"), @selector(eid_progress_updateMenuModeForGameplay:) },
+    SEL originals[] = {
+        NSSelectorFromString(@"renderPickups:"),
+        NSSelectorFromString(@"updateMenuModeForGameplay:"),
     };
-    for (const auto &hook : hooks) {
-        Method source = class_getInstanceMethod(NSObject.class, hook.replacement);
+    SEL replacements[] = {
+        @selector(eid_progress_renderPickups:),
+        @selector(eid_progress_updateMenuModeForGameplay:),
+    };
+    for (NSUInteger index = 0; index < 2; index++) {
+        Method source = class_getInstanceMethod(NSObject.class, replacements[index]);
         if (!source) continue;
-        class_addMethod(cls, hook.replacement, method_getImplementation(source), method_getTypeEncoding(source));
-        Method original = class_getInstanceMethod(cls, hook.original);
-        Method replacement = class_getInstanceMethod(cls, hook.replacement);
+        class_addMethod(cls, replacements[index], method_getImplementation(source), method_getTypeEncoding(source));
+        Method original = class_getInstanceMethod(cls, originals[index]);
+        Method replacement = class_getInstanceMethod(cls, replacements[index]);
         if (original && replacement) method_exchangeImplementations(original, replacement);
     }
 }
