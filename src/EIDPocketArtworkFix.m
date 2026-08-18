@@ -10,7 +10,6 @@ static const char *kEIDSupportedUUID = "F4357753-A25F-30EE-BACF-63709F902895";
 static const uintptr_t kEIDGameGlobalOffset = 0xac3b90;
 static const size_t kEIDGameItemPoolOffset = 0x242c0;
 static const size_t kEIDItemPoolPillEffectsOffset = 0xa2c;
-static const uint32_t kEIDPillColorMask = 0x7ff;
 static const uint32_t kEIDGoldenPillColor = 14;
 
 static BOOL EIDReadMemory(vm_address_t address, void *destination, vm_size_t size) {
