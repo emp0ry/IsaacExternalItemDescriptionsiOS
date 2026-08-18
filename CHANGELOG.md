@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 - 2026-08-18
+
+- Added a much closer original External Item Descriptions presentation for iOS, including purple item titles, inline item artwork, original quality sprites, transformation icons, and improved description markup rendering.
+- Added collectible quality metadata and Q0-Q4 quality display.
+- Added transformation metadata, transformation icons, temporary per-run transformation progress tracking, duplicate-item protection, progress caps, and new-run reset behavior.
+- Added localized transformation names using the selected EID language with English fallback.
+- Added original EID inline icon assets and transformation resources to distributable builds.
+- Added full release packaging for rootless jailbreak, LiveContainer, embedded/non-jailbreak, standalone dylib, description database, and SHA256 sums.
+- Expanded GitHub Actions packaging so downloadable full-build artifacts include the bundled EID descriptions and presentation resources.
+
+### Known bugs
+
+- Curse of the Blind can still show item descriptions for hidden collectible pedestals.
+- Rune artwork currently shows the full rune sprite sheet instead of the specific rune icon.
+- Pill artwork is not yet the exact pill shown in-game; identified pills need to use the matching in-game pill appearance instead of the current static/incorrect icon.
+
 ## 0.3.1 - 2026-08-13
 
 - Fixed the menu/gameplay detector becoming stuck after Isaac allocated the
