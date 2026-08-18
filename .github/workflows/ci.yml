@@ -41,14 +41,16 @@ jobs:
           test -f build/IsaacEID.bundle/eid_inline_icons.png
           test -f build/IsaacEID.bundle/eid_inline_icons.anm2
           test -f build/IsaacEID.bundle/eid_inline_icons.json
-          test -f build/IsaacEID.bundle/PixelMplus10-Regular.ttf
+          test -f build/IsaacEID.bundle/eid_transform_icons.png
+          test -f build/IsaacEID.bundle/eid_transform_icons.anm2
+          test -f build/IsaacEID.bundle/transformations.json
           grep -q '"Quality0"' build/IsaacEID.bundle/eid_inline_icons.json
           grep -q '"Quality4"' build/IsaacEID.bundle/eid_inline_icons.json
+          grep -q '"Guppy"' build/IsaacEID.bundle/transformations.json
           unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/descriptions.json'
           unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.png'
-          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.anm2'
-          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_inline_icons.json'
-          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/PixelMplus10-Regular.ttf'
+          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/eid_transform_icons.png'
+          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip | grep 'IsaacEID.bundle/transformations.json'
 
       - name: Create one full downloadable archive
         run: |
