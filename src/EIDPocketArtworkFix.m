@@ -108,18 +108,6 @@ static NSDictionary<NSString *, NSArray *> *EIDParseAnimations(NSString *path) {
     return delegate.animations.copy;
 }
 
-static NSArray *EIDBestAnimation(NSDictionary<NSString *, NSArray *> *animations,
-                                 NSString *needle, NSUInteger minimumFrames) {
-    NSArray *best = nil;
-    for (NSString *name in animations) {
-        if ([name rangeOfString:needle options:NSCaseInsensitiveSearch].location == NSNotFound) continue;
-        NSArray *frames = animations[name];
-        if (![frames isKindOfClass:NSArray.class] || frames.count < minimumFrames) continue;
-        if (!best || frames.count > best.count) best = frames;
-    }
-    return best ?: @[];
-}
-
 static UIImage *EIDCropImage(UIImage *atlas, id frameValue) {
     if (!atlas.CGImage || ![frameValue isKindOfClass:NSValue.class]) return nil;
     CGRect frame = [frameValue CGRectValue];
@@ -145,10 +133,9 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
 
 @interface EIDPocketArtworkResolver : NSObject
 @property(nonatomic, strong) UIImage *cardFrontAtlas;
-@property(nonatomic, strong) UIImage *cardPillAtlas;
+@property(nonatomic, strong) UIImage *cardPickupAtlas;
+@property(nonatomic, strong) UIImage *pillPickupAtlas;
 @property(nonatomic, copy) NSArray *cardFrames;
-@property(nonatomic, copy) NSArray *runeFrames;
-@property(nonatomic, copy) NSArray *pillFrames;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id> *cache;
 + (instancetype)shared;
 - (UIImage *)cardImageForSubtype:(NSInteger)subtype;
@@ -169,18 +156,17 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
     NSString *animationPath = EIDGameResource(@"gfx/ui/ui_cardspills.anm2");
     NSDictionary *animations = EIDParseAnimations(animationPath);
     NSString *frontPath = EIDGameResource(@"gfx/ui/ui_cardfronts.png");
-    NSString *spillPath = EIDGameResource(@"gfx/ui/ui_cardspills.png");
+    NSString *cardPickupPath = EIDGameResource(@"gfx/items/pick ups/pickup_017_card.png");
+    NSString *pillPickupPath = EIDGameResource(@"gfx/items/pick ups/pickup_007_pill.png");
+
     _cardFrontAtlas = frontPath.length ? [UIImage imageWithContentsOfFile:frontPath] : nil;
-    _cardPillAtlas = spillPath.length ? [UIImage imageWithContentsOfFile:spillPath] : nil;
-
+    _cardPickupAtlas = cardPickupPath.length ? [UIImage imageWithContentsOfFile:cardPickupPath] : nil;
+    _pillPickupAtlas = pillPickupPath.length ? [UIImage imageWithContentsOfFile:pillPickupPath] : nil;
     _cardFrames = [animations[@"CardFronts"] isKindOfClass:NSArray.class] ? animations[@"CardFronts"] : @[];
-    _runeFrames = EIDBestAnimation(animations, @"rune", 8);
-    _pillFrames = EIDBestAnimation(animations, @"pill", 13);
 
-    EIDLog(@"pocket artwork mappings: cards %lu, runes %lu, pills %lu, fronts %@, spills %@",
-           (unsigned long)_cardFrames.count, (unsigned long)_runeFrames.count,
-           (unsigned long)_pillFrames.count, _cardFrontAtlas ? @"yes" : @"no",
-           _cardPillAtlas ? @"yes" : @"no");
+    EIDLog(@"pocket artwork sheets: card fronts %@, card pickup %@, pill pickup %@, card frames %lu",
+           _cardFrontAtlas ? @"yes" : @"no", _cardPickupAtlas ? @"yes" : @"no",
+           _pillPickupAtlas ? @"yes" : @"no", (unsigned long)_cardFrames.count);
     return self;
 }
 - (UIImage *)cardImageForSubtype:(NSInteger)subtype {
@@ -189,26 +175,23 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
     id cached = self.cache[key];
     if (cached) return cached == NSNull.null ? nil : cached;
 
+    NSInteger index = subtype - 1;
     UIImage *image = nil;
-    NSInteger directIndex = subtype - 1;
-    if (directIndex >= 0 && directIndex < (NSInteger)self.cardFrames.count) {
-        image = EIDCropImage(self.cardFrontAtlas, self.cardFrames[(NSUInteger)directIndex]);
+
+    // Tarot/suit cards: use the UI card-front mapping first because this is already
+    // confirmed working on-device.
+    if (index >= 0 && index < (NSInteger)self.cardFrames.count) {
+        image = EIDCropImage(self.cardFrontAtlas, self.cardFrames[(NSUInteger)index]);
     }
 
-    // Standard runes occupy Card IDs 32...41. Some Isaac builds store these in
-    // their own ANM2 animation instead of extending CardFronts.
-    if (!image && subtype >= 32 && subtype <= 41 && self.runeFrames.count) {
-        NSInteger runeIndex = subtype - 32;
-        if (runeIndex < (NSInteger)self.runeFrames.count) {
-            id frame = self.runeFrames[(NSUInteger)runeIndex];
-            image = EIDCropImage(self.cardFrontAtlas, frame);
-            if (!image) image = EIDCropImage(self.cardPillAtlas, frame);
-        }
-    }
+    // Runes and any card IDs not represented by CardFronts: crop ONE frame from the
+    // actual pickup card sheet. Never return pickup_017_card.png as a whole image.
+    if (!image) image = EIDGridCrop(self.cardPickupAtlas, index, 32);
+    if (!image) image = EIDGridCrop(self.cardPickupAtlas, index, 16);
 
-    // Last safe fallback: crop exactly one UI cell, never the full sheet.
-    if (!image) image = EIDGridCrop(self.cardFrontAtlas, directIndex, 32);
-    if (!image) image = EIDGridCrop(self.cardFrontAtlas, directIndex, 16);
+    // Keep the existing safe UI-grid fallback for unusual card resource layouts.
+    if (!image) image = EIDGridCrop(self.cardFrontAtlas, index, 32);
+    if (!image) image = EIDGridCrop(self.cardFrontAtlas, index, 16);
 
     if (!image) EIDLog(@"no individual card/rune artwork for subtype %ld", (long)subtype);
     self.cache[key] = image ?: NSNull.null;
@@ -238,13 +221,12 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
     id cached = self.cache[key];
     if (cached) return cached == NSNull.null ? nil : cached;
 
-    UIImage *image = nil;
+    // PillColor is 1-based (1..13 standard, 14 gold). The pickup sheet is treated
+    // strictly as an ordered frame sheet here. Most importantly, pills never touch
+    // ui_cardspills.png, so a rune/card frame cannot be returned as a pill again.
     NSInteger index = color - 1;
-    if (index >= 0 && index < (NSInteger)self.pillFrames.count) {
-        image = EIDCropImage(self.cardPillAtlas, self.pillFrames[(NSUInteger)index]);
-    }
-    if (!image) image = EIDGridCrop(self.cardPillAtlas, index, 32);
-    if (!image) image = EIDGridCrop(self.cardPillAtlas, index, 16);
+    UIImage *image = EIDGridCrop(self.pillPickupAtlas, index, 32);
+    if (!image) image = EIDGridCrop(self.pillPickupAtlas, index, 16);
 
     if (!image) {
         EIDLog(@"no individual pill artwork for effect %ld color %ld", (long)subtype, (long)color);
