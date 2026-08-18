@@ -109,14 +109,20 @@ def main() -> int:
     inline_png = gfx / "eid_inline_icons.png"
     transform_anm2 = gfx / "eid_transform_icons.anm2"
     transform_png = gfx / "eid_transform_icons.png"
+    cardspill_anm2 = gfx / "eid_cardspills.anm2"
+    cardspill_png = gfx / "eid_cardspills.png"
     data = source / "features/eid_data.lua"
-    required = (inline_anm2, inline_png, transform_anm2, transform_png, data)
+    visual_resources = (
+        inline_anm2, inline_png, transform_anm2, transform_png,
+        cardspill_anm2, cardspill_png,
+    )
+    required = visual_resources + (data,)
     if not all(path.is_file() for path in required):
         print("error: source is not a compatible External-Item-Descriptions checkout", file=sys.stderr)
         return 2
 
     output.mkdir(parents=True, exist_ok=True)
-    for path in required[:4]:
+    for path in visual_resources:
         shutil.copy2(path, output / path.name)
 
     mapping: dict[str, dict[str, object]] = {}
@@ -156,7 +162,7 @@ def main() -> int:
     )
     print(
         f"imported {len(mapping)} inline icons, {len(assignments)} transformation assignments, "
-        f"and {len(localized_names)} transformation languages"
+        f"{len(localized_names)} transformation languages, and original card/pill artwork"
     )
     return 0
 
