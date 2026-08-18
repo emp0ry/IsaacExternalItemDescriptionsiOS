@@ -69,7 +69,7 @@ static UIImage *EIDTrimTransparentPadding(UIImage *image) {
         ? [[NSUserDefaults standardUserDefaults] doubleForKey:@"IsaacEIDScale"] : 1.0;
     scale = MIN(1.8, MAX(0.5, scale));
 
-    UIFont *headerFont = [UIFont systemFontOfSize:19.0 * scale weight:UIFontWeightHeavy];
+    UIFont *headerFont = [UIFont systemFontOfSize:22.0 * scale weight:UIFontWeightHeavy];
     [text addAttribute:NSFontAttributeName value:headerFont range:NSMakeRange(0, headerLength)];
 
     __block NSUInteger attachmentIndex = 0;
@@ -84,14 +84,14 @@ static UIImage *EIDTrimTransparentPadding(UIImage *image) {
         if (attachmentIndex == 1) {
             UIImage *trimmed = EIDTrimTransparentPadding(attachment.image);
             attachment.image = trimmed;
-            CGFloat visibleHeight = 30.0 * scale;
+            CGFloat visibleHeight = 32.0 * scale;
             CGFloat ratio = trimmed.size.height > 0 ? trimmed.size.width / trimmed.size.height : 1.0;
-            attachment.bounds = CGRectMake(0, -6.0 * scale, visibleHeight * ratio, visibleHeight);
+            attachment.bounds = CGRectMake(0, -7.0 * scale, visibleHeight * ratio, visibleHeight);
         } else if (attachmentIndex == 2 && range.location < headerLength) {
             UIImage *quality = attachment.image;
-            CGFloat h = 12.5 * scale;
+            CGFloat h = 11.5 * scale;
             CGFloat ratio = quality.size.height > 0 ? quality.size.width / quality.size.height : 1.0;
-            attachment.bounds = CGRectMake(0, -1.5 * scale, h * ratio, h);
+            attachment.bounds = CGRectMake(0, -1.0 * scale, h * ratio, h);
         } else {
             UIImage *icon = attachment.image;
             CGFloat h = 15.5 * scale;
@@ -101,9 +101,9 @@ static UIImage *EIDTrimTransparentPadding(UIImage *image) {
     }];
 
     NSMutableParagraphStyle *headerParagraph = [[NSMutableParagraphStyle alloc] init];
-    headerParagraph.minimumLineHeight = 30.0 * scale;
-    headerParagraph.maximumLineHeight = 30.0 * scale;
-    headerParagraph.paragraphSpacing = 7.0 * scale;
+    headerParagraph.minimumLineHeight = 32.0 * scale;
+    headerParagraph.maximumLineHeight = 32.0 * scale;
+    headerParagraph.paragraphSpacing = 8.0 * scale;
     NSUInteger headerRangeLength = MIN(text.length, headerLength + (firstNewline.location == NSNotFound ? 0 : 1));
     [text addAttribute:NSParagraphStyleAttributeName value:headerParagraph range:NSMakeRange(0, headerRangeLength)];
 
@@ -115,7 +115,7 @@ static UIImage *EIDTrimTransparentPadding(UIImage *image) {
 }
 @end
 
-__attribute__((constructor)) static void EIDInstallHeaderTuning(void) {
+static void EIDApplyHeaderTuningSwizzle(void) {
     Class cls = NSClassFromString(@"EIDOverlayController");
     if (!cls) return;
     SEL tunedSelector = @selector(eid_tuned_renderPickups:);
@@ -125,4 +125,10 @@ __attribute__((constructor)) static void EIDInstallHeaderTuning(void) {
     Method original = class_getInstanceMethod(cls, NSSelectorFromString(@"renderPickups:"));
     Method tuned = class_getInstanceMethod(cls, tunedSelector);
     if (original && tuned) method_exchangeImplementations(original, tuned);
+}
+
+__attribute__((constructor)) static void EIDInstallHeaderTuning(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        EIDApplyHeaderTuningSwizzle();
+    });
 }
