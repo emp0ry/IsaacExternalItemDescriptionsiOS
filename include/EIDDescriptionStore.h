@@ -9,6 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, copy, readonly) NSString *name;
 @property(nonatomic, copy, readonly) NSString *detail;
 @property(nonatomic, copy, readonly, nullable) NSString *iconPath;
+@property(nonatomic, readonly) NSInteger quality;
 - (instancetype)initWithCollectibleID:(NSInteger)collectibleID
                                   name:(NSString *)name
                                 detail:(NSString *)detail
@@ -18,6 +19,12 @@ NS_ASSUME_NONNULL_BEGIN
                                   name:(NSString *)name
                                 detail:(NSString *)detail
                               iconPath:(nullable NSString *)iconPath;
+- (instancetype)initWithPickupVariant:(NSInteger)pickupVariant
+                               subtype:(NSInteger)subtype
+                                  name:(NSString *)name
+                                detail:(NSString *)detail
+                              iconPath:(nullable NSString *)iconPath
+                               quality:(NSInteger)quality;
 @end
 
 @interface EIDDescriptionStore : NSObject
