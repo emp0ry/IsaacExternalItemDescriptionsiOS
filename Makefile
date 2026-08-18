@@ -14,8 +14,9 @@ EMBEDDED_STAGE := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions-Embedded
 EMBEDDED_ZIP := $(PROJECT_ROOT)/dist/IsaacExternalItemDescriptions-Embedded.zip
 DIST := $(PROJECT_ROOT)/dist
 INCLUDE_DESCRIPTION_DB ?= 1
-DESCRIPTION_DB := $(or $(wildcard $(PROJECT_ROOT)/build/IsaacEID.bundle/descriptions.json),$(wildcard $(PROJECT_ROOT)/data/descriptions.json))
+BUNDLED_DESCRIPTION_DB := $(PROJECT_ROOT)/data/descriptions.json
 PARITY_BUNDLE := $(PROJECT_ROOT)/build/IsaacEID.bundle
+STAGED_DESCRIPTION_DB := $(PARITY_BUNDLE)/descriptions.json
 
 SOURCES := \
 	$(PROJECT_ROOT)/src/EIDBootstrap.m \
@@ -25,19 +26,28 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDOverlayController.m \
 	$(PROJECT_ROOT)/src/EIDParityPresentation.m
 
-.PHONY: all dylib descriptions parity-assets package livecontainer audit test release clean
+.PHONY: all dylib descriptions parity-assets stage-release-bundle package livecontainer audit test release clean
 
 all: dylib package
 
 descriptions:
 	@test -n "$(EID_SOURCE)" || (echo "Set EID_SOURCE=/path/to/External-Item-Descriptions"; exit 2)
 	mkdir -p "$(PARITY_BUNDLE)"
-	python3 "$(PROJECT_ROOT)/tools/import-eid.py" "$(EID_SOURCE)" "$(PARITY_BUNDLE)/descriptions.json"
+	python3 "$(PROJECT_ROOT)/tools/import-eid.py" "$(EID_SOURCE)" "$(STAGED_DESCRIPTION_DB)"
 
 parity-assets:
 	@test -n "$(EID_SOURCE)" || (echo "Set EID_SOURCE=/path/to/External-Item-Descriptions"; exit 2)
 	mkdir -p "$(PARITY_BUNDLE)"
 	python3 "$(PROJECT_ROOT)/tools/import-eid-assets.py" "$(EID_SOURCE)" "$(PARITY_BUNDLE)"
+
+stage-release-bundle:
+	mkdir -p "$(PARITY_BUNDLE)"
+	@test -f "$(BUNDLED_DESCRIPTION_DB)" || (echo "Bundled descriptions database is missing: $(BUNDLED_DESCRIPTION_DB)"; exit 2)
+	cp "$(BUNDLED_DESCRIPTION_DB)" "$(STAGED_DESCRIPTION_DB)"
+	@if test -n "$(EID_SOURCE)"; then \
+		$(MAKE) parity-assets EID_SOURCE="$(EID_SOURCE)"; \
+	fi
+	@test -f "$(STAGED_DESCRIPTION_DB)"
 
 dylib:
 	mkdir -p "$(PROJECT_ROOT)/build"
@@ -55,7 +65,11 @@ package: dylib
 	cp "$(PROJECT_ROOT)/package/control" "$(DEB_STAGE)/DEBIAN/control"
 	cp "$(PROJECT_ROOT)/package/IsaacExternalItemDescriptions.plist" "$(DEB_STAGE)/var/jb/Library/MobileSubstrate/DynamicLibraries/IsaacExternalItemDescriptions.plist"
 	cp "$(DYLIB)" "$(DEB_STAGE)/var/jb/Library/MobileSubstrate/DynamicLibraries/IsaacExternalItemDescriptions.dylib"
-	@if test "$(INCLUDE_DESCRIPTION_DB)" = "1" && test -d "$(PARITY_BUNDLE)"; then mkdir -p "$(DEB_STAGE)/var/jb/Library/Application Support/IsaacExternalItemDescriptions"; cp -R "$(PARITY_BUNDLE)/." "$(DEB_STAGE)/var/jb/Library/Application Support/IsaacExternalItemDescriptions/"; fi
+	@if test "$(INCLUDE_DESCRIPTION_DB)" = "1"; then \
+		test -f "$(STAGED_DESCRIPTION_DB)" || (echo "Staged EID bundle is missing descriptions.json"; exit 2); \
+		mkdir -p "$(DEB_STAGE)/var/jb/Library/Application Support/IsaacExternalItemDescriptions"; \
+		cp -R "$(PARITY_BUNDLE)/." "$(DEB_STAGE)/var/jb/Library/Application Support/IsaacExternalItemDescriptions/"; \
+	fi
 	mkdir -p "$(PROJECT_ROOT)/packages"
 	dpkg-deb --root-owner-group --build "$(DEB_STAGE)" "$(DEB)"
 
@@ -65,7 +79,11 @@ livecontainer: dylib
 	cp "$(DYLIB)" "$(LIVECONTAINER_FRAMEWORK)/IsaacExternalItemDescriptions"
 	cp "$(PROJECT_ROOT)/livecontainer/Info.plist" "$(LIVECONTAINER_FRAMEWORK)/Info.plist"
 	chmod 755 "$(LIVECONTAINER_FRAMEWORK)/IsaacExternalItemDescriptions"
-	@if test "$(INCLUDE_DESCRIPTION_DB)" = "1" && test -d "$(PARITY_BUNDLE)"; then mkdir -p "$(LIVECONTAINER_FRAMEWORK)/Resources/IsaacEID.bundle"; cp -R "$(PARITY_BUNDLE)/." "$(LIVECONTAINER_FRAMEWORK)/Resources/IsaacEID.bundle/"; fi
+	@if test "$(INCLUDE_DESCRIPTION_DB)" = "1"; then \
+		test -f "$(STAGED_DESCRIPTION_DB)" || (echo "Staged EID bundle is missing descriptions.json"; exit 2); \
+		mkdir -p "$(LIVECONTAINER_FRAMEWORK)/Resources/IsaacEID.bundle"; \
+		cp -R "$(PARITY_BUNDLE)/." "$(LIVECONTAINER_FRAMEWORK)/Resources/IsaacEID.bundle/"; \
+	fi
 	mkdir -p "$(PROJECT_ROOT)/packages"; rm -f "$(LIVECONTAINER_ZIP)"
 	/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$(LIVECONTAINER_FRAMEWORK)" "$(LIVECONTAINER_ZIP)"
 	python3 "$(PROJECT_ROOT)/tests/test_livecontainer_package.py" "$(LIVECONTAINER_FRAMEWORK)" "$(LIVECONTAINER_ZIP)"
@@ -81,16 +99,28 @@ test:
 	zsh -n "$(PROJECT_ROOT)/tools/patch-ipa.sh"
 
 release:
-	rm -rf "$(DIST)"; $(MAKE) test
-	@test -f "$(DESCRIPTION_DB)" || (echo "Bundled descriptions database is missing"; exit 2)
+	rm -rf "$(DIST)"
+	$(MAKE) test
+	$(MAKE) stage-release-bundle EID_SOURCE="$(EID_SOURCE)"
 	$(MAKE) package INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) livecontainer INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) audit EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	mkdir -p "$(DIST)"
-	cp "$(DYLIB)" "$(DIST)/IsaacExternalItemDescriptions.dylib"; cp "$(DEB)" "$(DIST)/IsaacExternalItemDescriptions-rootless.deb"; cp "$(LIVECONTAINER_ZIP)" "$(DIST)/IsaacExternalItemDescriptions-LiveContainer.framework.zip"; cp "$(DESCRIPTION_DB)" "$(DIST)/descriptions.json"
-	rm -rf "$(EMBEDDED_STAGE)"; mkdir -p "$(EMBEDDED_STAGE)/IsaacEID.bundle"; cp "$(DYLIB)" "$(EMBEDDED_STAGE)/IsaacExternalItemDescriptions.dylib"; cp -R "$(PARITY_BUNDLE)/." "$(EMBEDDED_STAGE)/IsaacEID.bundle/"
+	cp "$(DYLIB)" "$(DIST)/IsaacExternalItemDescriptions.dylib"
+	cp "$(DEB)" "$(DIST)/IsaacExternalItemDescriptions-rootless.deb"
+	cp "$(LIVECONTAINER_ZIP)" "$(DIST)/IsaacExternalItemDescriptions-LiveContainer.framework.zip"
+	cp "$(STAGED_DESCRIPTION_DB)" "$(DIST)/descriptions.json"
+	rm -rf "$(EMBEDDED_STAGE)"
+	mkdir -p "$(EMBEDDED_STAGE)/IsaacEID.bundle"
+	cp "$(DYLIB)" "$(EMBEDDED_STAGE)/IsaacExternalItemDescriptions.dylib"
+	cp -R "$(PARITY_BUNDLE)/." "$(EMBEDDED_STAGE)/IsaacEID.bundle/"
 	/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$(EMBEDDED_STAGE)" "$(EMBEDDED_ZIP)"
-	cd "$(DIST)" && shasum -a 256 IsaacExternalItemDescriptions.dylib IsaacExternalItemDescriptions-rootless.deb IsaacExternalItemDescriptions-LiveContainer.framework.zip IsaacExternalItemDescriptions-Embedded.zip descriptions.json > SHA256SUMS
+	cd "$(DIST)" && shasum -a 256 \
+		IsaacExternalItemDescriptions.dylib \
+		IsaacExternalItemDescriptions-rootless.deb \
+		IsaacExternalItemDescriptions-LiveContainer.framework.zip \
+		IsaacExternalItemDescriptions-Embedded.zip \
+		descriptions.json > SHA256SUMS
 
 clean:
 	rm -rf "$(PROJECT_ROOT)/build" "$(PROJECT_ROOT)/package/stage" "$(DIST)"
