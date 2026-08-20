@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Added a top-left pause-only inventory browser for collectibles, active items,
+  trinkets, held cards and runes, identified pills, and all transformation
+  progress.
+- Added native pause detection from the verified Repentance PauseScreen state.
+- Replaced session-only transformation reconstruction with Isaac's persisted
+  15-entry PlayerForm counter array, preserving progress across active-item
+  replacement and save reloads.
+- Added native Super Bum familiar detection for correct post-merge progress.
+
 ## 0.5.0 - 2026-08-20
 
 - Fixed Curse of the Blind spoiler protection by reading the native level curse mask and suppressing every collectible pedestal while the curse is active.

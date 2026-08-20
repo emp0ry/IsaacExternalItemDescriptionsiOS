@@ -38,9 +38,9 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Untouched floor cards and runes remain hidden until the game marks them touched or a player holds them in a native pocket slot.
 - Pills remain hidden until Isaac's native ItemPool state identifies their effect.
 - Curse of the Blind suppresses every collectible description using the native level curse mask. The forced-blind field and question-mark sprite are retained as additional guards.
-- Transformation progress is calculated from the player's real owned-collectible table instead of nearby-item observations.
-- Replaced active items remain counted for the current run, matching persistent transformation contribution.
-- Native run identity and seed tracking reset learned cards, runes, and transformation history when a new run begins.
+- Transformation progress is read from the player's native persisted transformation state instead of nearby-item observations.
+- The 14 normal transformations use Isaac's persisted native PlayerForm counters, so replaced active items and saved/reloaded runs keep their real progress. Super Bum completion is read from its native merged familiar.
+- Native run identity and seed tracking reset learned cards and run-only knowledge when a new run begins.
 
 ### Artwork and presentation
 
@@ -64,6 +64,14 @@ The **EID ⚙** button appears in the bottom-right corner while Isaac is in a me
 - Dataset/build information and original EID credits
 
 The default overlay position is 140 px from the left and 50 px from the top.
+
+### Pause inventory
+
+While a run is paused, an **EID Items** button appears in the top-left corner.
+It opens a scrollable browser containing the player's current collectibles,
+active item, trinkets, held cards and runes, identified pills, and progress for
+all transformations. Selecting an item closes the browser and renders its full
+EID description. The button and browser disappear as soon as gameplay resumes.
 
 ## Compatibility
 
@@ -154,9 +162,9 @@ The description importer combines upstream `ab+` base tables with `rep` override
 
 ## How it works
 
-The native iOS game has no desktop Lua mod API. This project locates the supported Isaac executable by UUID, resolves native C++ RTTI for pickup, player, slot, effect, and grid-spike types, and reads bounded snapshots from its own process.
+The native iOS game has no desktop Lua mod API. This project locates the supported Isaac executable by UUID, resolves native C++ RTTI for pickup, player, familiar, slot, effect, and grid-spike types, and reads bounded snapshots from its own process.
 
-Those snapshots provide nearby pickup identity, player position, card/rune knowledge, pill knowledge, owned collectibles, level curses, room effects, Sacrifice Room grid state, and run identity. The mod does not patch save data or write into Isaac's native gameplay objects.
+Those snapshots provide nearby pickup identity, player position, card/rune knowledge, pill knowledge, current inventory, persisted transformation counters, native pause state, level curses, room effects, Sacrifice Room grid state, and run identity. The mod does not patch save data or write into Isaac's native gameplay objects.
 
 Verified offsets and their validation are documented in [Native layout](docs/NATIVE_LAYOUT.md). Device and packaging results are recorded in [Test matrix](docs/TEST_MATRIX.md), and presentation differences are tracked in [EID parity](docs/EID_PARITY.md).
 

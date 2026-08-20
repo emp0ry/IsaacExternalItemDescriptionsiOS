@@ -25,13 +25,20 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 @property(nonatomic, copy, readonly) NSString *status;
 @property(nonatomic, readonly, getter=isSupportedBuild) BOOL supportedBuild;
 @property(atomic, readonly, getter=isGameplayActive) BOOL gameplayActive;
+@property(atomic, readonly, getter=isPauseStateAvailable) BOOL pauseStateAvailable;
+@property(atomic, readonly, getter=isPaused) BOOL paused;
 @property(atomic, readonly) uint32_t runSeed;
 @property(atomic, readonly) NSUInteger runCounter;
 @property(atomic, readonly, getter=isOwnedCollectibleStateAvailable) BOOL ownedCollectibleStateAvailable;
+@property(atomic, readonly, getter=isInventoryStateAvailable) BOOL inventoryStateAvailable;
+@property(atomic, readonly, getter=isTransformationStateAvailable) BOOL transformationStateAvailable;
+@property(atomic, readonly, getter=isSuperBumActive) BOOL superBumActive;
 - (void)start;
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups;
+- (NSArray<EIDPickupIdentity *> *)currentInventoryItems;
 - (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID;
 - (NSInteger)transformationCollectibleCountForID:(NSInteger)collectibleID;
+- (NSInteger)nativeTransformationCounterForFormID:(NSInteger)formID;
 // Compatibility API used by early integrations and exported diagnostic helpers.
 - (NSArray<NSNumber *> *)currentCollectibleIDs;
 @end

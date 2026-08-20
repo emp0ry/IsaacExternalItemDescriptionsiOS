@@ -33,10 +33,13 @@ allocator and does not directly dereference mutable game allocations.
 | Pickup forced-blind byte | `0x562` | ARM64 disassembly of native `SetForceBlind` |
 | Crane Game prize collectible | `0x570` | ARM64 disassembly of `Entity_Slot::SetPrizeCollectible` |
 | Player pocket items | `Entity_Player + 0x1c10` | Live held-card and rune identity matched pocket slots |
+| Player trinket slots | `Entity_Player + 0x1ab0` | Native GetTrinket call sites and both live slots |
 | Player collectible-count table | `Entity_Player + 0x1ab8` | Live inventory changes matched collected items |
+| Player transformation counters | `Entity_Player + 0x1c54` | Native 15-entry add/remove, save, and restore loops |
 | Game level curse mask | `Game + 0x0c` | Live Curse of the Blind state matched mask `0x40` |
 | Game current room | `Game + 0x21550` | Live room transitions matched room descriptor state |
 | Game run seed | `Game + 0x25d44` | Stable within a run and changed when starting a new run |
+| Game pause-menu state | `Game + 0x10dfd8` | PauseScreen state switch; valid values are `0...3` |
 | Room grid-entity table | `Room + 0x30` | Live Sacrifice Room spikes and activation count |
 | Game ItemPool | `Game + 0x242c0` | Native `GetPillEffect` call sites |
 | ItemPool pill effect array | `ItemPool + 0xa2c` | ARM64 `GetPillEffect` implementation |
@@ -71,8 +74,34 @@ iOS drops that create a new entity with `Touched` cleared. This learned identity
 lasts only for the current run. A newly discovered floor card is therefore
 still hidden until it is actually held by a player.
 
-Transformation progress comes from the player's native collectible-count
-table. Active collectibles are remembered after replacement for the duration
-of the run, matching the way transformation contribution persists. A native
-run seed plus a debounced empty-player state resets this history when a new run
-starts.
+The native `Entity_Player::_playerForms` array has 15 persisted `int32`
+counters starting at `+0x1c54`. Isaac copies the complete 60-byte array into
+and out of its player save state. EID transformation IDs are mapped to the
+native PlayerForm order rather than treated as the same enum:
+
+| EID | Native | Form |
+| ---: | ---: | --- |
+| 1 | 0 | Guppy |
+| 2 | 2 | Fun Guy |
+| 3 | 1 | Lord of the Flies |
+| 4 | 7 | Conjoined |
+| 5 | 5 | Spun |
+| 6 | 6 | Yes Mother? |
+| 7 | 9 | Oh Crap |
+| 8 | 4 | Bob |
+| 9 | 8 | Leviathan |
+| 10 | 3 | Seraphim |
+| 12 | 10 | Bookworm |
+| 13 | 12 | Spider Baby |
+| 14 | 11 | Adult |
+| 15 | 13 | Stompy |
+
+Super Bum is a familiar merge rather than a native PlayerForm. Its partial
+progress uses the three source collectible identities, and completion is
+verified from the live `Entity_Familiar` type `3`, variant `102`, so the display
+remains `3/3` after the source familiars merge. In co-op, each player has an
+independent counter array; the overlay displays the highest valid per-player
+counter instead of incorrectly summing two players.
+
+The pause browser reads PauseScreen state `1...3` as paused and `0` as live
+gameplay. An invalid read fails closed and leaves the button hidden.

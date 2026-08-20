@@ -33,7 +33,9 @@
 | Untouched-card identity guard | Pass: untouched cards stay hidden; held cards are learned from the four native player pocket slots |
 | Native item artwork | Pass: exact Isaac collectible/trinket paths and subtype-aware pocket-item artwork rendered beside text |
 | Native card/rune/pill artwork | Pass: subtype-aware card and rune frames plus original EID pill-atlas frames |
-| Transformation progress | Pass: native owned-collectible counts, duplicate handling, active-item run history, and run-seed reset |
+| Transformation progress | Pass: live persisted PlayerForm counters survived a save reload and reported Conjoined `1/3` plus Bookworm `1/3`; Super Bum uses verified familiar type/variant state |
+| Pause detection | Pass: live PauseScreen state changed `0 -> 1 -> 0` on the supported device build |
+| Pause inventory | Pass: top-left button rendered 3 current items and all 15 transformations; item 312 selection opened its description; UI hid on resume |
 | Dice Room descriptions | Pass: live native face detection and localized effect description |
 | Sacrifice Room descriptions | Pass: native grid-spike detection and live next-payout counter |
 | Description removal transition | Pass: title, icon, and body now disappear together after collection |

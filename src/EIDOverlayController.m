@@ -2,6 +2,7 @@
 #import "EIDDescriptionStore.h"
 #import "EIDNativeProbe.h"
 #import "EIDLogger.h"
+#import "EIDTransformationProgress.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -84,7 +85,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @implementation EIDPassthroughView
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = [super hitTest:point withEvent:event];
-    return [hit isKindOfClass:UIControl.class] ? hit : nil;
+    if (!hit || hit == self) return nil;
+    if ([hit isKindOfClass:UIControl.class]) return hit;
+    // Scroll views and table-style rows inside EID cards must receive drags.
+    // Everything else remains transparent to Isaac's own touch surface.
+    for (UIView *view = hit; view && view != self; view = view.superview) {
+        if (view.tag == 0xE1D) return hit;
+    }
+    return nil;
 }
 @end
 
@@ -98,6 +106,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, strong) UILabel *diagnosticsLabel;
 @property(nonatomic, strong) UIButton *settingsButton;
 @property(nonatomic, strong) UIView *settingsCard;
+@property(nonatomic, strong) UIButton *inventoryButton;
+@property(nonatomic, strong) UIView *inventoryCard;
+@property(nonatomic, strong) UIScrollView *inventoryScrollView;
 @property(nonatomic, strong) UIButton *settingsLanguageButton;
 @property(nonatomic, strong) UILabel *settingsPositionLabel;
 @property(nonatomic, strong) UILabel *settingsVersionLabel;
@@ -116,6 +127,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic) BOOL loggedOverlayLayout;
 @property(nonatomic) BOOL menuMode;
 @property(nonatomic) NSUInteger consecutiveMenuScans;
+@property(nonatomic, strong) EIDPickupIdentity *selectedInventoryItem;
+@property(nonatomic, copy) NSString *inventorySignature;
+@property(nonatomic) BOOL pauseUIActive;
 @end
 
 @implementation EIDOverlayController
@@ -124,6 +138,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     if (self) {
         _store = store;
         _probe = probe;
+        [EIDTransformationProgress shared].probe = probe;
         _lastPickups = @[];
         _pocketIconCache = [NSMutableDictionary dictionary];
     }
@@ -233,6 +248,19 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     [settingsButton addTarget:self action:@selector(toggleSettings:) forControlEvents:UIControlEventTouchUpInside];
     settingsButton.hidden = !self.menuMode;
 
+    UIButton *inventoryButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    inventoryButton.frame = CGRectMake(14, 14, 88, 34);
+    inventoryButton.backgroundColor = [UIColor colorWithWhite:0 alpha:0.78];
+    inventoryButton.layer.cornerRadius = 8;
+    inventoryButton.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.28].CGColor;
+    inventoryButton.layer.borderWidth = 1;
+    inventoryButton.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [inventoryButton setTitle:@"EID Items" forState:UIControlStateNormal];
+    [inventoryButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [inventoryButton addTarget:self action:@selector(toggleInventory:)
+              forControlEvents:UIControlEventTouchUpInside];
+    inventoryButton.hidden = YES;
+
     CGFloat cardWidth = MIN(410, window.bounds.size.width - 40);
     CGFloat cardHeight = MIN(310, window.bounds.size.height - 30);
     UIView *settingsCard = [[UIView alloc] initWithFrame:
@@ -245,6 +273,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     settingsCard.layer.cornerRadius = 14;
     settingsCard.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
     settingsCard.layer.borderWidth = 1;
+    settingsCard.tag = 0xE1D;
     settingsCard.hidden = YES;
 
     UILabel *settingsTitle = [[UILabel alloc] initWithFrame:CGRectMake(18, 10, cardWidth - 72, 27)];
@@ -341,10 +370,54 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     creditsLabel.textAlignment = NSTextAlignmentCenter;
     [settingsCard addSubview:creditsLabel];
 
+    CGFloat inventoryWidth = MIN(440, window.bounds.size.width - 30);
+    CGFloat inventoryHeight = MIN(350, window.bounds.size.height - 24);
+    UIView *inventoryCard = [[UIView alloc] initWithFrame:
+        CGRectMake((window.bounds.size.width - inventoryWidth) * 0.5,
+                   (window.bounds.size.height - inventoryHeight) * 0.5,
+                   inventoryWidth, inventoryHeight)];
+    inventoryCard.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
+        UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin |
+        UIViewAutoresizingFlexibleBottomMargin;
+    inventoryCard.backgroundColor = [UIColor colorWithWhite:0.025 alpha:0.96];
+    inventoryCard.layer.cornerRadius = 14;
+    inventoryCard.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.28].CGColor;
+    inventoryCard.layer.borderWidth = 1;
+    inventoryCard.tag = 0xE1D;
+    inventoryCard.hidden = YES;
+
+    UILabel *inventoryTitle = [[UILabel alloc] initWithFrame:
+        CGRectMake(16, 8, inventoryWidth - 66, 32)];
+    inventoryTitle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    inventoryTitle.text = @"Inventory & Transformations";
+    inventoryTitle.textColor = UIColor.whiteColor;
+    inventoryTitle.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
+    [inventoryCard addSubview:inventoryTitle];
+
+    UIButton *inventoryClose = [UIButton buttonWithType:UIButtonTypeSystem];
+    inventoryClose.frame = CGRectMake(inventoryWidth - 48, 6, 38, 34);
+    inventoryClose.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    inventoryClose.titleLabel.font = [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold];
+    [inventoryClose setTitle:@"×" forState:UIControlStateNormal];
+    [inventoryClose setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [inventoryClose addTarget:self action:@selector(closeInventory:)
+             forControlEvents:UIControlEventTouchUpInside];
+    [inventoryCard addSubview:inventoryClose];
+
+    UIScrollView *inventoryScroll = [[UIScrollView alloc] initWithFrame:
+        CGRectMake(10, 43, inventoryWidth - 20, inventoryHeight - 53)];
+    inventoryScroll.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleHeight;
+    inventoryScroll.alwaysBounceVertical = YES;
+    inventoryScroll.showsVerticalScrollIndicator = YES;
+    [inventoryCard addSubview:inventoryScroll];
+
     [root addSubview:panel];
     [root addSubview:diagnostics];
     [root addSubview:settingsButton];
+    [root addSubview:inventoryButton];
     [root addSubview:settingsCard];
+    [root addSubview:inventoryCard];
     [window addSubview:root];
     self.rootView = root;
     self.panel = panel;
@@ -353,6 +426,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.diagnosticsLabel = diagnostics;
     self.settingsButton = settingsButton;
     self.settingsCard = settingsCard;
+    self.inventoryButton = inventoryButton;
+    self.inventoryCard = inventoryCard;
+    self.inventoryScrollView = inventoryScroll;
     self.settingsLanguageButton = languageSelector;
     self.settingsPositionLabel = positionLabel;
     self.settingsVersionLabel = versionLabel;
@@ -375,9 +451,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         dispatch_async(dispatch_get_main_queue(), ^{
             self.scanInProgress = NO;
             [self updateMenuModeForGameplay:self.probe.gameplayActive];
+            BOOL paused = self.probe.gameplayActive && self.probe.pauseStateAvailable &&
+                self.probe.paused;
+            [self updatePauseInventoryForPaused:paused];
             if (![pickups isEqualToArray:self.lastPickups]) {
                 self.lastPickups = pickups;
-                if (!self.menuMode) [self renderPickups:pickups];
+                if (!self.menuMode && !paused && !self.selectedInventoryItem) {
+                    [self renderPickups:pickups];
+                }
                 EIDLog(@"visible describable pickups: %@", pickups);
             }
         });
@@ -403,6 +484,26 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.lastPickups = @[];
     self.panel.alpha = 0;
     EIDLog(@"game state: menu detected; settings available");
+}
+
+- (void)updatePauseInventoryForPaused:(BOOL)paused {
+    BOOL available = paused && self.probe.inventoryStateAvailable;
+    self.inventoryButton.hidden = !available;
+    if (!paused) {
+        self.inventoryCard.hidden = YES;
+        self.inventorySignature = nil;
+        if (self.pauseUIActive) {
+            self.selectedInventoryItem = nil;
+            if (!self.menuMode) [self renderPickups:self.lastPickups];
+            EIDLog(@"pause inventory hidden; gameplay resumed");
+        }
+    } else if (!self.inventoryCard.hidden) {
+        [self rebuildInventoryContentsIfNeeded:NO];
+    }
+    if (paused && !self.pauseUIActive) {
+        EIDLog(@"native pause detected; inventory button available");
+    }
+    self.pauseUIActive = paused;
 }
 
 - (void)updateSettingsControls {
@@ -470,6 +571,162 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     popover.sourceRect = sender.bounds;
     popover.permittedArrowDirections = UIPopoverArrowDirectionAny;
     [presenter presentViewController:picker animated:YES completion:nil];
+}
+
+- (NSString *)inventorySignatureForItems:(NSArray<EIDPickupIdentity *> *)items {
+    NSMutableString *signature = [NSMutableString string];
+    for (EIDPickupIdentity *item in items) {
+        [signature appendFormat:@"%ld:%ld,", (long)item.variant, (long)item.subtype];
+    }
+    EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
+    tracker.probe = self.probe;
+    for (NSNumber *identifier in tracker.allTransformationIdentifiers) {
+        [signature appendFormat:@"t%@=%ld,", identifier,
+         (long)[tracker progressForTransformation:identifier.integerValue]];
+    }
+    [signature appendFormat:@"lang=%@", self.store.languageCode];
+    return signature;
+}
+
+- (UIImage *)inventoryIconForIdentity:(EIDPickupIdentity *)identity {
+    EIDDescription *description = [self.store descriptionForPickupVariant:identity.variant
+                                                                    subtype:identity.subtype];
+    UIImage *image = description.iconPath.length
+        ? [UIImage imageWithContentsOfFile:description.iconPath] : nil;
+    return image ?: [self pocketIconForVariant:identity.variant subtype:identity.subtype];
+}
+
+- (void)addInventoryHeading:(NSString *)title y:(CGFloat *)y width:(CGFloat)width {
+    UILabel *heading = [[UILabel alloc] initWithFrame:CGRectMake(4, *y, width - 8, 24)];
+    heading.text = title;
+    heading.textColor = [UIColor colorWithWhite:0.70 alpha:1];
+    heading.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
+    [self.inventoryScrollView addSubview:heading];
+    *y += 25;
+}
+
+- (void)addInventoryIdentity:(EIDPickupIdentity *)identity y:(CGFloat *)y width:(CGFloat)width {
+    UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
+    row.frame = CGRectMake(2, *y, width - 4, 40);
+    row.backgroundColor = [UIColor colorWithWhite:1 alpha:0.095];
+    row.layer.cornerRadius = 7;
+    row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    row.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightSemibold];
+    row.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    [row setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    row.imageView.contentMode = UIViewContentModeScaleAspectFit;
+    UIButtonConfiguration *configuration = [UIButtonConfiguration plainButtonConfiguration];
+    configuration.imagePlacement = NSDirectionalRectEdgeLeading;
+    configuration.imagePadding = 10;
+    configuration.contentInsets = NSDirectionalEdgeInsetsMake(5, 7, 5, 8);
+    row.configuration = configuration;
+
+    NSInteger shownSubtype = identity.variant == EIDPickupVariantTrinket
+        ? (identity.subtype & 0x7fff) : identity.subtype;
+    EIDDescription *description = [self.store descriptionForPickupVariant:identity.variant
+                                                                    subtype:identity.subtype];
+    NSString *name = description.name.length ? description.name
+        : [NSString stringWithFormat:@"%@ %ld", [self kindNameForVariant:identity.variant],
+           (long)shownSubtype];
+    [row setTitle:[NSString stringWithFormat:@"%@  [%ld]", name, (long)shownSubtype]
+         forState:UIControlStateNormal];
+    [row setImage:[self inventoryIconForIdentity:identity] forState:UIControlStateNormal];
+    row.accessibilityIdentifier = [NSString stringWithFormat:@"%ld:%ld",
+                                   (long)identity.variant, (long)identity.subtype];
+    [row addTarget:self action:@selector(selectInventoryIdentity:)
+  forControlEvents:UIControlEventTouchUpInside];
+    [self.inventoryScrollView addSubview:row];
+    *y += 44;
+}
+
+- (void)rebuildInventoryContentsIfNeeded:(BOOL)force {
+    NSArray<EIDPickupIdentity *> *items = [self.probe currentInventoryItems];
+    NSString *signature = [self inventorySignatureForItems:items];
+    if (!force && [signature isEqualToString:self.inventorySignature]) return;
+    self.inventorySignature = signature;
+    [self.inventoryScrollView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+
+    NSMutableArray<EIDPickupIdentity *> *collectibles = [NSMutableArray array];
+    NSMutableArray<EIDPickupIdentity *> *trinkets = [NSMutableArray array];
+    NSMutableArray<EIDPickupIdentity *> *pockets = [NSMutableArray array];
+    for (EIDPickupIdentity *item in items) {
+        if (item.variant == EIDPickupVariantCollectible) [collectibles addObject:item];
+        else if (item.variant == EIDPickupVariantTrinket) [trinkets addObject:item];
+        else [pockets addObject:item];
+    }
+
+    BOOL russian = [self.store.languageCode isEqualToString:@"ru"];
+    CGFloat width = self.inventoryScrollView.bounds.size.width;
+    CGFloat y = 0;
+    NSArray<NSDictionary *> *sections = @[
+        @{@"title": russian ? @"Предметы" : @"Collectibles", @"items": collectibles},
+        @{@"title": russian ? @"Брелоки" : @"Trinkets", @"items": trinkets},
+        @{@"title": russian ? @"Карты, руны и таблетки" : @"Cards, runes & pills",
+          @"items": pockets},
+    ];
+    for (NSDictionary *section in sections) {
+        NSArray<EIDPickupIdentity *> *sectionItems = section[@"items"];
+        if (!sectionItems.count) continue;
+        [self addInventoryHeading:section[@"title"] y:&y width:width];
+        for (EIDPickupIdentity *identity in sectionItems) {
+            [self addInventoryIdentity:identity y:&y width:width];
+        }
+        y += 3;
+    }
+
+    EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
+    [self addInventoryHeading:(russian ? @"Трансформации" : @"Transformations")
+                            y:&y width:width];
+    for (NSNumber *identifier in tracker.allTransformationIdentifiers) {
+        NSInteger transformation = identifier.integerValue;
+        NSInteger progress = [tracker progressForTransformation:transformation];
+        UILabel *row = [[UILabel alloc] initWithFrame:CGRectMake(2, y, width - 4, 30)];
+        row.backgroundColor = [UIColor colorWithWhite:1 alpha:0.075];
+        row.layer.cornerRadius = 6;
+        row.layer.masksToBounds = YES;
+        row.textColor = UIColor.whiteColor;
+        row.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightSemibold];
+        row.text = [NSString stringWithFormat:@"  %@   %ld/%ld",
+                    [tracker localizedNameForTransformation:transformation],
+                    (long)progress, (long)tracker.required];
+        [self.inventoryScrollView addSubview:row];
+        y += 34;
+    }
+    self.inventoryScrollView.contentSize = CGSizeMake(width, y + 8);
+    EIDLog(@"pause inventory rendered: %lu items, %lu transformations",
+           (unsigned long)items.count,
+           (unsigned long)tracker.allTransformationIdentifiers.count);
+}
+
+- (void)toggleInventory:(UIButton *)sender {
+    (void)sender;
+    if (!self.probe.paused || !self.probe.inventoryStateAvailable) return;
+    self.inventoryCard.hidden = !self.inventoryCard.hidden;
+    self.settingsCard.hidden = YES;
+    if (!self.inventoryCard.hidden) {
+        [self rebuildInventoryContentsIfNeeded:YES];
+        [self.rootView bringSubviewToFront:self.inventoryCard];
+        self.panel.alpha = 0;
+    }
+}
+
+- (void)closeInventory:(UIButton *)sender {
+    (void)sender;
+    self.inventoryCard.hidden = YES;
+}
+
+- (void)selectInventoryIdentity:(UIButton *)sender {
+    NSArray<NSString *> *parts = [sender.accessibilityIdentifier componentsSeparatedByString:@":"];
+    if (parts.count != 2) return;
+    NSInteger variant = parts[0].integerValue;
+    NSInteger subtype = parts[1].integerValue;
+    if (variant <= 0 || subtype <= 0) return;
+    EIDPickupIdentity *identity = [[EIDPickupIdentity alloc] initWithVariant:variant
+                                                                    subtype:subtype];
+    self.selectedInventoryItem = identity;
+    self.inventoryCard.hidden = YES;
+    [self renderPickups:@[identity]];
+    EIDLog(@"pause inventory selected %@", identity);
 }
 
 - (void)toggleSettings:(UIButton *)sender {

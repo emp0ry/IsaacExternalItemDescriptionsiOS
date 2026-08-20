@@ -1,4 +1,5 @@
 #import "EIDNativeProbe.h"
+#import "EIDTransformationProgress.h"
 #import "EIDLogger.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -26,12 +27,34 @@ static NSString *EIDTransformResourcePath(void) {
     return nil;
 }
 
-@interface EIDTransformationProgress : NSObject
+static NSInteger EIDNativeFormIDForTransformation(NSInteger transformation) {
+    // EID transformation IDs follow transformations.lua. Isaac's persisted
+    // PlayerForm enum uses a different order; this table is verified against
+    // the shipped iOS playerforms.xml and Entity_Player::_playerForms[15].
+    switch (transformation) {
+        case 1: return 0;   // Guppy
+        case 2: return 2;   // Fun Guy
+        case 3: return 1;   // Lord of the Flies / Beelzebub
+        case 4: return 7;   // Conjoined
+        case 5: return 5;   // Spun
+        case 6: return 6;   // Yes Mother?
+        case 7: return 9;   // Oh Crap
+        case 8: return 4;   // Bob
+        case 9: return 8;   // Leviathan
+        case 10: return 3;  // Seraphim
+        case 12: return 10; // Bookworm
+        case 13: return 12; // Spider Baby
+        case 14: return 11; // Adult
+        case 15: return 13; // Stompy
+        default: return NSNotFound; // Super Bum is not a PlayerForm.
+    }
+}
+
+@interface EIDTransformationProgress ()
 @property(nonatomic, copy) NSDictionary<NSString *, NSArray<NSNumber *> *> *assignments;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *englishNames;
 @property(nonatomic, copy) NSDictionary<NSString *, NSDictionary<NSString *, NSString *> *> *namesByLanguage;
 @property(nonatomic, copy) NSDictionary<NSNumber *, NSArray<NSNumber *> *> *collectiblesByTransformation;
-@property(nonatomic, weak) EIDNativeProbe *probe;
 @property(nonatomic) NSInteger required;
 + (instancetype)shared;
 - (NSArray<NSNumber *> *)transformationsForCollectible:(NSInteger)collectible;
@@ -106,6 +129,16 @@ static NSString *EIDTransformResourcePath(void) {
     return [values isKindOfClass:NSArray.class] ? values : @[];
 }
 
+- (NSArray<NSNumber *> *)allTransformationIdentifiers {
+    static NSArray<NSNumber *> *identifiers;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        identifiers = @[@1, @2, @3, @4, @5, @6, @7, @8, @9, @10,
+                        @11, @12, @13, @14, @15];
+    });
+    return identifiers;
+}
+
 - (NSString *)englishNameForTransformation:(NSInteger)transformation {
     NSString *key = [NSString stringWithFormat:@"%ld", (long)transformation];
     NSString *name = self.englishNames[key];
@@ -126,12 +159,24 @@ static NSString *EIDTransformResourcePath(void) {
 }
 
 - (NSInteger)progressForTransformation:(NSInteger)transformation {
-    if (transformation <= 0 || !self.probe.ownedCollectibleStateAvailable) return 0;
+    if (transformation <= 0) return 0;
+    NSInteger nativeForm = EIDNativeFormIDForTransformation(transformation);
+    if (nativeForm != NSNotFound) {
+        if (!self.probe.transformationStateAvailable) return 0;
+        NSInteger count = [self.probe nativeTransformationCounterForFormID:nativeForm];
+        return MIN(self.required, MAX(0, count));
+    }
+
+    // Super Bum (EID 11) is a familiar merge, not an entry in the native
+    // PlayerForm array. Once its verified native familiar exists, the merge is
+    // complete even though the three source collectibles may no longer be held.
+    if (transformation != 11 || !self.probe.ownedCollectibleStateAvailable) return 0;
+    if (self.probe.superBumActive) return self.required;
     NSInteger count = 0;
     for (NSNumber *collectible in self.collectiblesByTransformation[@(transformation)]) {
-        count += [self.probe transformationCollectibleCountForID:collectible.integerValue];
+        count += [self.probe ownedCollectibleCountForID:collectible.integerValue];
     }
-    return count;
+    return MIN(self.required, MAX(0, count));
 }
 
 - (void)logProgressForCollectible:(NSInteger)collectible
@@ -149,9 +194,9 @@ static NSString *EIDTransformResourcePath(void) {
     static NSString *lastLoggedState;
     if ([lastLoggedState isEqualToString:state]) return;
     lastLoggedState = state;
-    EIDLog(@"transformation progress for collectible %ld: %@ (native inventory %@)",
+    EIDLog(@"transformation progress for collectible %ld: %@ (persisted native counters %@)",
            (long)collectible, [parts componentsJoinedByString:@", "],
-           self.probe.ownedCollectibleStateAvailable ? @"ready" : @"unavailable");
+           self.probe.transformationStateAvailable ? @"ready" : @"unavailable");
 }
 
 - (void)resetForNewRun {

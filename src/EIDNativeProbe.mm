@@ -6,6 +6,7 @@
 #import <mach/mach.h>
 #import <UIKit/UIKit.h>
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>
@@ -20,6 +21,7 @@
 namespace {
 constexpr const char *kPickupRTTIName = "N15IsaacRepentance13Entity_PickupE";
 constexpr const char *kPlayerRTTIName = "N15IsaacRepentance13Entity_PlayerE";
+constexpr const char *kFamiliarRTTIName = "N15IsaacRepentance15Entity_FamiliarE";
 constexpr const char *kSlotRTTIName = "N15IsaacRepentance11Entity_SlotE";
 constexpr const char *kEffectRTTIName = "N15IsaacRepentance13Entity_EffectE";
 constexpr const char *kGridSpikesRTTIName = "N15IsaacRepentance17GridEntity_SpikesE";
@@ -33,6 +35,8 @@ struct ScanContext {
     size_t pickupVTableCount = 0;
     std::array<uintptr_t, kMaxVTables> playerVTables{};
     size_t playerVTableCount = 0;
+    std::array<uintptr_t, kMaxVTables> familiarVTables{};
+    size_t familiarVTableCount = 0;
     std::array<uintptr_t, kMaxVTables> slotVTables{};
     size_t slotVTableCount = 0;
     std::array<uintptr_t, kMaxVTables> effectVTables{};
@@ -180,6 +184,7 @@ static ScanContext LocateEntityVTables(void) {
     ScanContext context;
     LocateVTables(kPickupRTTIName, context.pickupVTables, context.pickupVTableCount);
     LocateVTables(kPlayerRTTIName, context.playerVTables, context.playerVTableCount);
+    LocateVTables(kFamiliarRTTIName, context.familiarVTables, context.familiarVTableCount);
     LocateVTables(kSlotRTTIName, context.slotVTables, context.slotVTableCount);
     LocateVTables(kEffectRTTIName, context.effectVTables, context.effectVTableCount);
     LocateVTables(kGridSpikesRTTIName, context.gridSpikesVTables,
@@ -199,7 +204,11 @@ constexpr size_t kPickupForceBlindOffset = 0x562;
 constexpr size_t kCranePrizeCollectibleOffset = 0x570;
 constexpr size_t kPlayerPocketItemsOffset = 0x1c10;
 constexpr size_t kPlayerPocketItemCount = 4;
+constexpr size_t kPlayerTrinketSlotsOffset = 0x1ab0;
+constexpr size_t kPlayerTrinketSlotCount = 2;
 constexpr size_t kPlayerCollectibleCountsOffset = 0x1ab8;
+constexpr size_t kPlayerTransformationCountersOffset = 0x1c54;
+constexpr size_t kNativeTransformationCount = 15;
 constexpr size_t kMaximumCollectibleID = 732;
 constexpr size_t kLayerStateSize = 0x90;
 constexpr size_t kLayerStateSpritePathOffset = 0x8;
@@ -216,6 +225,7 @@ constexpr size_t kRoomGridEntitiesOffset = 0x30;
 constexpr size_t kRoomGridEntityCount = 0x1c0;
 constexpr int32_t kSacrificeRoomType = 13;
 constexpr int32_t kGridSpikesType = 0x8;
+constexpr int32_t kSuperBumFamiliarVariant = 102;
 constexpr uint32_t kCurseOfTheBlind = 1u << 6;
 constexpr NSUInteger kRunEndConfirmationScans = 12;
 constexpr size_t kGameRunSeedOffset = 0x25d44;
@@ -225,6 +235,9 @@ constexpr size_t kItemPoolIdentifiedPillsOffset = 0xa68;
 constexpr uint32_t kPillColorMask = 0x7ff;
 constexpr uint32_t kHorsePillFlag = 1u << 11;
 constexpr uint32_t kGoldenPillColor = 14;
+// Reverse-verified on executable UUID F4357753-A25F-30EE-BACF-63709F902895.
+// PauseScreen starts at Game + 0x10DD20 and its state is the int32 at +0x2B8.
+constexpr size_t kGamePauseMenuStateOffset = 0x10dfd8;
 
 struct VMPickup {
     int32_t variant = 0;
@@ -261,6 +274,7 @@ struct VMRegionResult {
     vm_size_t size = 0;
     size_t pickupVTableReferences = 0;
     size_t playerVTableReferences = 0;
+    size_t familiarVTableReferences = 0;
     size_t slotVTableReferences = 0;
     size_t effectVTableReferences = 0;
     size_t gridSpikesVTableReferences = 0;
@@ -270,6 +284,9 @@ struct VMRegionResult {
     vm_address_t lastSlotVTableAddress = 0;
     vm_address_t firstEffectVTableAddress = 0;
     vm_address_t lastEffectVTableAddress = 0;
+    vm_address_t firstFamiliarVTableAddress = 0;
+    vm_address_t lastFamiliarVTableAddress = 0;
+    bool superBumActive = false;
     std::array<VMPickup, kMaxItems> pickups{};
     size_t pickupCount = 0;
     std::array<VMCardObservation, kMaxItems> cardObservations{};
@@ -445,6 +462,47 @@ static bool ReadPlayerCollectibleCounts(
         if (count < 0 || count > 999) return false;
         total += static_cast<uint32_t>(count);
         if (total > 4096) return false;
+    }
+    return true;
+}
+
+static bool ReadPlayerTrinkets(
+    vm_address_t playerAddress,
+    std::array<int32_t, kPlayerTrinketSlotCount>& trinkets) {
+    if (!ReadOwnTaskMemory(playerAddress + kPlayerTrinketSlotsOffset,
+                           trinkets.data(), sizeof(trinkets))) return false;
+    for (int32_t trinket : trinkets) {
+        // The high bit marks a golden trinket. Preserve it for icon/description
+        // lookup, but validate the underlying identifier before publishing it.
+        if (trinket < 0 || (trinket & 0x7fff) > 4096) return false;
+    }
+    return true;
+}
+
+static bool ReadPlayerTransformationCounters(
+    vm_address_t playerAddress,
+    std::array<int32_t, kNativeTransformationCount>& counters) {
+    if (!ReadOwnTaskMemory(playerAddress + kPlayerTransformationCountersOffset,
+                           counters.data(), sizeof(counters))) return false;
+    for (int32_t counter : counters) {
+        // Native AddPlayerForm clamps the lower bound to zero. This generous
+        // upper bound rejects a stale/wrong layout without constraining mods.
+        if (counter < 0 || counter > 999) return false;
+    }
+    return true;
+}
+
+static bool ReadPauseMenuState(int32_t& state) {
+    state = 0;
+    vm_address_t game = 0;
+    if (!ReadGameObjectAddress(game) ||
+        !ReadOwnTaskMemory(game + kGamePauseMenuStateOffset, &state, sizeof(state))) {
+        return false;
+    }
+    // PauseScreen::Update in this build switches over states 0..3.
+    if (state < 0 || state > 3) {
+        state = 0;
+        return false;
     }
     return true;
 }
@@ -720,9 +778,12 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
         memcpy(&vtable, bytes + offset, sizeof(vtable));
         bool pickupVTable = IsCandidateVTable(context.pickupVTables, context.pickupVTableCount, vtable);
         bool playerVTable = IsCandidateVTable(context.playerVTables, context.playerVTableCount, vtable);
+        bool familiarVTable = IsCandidateVTable(context.familiarVTables,
+                                                context.familiarVTableCount, vtable);
         bool slotVTable = IsCandidateVTable(context.slotVTables, context.slotVTableCount, vtable);
         bool effectVTable = IsCandidateVTable(context.effectVTables, context.effectVTableCount, vtable);
-        if (!pickupVTable && !playerVTable && !slotVTable && !effectVTable) continue;
+        if (!pickupVTable && !playerVTable && !familiarVTable &&
+            !slotVTable && !effectVTable) continue;
 
         int32_t identity[3];
         memcpy(identity, bytes + offset + kEntityTypeOffset, sizeof(identity));
@@ -794,6 +855,21 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
 #endif
             }
         }
+        if (familiarVTable) {
+            result.familiarVTableReferences++;
+            vm_address_t referenceAddress = sourceAddress + offset;
+            if (!result.firstFamiliarVTableAddress ||
+                referenceAddress < result.firstFamiliarVTableAddress) {
+                result.firstFamiliarVTableAddress = referenceAddress;
+            }
+            if (referenceAddress > result.lastFamiliarVTableAddress) {
+                result.lastFamiliarVTableAddress = referenceAddress;
+            }
+            if (activeObject && identity[0] == 3 &&
+                identity[1] == kSuperBumFamiliarVariant) {
+                result.superBumActive = true;
+            }
+        }
         if (slotVTable) {
             result.slotVTableReferences++;
             vm_address_t referenceAddress = sourceAddress + offset;
@@ -860,6 +936,7 @@ struct VMDiscovery {
     VMRegionResult pickupRegion;
     VMRegionResult effectRegion;
     VMRegionResult playerRegion;
+    VMRegionResult familiarRegion;
     VMRegionResult slotRegion;
 };
 
@@ -896,6 +973,10 @@ static VMDiscovery DiscoverEntityRegions(const ScanContext& context) {
                 if ((candidate.playerCount && !discovery.playerRegion.playerCount) ||
                     candidate.playerVTableReferences > discovery.playerRegion.playerVTableReferences) {
                     discovery.playerRegion = candidate;
+                }
+                if (candidate.familiarVTableReferences >
+                    discovery.familiarRegion.familiarVTableReferences) {
+                    discovery.familiarRegion = candidate;
                 }
                 if (candidate.slotVTableReferences > discovery.slotRegion.slotVTableReferences) {
                     discovery.slotRegion = candidate;
@@ -980,11 +1061,18 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic, copy) NSString *status;
 @property(nonatomic, getter=isSupportedBuild) BOOL supportedBuild;
 @property(atomic, getter=isGameplayActive) BOOL gameplayActive;
+@property(atomic, getter=isPauseStateAvailable) BOOL pauseStateAvailable;
+@property(atomic, getter=isPaused) BOOL paused;
 @property(atomic) uint32_t runSeed;
 @property(atomic) NSUInteger runCounter;
 @property(atomic, getter=isOwnedCollectibleStateAvailable) BOOL ownedCollectibleStateAvailable;
+@property(atomic, getter=isInventoryStateAvailable) BOOL inventoryStateAvailable;
+@property(atomic, getter=isTransformationStateAvailable) BOOL transformationStateAvailable;
+@property(atomic, getter=isSuperBumActive) BOOL superBumActive;
 @property(nonatomic, strong) NSArray<EIDPickupIdentity *> *lastPickups;
+@property(atomic, copy) NSArray<EIDPickupIdentity *> *inventoryItems;
 @property(nonatomic, strong) NSDictionary<NSNumber *, NSNumber *> *ownedCollectibleCounts;
+@property(atomic, copy) NSArray<NSNumber *> *nativeTransformationCounters;
 @property(nonatomic, copy) NSSet<NSNumber *> *activeCollectibleIDs;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *activeCollectibleHistory;
 @property(nonatomic) ScanContext scanContext;
@@ -994,6 +1082,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic) vm_size_t pickupRegionSize;
 @property(nonatomic) vm_address_t playerRegionAddress;
 @property(nonatomic) vm_size_t playerRegionSize;
+@property(nonatomic) vm_address_t familiarRegionAddress;
+@property(nonatomic) vm_size_t familiarRegionSize;
 @property(nonatomic) vm_address_t effectRegionAddress;
 @property(nonatomic) vm_size_t effectRegionSize;
 @property(nonatomic) NSUInteger playerVectorOffset;
@@ -1006,6 +1096,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic, strong) NSMutableSet<NSNumber *> *knownCardSubtypes;
 @property(nonatomic) BOOL loggedUnreadablePocketItems;
 @property(nonatomic) BOOL loggedUnreadableCollectibleCounts;
+@property(nonatomic) BOOL loggedUnreadableInventory;
+@property(nonatomic) BOOL loggedUnreadableTransformations;
 @property(nonatomic) NSInteger lastLoggedRoomType;
 @property(nonatomic) uint32_t lastLoggedCurseMask;
 @property(nonatomic) NSInteger lastSacrificePayout;
@@ -1013,6 +1105,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic) NSUInteger consecutiveEmptyPlayerScans;
 @property(nonatomic) BOOL pillPoolReady;
 @property(nonatomic) NSUInteger developmentCaptureIndex;
+@property(nonatomic) NSInteger lastPauseState;
 @end
 
 @implementation EIDNativeProbe
@@ -1024,7 +1117,9 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         _supportedBuild = [_executableUUID caseInsensitiveCompare:supportedUUID] == NSOrderedSame;
         _status = _supportedBuild ? @"Locating native pickup RTTI" : @"Unsupported Isaac executable";
         _lastPickups = @[];
+        _inventoryItems = @[];
         _ownedCollectibleCounts = @{};
+        _nativeTransformationCounters = @[];
         _activeCollectibleIDs = [NSSet set];
         _activeCollectibleHistory = [NSMutableDictionary dictionary];
         _knownCardSubtypes = [NSMutableSet set];
@@ -1032,6 +1127,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         _lastLoggedRoomType = NSIntegerMin;
         _lastLoggedCurseMask = UINT32_MAX;
         _lastSacrificePayout = -1;
+        _lastPauseState = -1;
     }
     return self;
 }
@@ -1049,9 +1145,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         EIDLog(@"%@", self.status);
         return;
     }
-    self.status = [NSString stringWithFormat:@"Native probe active (pickup:%lu player:%lu slot:%lu effect:%lu spikes:%lu)",
+    self.status = [NSString stringWithFormat:@"Native probe active (pickup:%lu player:%lu familiar:%lu slot:%lu effect:%lu spikes:%lu)",
                    (unsigned long)self.scanContext.pickupVTableCount,
                    (unsigned long)self.scanContext.playerVTableCount,
+                   (unsigned long)self.scanContext.familiarVTableCount,
                    (unsigned long)self.scanContext.slotVTableCount,
                    (unsigned long)self.scanContext.effectVTableCount,
                    (unsigned long)self.scanContext.gridSpikesVTableCount];
@@ -1080,8 +1177,15 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         self.nativeRunActive = NO;
         self.runSeed = 0;
         self.lastPickups = @[];
+        self.inventoryItems = @[];
         self.ownedCollectibleCounts = @{};
         self.ownedCollectibleStateAvailable = NO;
+        self.inventoryStateAvailable = NO;
+        self.nativeTransformationCounters = @[];
+        self.transformationStateAvailable = NO;
+        self.superBumActive = NO;
+        self.pauseStateAvailable = NO;
+        self.paused = NO;
         [self.activeCollectibleHistory removeAllObjects];
         [self.knownCardSubtypes removeAllObjects];
         self.pillPoolReady = NO;
@@ -1098,12 +1202,18 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         self.runCounter += 1;
         self.runSeed = hasSeed ? seed : 0;
         self.lastPickups = @[];
+        self.inventoryItems = @[];
         self.ownedCollectibleCounts = @{};
         self.ownedCollectibleStateAvailable = NO;
+        self.inventoryStateAvailable = NO;
+        self.nativeTransformationCounters = @[];
+        self.transformationStateAvailable = NO;
         [self.activeCollectibleHistory removeAllObjects];
         [self.knownCardSubtypes removeAllObjects];
         self.loggedUnreadablePocketItems = NO;
         self.loggedUnreadableCollectibleCounts = NO;
+        self.loggedUnreadableInventory = NO;
+        self.loggedUnreadableTransformations = NO;
         NSUInteger identifiedPills = 0;
         self.pillPoolReady = ValidateNativePillPool(identifiedPills);
         EIDLog(@"native run started: session %lu seed %@; knowledge reset; pill state %@ (%lu known)",
@@ -1182,6 +1292,128 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     }
 }
 
+- (void)updateNativeTransformationCountersForPlayers:(const VMRegionResult&)players {
+    std::array<int32_t, kNativeTransformationCount> maximums{};
+    for (size_t playerIndex = 0; playerIndex < players.playerCount; ++playerIndex) {
+        std::array<int32_t, kNativeTransformationCount> counters{};
+        if (!ReadPlayerTransformationCounters(players.players[playerIndex].address, counters)) {
+            self.nativeTransformationCounters = @[];
+            self.transformationStateAvailable = NO;
+            if (!self.loggedUnreadableTransformations) {
+                self.loggedUnreadableTransformations = YES;
+                EIDLog(@"native persisted transformation counters unreadable; progress suppressed");
+            }
+            return;
+        }
+        // Co-op players own independent form counters. Display the best valid
+        // progress rather than summing players into a transformation neither has.
+        for (size_t form = 0; form < counters.size(); ++form) {
+            maximums[form] = std::max(maximums[form], counters[form]);
+        }
+    }
+
+    NSMutableArray<NSNumber *> *snapshot =
+        [NSMutableArray arrayWithCapacity:kNativeTransformationCount];
+    for (int32_t counter : maximums) [snapshot addObject:@(counter)];
+    NSArray<NSNumber *> *immutable = snapshot.copy;
+    BOOL changed = ![self.nativeTransformationCounters isEqualToArray:immutable];
+    self.nativeTransformationCounters = immutable;
+    self.transformationStateAvailable = players.playerCount > 0;
+    self.loggedUnreadableTransformations = NO;
+    if (changed) {
+        EIDLog(@"native persisted transformation counters: %@", immutable);
+    }
+}
+
+- (void)updateInventoryForPlayers:(const VMRegionResult&)players {
+    if (!self.ownedCollectibleStateAvailable || !players.playerCount) {
+        self.inventoryItems = @[];
+        self.inventoryStateAvailable = NO;
+        return;
+    }
+
+    NSMutableArray<EIDPickupIdentity *> *items = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    void (^addIdentity)(NSInteger, NSInteger) = ^(NSInteger variant, NSInteger subtype) {
+        if (subtype <= 0) return;
+        NSString *key = [NSString stringWithFormat:@"%ld:%ld", (long)variant, (long)subtype];
+        if ([seen containsObject:key]) return;
+        [seen addObject:key];
+        [items addObject:[[EIDPickupIdentity alloc] initWithVariant:variant subtype:subtype]];
+    };
+
+    NSArray<NSNumber *> *collectibles = [self.ownedCollectibleCounts.allKeys
+        sortedArrayUsingSelector:@selector(compare:)];
+    for (NSNumber *identifier in collectibles) {
+        addIdentity(EIDPickupVariantCollectible, identifier.integerValue);
+    }
+
+    BOOL readable = YES;
+    for (size_t playerIndex = 0; playerIndex < players.playerCount; ++playerIndex) {
+        vm_address_t playerAddress = players.players[playerIndex].address;
+        std::array<int32_t, kPlayerTrinketSlotCount> trinkets{};
+        if (!ReadPlayerTrinkets(playerAddress, trinkets)) {
+            readable = NO;
+            break;
+        }
+        for (int32_t trinket : trinkets) {
+            if ((trinket & 0x7fff) != 0) addIdentity(EIDPickupVariantTrinket, trinket);
+        }
+
+        std::array<VMPlayerPocketItem, kPlayerPocketItemCount> pockets{};
+        if (!ReadPlayerPocketItems(playerAddress, pockets)) {
+            readable = NO;
+            break;
+        }
+        for (const VMPlayerPocketItem& pocket : pockets) {
+            if (pocket.id <= 0) continue;
+            if (pocket.type == 2) {
+                addIdentity(EIDPickupVariantCollectible, pocket.id);
+            } else if (pocket.type == 1) {
+                addIdentity(EIDPickupVariantCard, pocket.id);
+            } else if (pocket.type == 0) {
+                int32_t variant = EIDPickupVariantPill;
+                int32_t subtype = 0;
+                if (ResolveKnownPill(pocket.id, variant, subtype)) {
+                    addIdentity(variant, subtype);
+                }
+            }
+        }
+    }
+
+    if (!readable) {
+        self.inventoryItems = @[];
+        self.inventoryStateAvailable = NO;
+        if (!self.loggedUnreadableInventory) {
+            self.loggedUnreadableInventory = YES;
+            EIDLog(@"native player inventory slots unreadable; pause inventory suppressed");
+        }
+        return;
+    }
+    NSArray<EIDPickupIdentity *> *snapshot = items.copy;
+    BOOL changed = ![self.inventoryItems isEqualToArray:snapshot];
+    self.inventoryItems = snapshot;
+    self.inventoryStateAvailable = YES;
+    self.loggedUnreadableInventory = NO;
+    if (changed) {
+        EIDLog(@"native pause inventory changed: %lu unique entries",
+               (unsigned long)snapshot.count);
+    }
+}
+
+- (void)updatePauseStateForGameplay:(BOOL)gameplayActive {
+    int32_t state = 0;
+    BOOL available = gameplayActive && ReadPauseMenuState(state);
+    self.pauseStateAvailable = available;
+    self.paused = available && state > 0;
+    if (!available) state = -1;
+    if (state != self.lastPauseState) {
+        self.lastPauseState = state;
+        EIDLog(@"native pause state: %@",
+               state < 0 ? @"unavailable" : [NSString stringWithFormat:@"%d", state]);
+    }
+}
+
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups {
     if (!self.started || !self.scanContext.pickupVTableCount) {
         self.gameplayActive = NO;
@@ -1190,6 +1422,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
     VMRegionResult pickupResult;
     VMRegionResult playerResult;
+    VMRegionResult familiarResult;
     VMRegionResult slotResult;
     VMRegionResult effectResult;
     VMRegionResult gridSpikesResult;
@@ -1199,6 +1432,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     bool playerRegionValid = self.playerRegionAddress &&
         ScanVMRegion(self.scanContext, self.playerRegionAddress, self.playerRegionSize, playerResult) &&
         playerResult.playerVTableReferences;
+    bool familiarRegionValid = self.familiarRegionAddress &&
+        ScanVMRegion(self.scanContext, self.familiarRegionAddress,
+                     self.familiarRegionSize, familiarResult) &&
+        familiarResult.familiarVTableReferences;
     bool slotRegionValid = self.slotRegionAddress &&
         ScanVMRegion(self.scanContext, self.slotRegionAddress, self.slotRegionSize, slotResult) &&
         slotResult.slotVTableReferences;
@@ -1242,7 +1479,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
     if (!pickupRegionValid || !effectRegionValid ||
         (pickupResult.pickupCount && !playerRegionValid) ||
-        (self.slotRegionAddress && !slotRegionValid)) {
+        (self.slotRegionAddress && !slotRegionValid) ||
+        (self.familiarRegionAddress && !familiarRegionValid)) {
         VMDiscovery discovery = DiscoverEntityRegions(self.scanContext);
         if (discovery.pickupRegion.pickupVTableReferences) {
             pickupResult = discovery.pickupRegion;
@@ -1278,6 +1516,20 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
             self.playerRegionSize = firstPlayerAddress ? 0x3000 : playerResult.size;
             playerRegionValid = true;
         }
+        if (discovery.familiarRegion.familiarVTableReferences) {
+            familiarResult = discovery.familiarRegion;
+            if (familiarResult.firstFamiliarVTableAddress &&
+                familiarResult.lastFamiliarVTableAddress >=
+                    familiarResult.firstFamiliarVTableAddress) {
+                self.familiarRegionAddress = familiarResult.firstFamiliarVTableAddress;
+                self.familiarRegionSize = familiarResult.lastFamiliarVTableAddress -
+                    familiarResult.firstFamiliarVTableAddress + 0x1000;
+            } else {
+                self.familiarRegionAddress = familiarResult.address;
+                self.familiarRegionSize = familiarResult.size;
+            }
+            familiarRegionValid = true;
+        }
         if (discovery.slotRegion.slotVTableReferences) {
             slotResult = discovery.slotRegion;
             if (slotResult.firstSlotVTableAddress &&
@@ -1293,29 +1545,39 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         }
         if (!self.loggedVMDiscovery && pickupRegionValid) {
             self.loggedVMDiscovery = YES;
-            EIDLog(@"safe VM entity discovery: pickup refs %lu, player refs %lu, slot refs %lu, effect refs %lu, spikes refs %lu, "
+            EIDLog(@"safe VM entity discovery: pickup refs %lu, player refs %lu, familiar refs %lu, slot refs %lu, effect refs %lu, spikes refs %lu, "
                    "cache %.1f MiB",
                    (unsigned long)pickupResult.pickupVTableReferences,
                    (unsigned long)playerResult.playerVTableReferences,
+                   (unsigned long)familiarResult.familiarVTableReferences,
                    (unsigned long)slotResult.slotVTableReferences,
                    (unsigned long)effectResult.effectVTableReferences,
                    (unsigned long)gridSpikesResult.gridSpikesVTableReferences,
                    (double)self.pickupRegionSize / (1024.0 * 1024.0));
         }
     }
-    if (!pickupRegionValid) {
-        self.gameplayActive = playerVectorResolved && managedPlayers.playerCount > 0;
-        if (!self.gameplayActive) self.lastPickups = @[];
-        return self.gameplayActive ? self.lastPickups : @[];
-    }
     self.gameplayActive = playerVectorResolved
         ? managedPlayers.playerCount > 0
         : playerRegionValid && playerResult.playerCount > 0;
     if (self.gameplayActive && playerResult.playerCount) {
         [self updateOwnedCollectibleCountsForPlayers:playerResult];
+        [self updateNativeTransformationCountersForPlayers:playerResult];
+        [self updateInventoryForPlayers:playerResult];
+        self.superBumActive = familiarRegionValid && familiarResult.superBumActive;
     } else if (playerVectorResolved) {
+        self.inventoryItems = @[];
+        self.inventoryStateAvailable = NO;
         self.ownedCollectibleCounts = @{};
         self.ownedCollectibleStateAvailable = NO;
+        self.nativeTransformationCounters = @[];
+        self.transformationStateAvailable = NO;
+        self.superBumActive = NO;
+    }
+    [self updatePauseStateForGameplay:self.gameplayActive];
+
+    if (!pickupRegionValid) {
+        if (!self.gameplayActive) self.lastPickups = @[];
+        return self.gameplayActive ? self.lastPickups : @[];
     }
 
     uint32_t curseMask = 0;
@@ -1460,6 +1722,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     return identifiers;
 }
 
+- (NSArray<EIDPickupIdentity *> *)currentInventoryItems {
+    return self.inventoryStateAvailable ? self.inventoryItems.copy : @[];
+}
+
 - (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID {
     if (collectibleID <= 0 || collectibleID > (NSInteger)kMaximumCollectibleID ||
         !self.ownedCollectibleStateAvailable) return 0;
@@ -1470,5 +1736,11 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     NSInteger liveCount = [self ownedCollectibleCountForID:collectibleID];
     if (![self.activeCollectibleIDs containsObject:@(collectibleID)]) return liveCount;
     return MAX(liveCount, self.activeCollectibleHistory[@(collectibleID)].integerValue);
+}
+
+- (NSInteger)nativeTransformationCounterForFormID:(NSInteger)formID {
+    if (!self.transformationStateAvailable || formID < 0 ||
+        formID >= (NSInteger)self.nativeTransformationCounters.count) return 0;
+    return self.nativeTransformationCounters[(NSUInteger)formID].integerValue;
 }
 @end
