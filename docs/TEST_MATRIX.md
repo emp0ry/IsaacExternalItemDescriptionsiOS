@@ -16,7 +16,7 @@
 | English/Russian pill import | Pass: 51 normal + 51 horse each |
 | All-language upstream import | Pass: 20 EID languages; English fallback fills untranslated Repentance entries |
 | Menu/game detector | Pass: native player-presence detector with 12-scan menu debounce |
-| EID settings | Pass: menu-only bottom-right button, native language picker, horizontal and vertical sliders, 140/50 px defaults, credits and dataset version |
+| EID settings | Pass: bottom-right button is available in menus and while paused, hidden during active gameplay; native language picker, layout controls, 140/50 px defaults, credits and dataset version |
 | Unknown-pill spoiler guard | Pass: native identified byte required |
 | Native pill color-to-effect mapping | Pass: ARM64 ItemPool layout verified |
 | Crane Game prize field | Pass: ARM64 setter/layout verified |
@@ -35,7 +35,7 @@
 | Native card/rune/pill artwork | Pass: subtype-aware card and rune frames plus original EID pill-atlas frames |
 | Transformation progress | Pass: live persisted PlayerForm counters survived a save reload and reported Conjoined `1/3` plus Bookworm `1/3`; Super Bum uses verified familiar type/variant state |
 | Pause detection | Pass: live PauseScreen state changed `0 -> 1 -> 0` on the supported device build |
-| Pause inventory | Pass: top-left button rendered 3 current items and all 15 transformations; item 312 selection opened its description; UI hid on resume |
+| Pause inventory | Pass: top-left button rendered 3 current items and all 15 transformations; item 312 selection opened its description; inventory and settings controls hide on resume |
 | Dice Room descriptions | Pass: live native face detection and localized effect description |
 | Sacrifice Room descriptions | Pass: native grid-spike detection and live next-payout counter |
 | Description removal transition | Pass: title, icon, and body now disappear together after collection |

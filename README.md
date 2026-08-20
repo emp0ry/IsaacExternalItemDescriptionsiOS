@@ -54,7 +54,7 @@ The overlay tracks the player's position and displays the nearest eligible objec
 
 ### In-game settings
 
-The **EID ⚙** button appears in the bottom-right corner while Isaac is in a menu and hides automatically during gameplay. Its settings include:
+The **EID ⚙** button appears in the bottom-right corner while Isaac is in a menu or a run is paused. It hides automatically during active gameplay. Its settings include:
 
 - All 20 bundled languages
 - Horizontal and vertical position
@@ -67,7 +67,8 @@ The default overlay position is 140 px from the left and 50 px from the top.
 
 ### Pause inventory
 
-While a run is paused, an **EID Items** button appears in the top-left corner.
+While a run is paused, an **EID Items** button appears in the top-left corner and
+the **EID ⚙** settings button becomes available in the bottom-right corner.
 It opens a scrollable browser containing the player's current collectibles,
 active item, trinkets, held cards and runes, identified pills, and progress for
 all transformations. Selecting an item closes the browser and renders its full

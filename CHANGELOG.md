@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-08-20
 
 - Added a top-left pause-only inventory browser for collectibles, active items,
   trinkets, held cards and runes, identified pills, and all transformation
@@ -10,6 +10,8 @@
   15-entry PlayerForm counter array, preserving progress across active-item
   replacement and save reloads.
 - Added native Super Bum familiar detection for correct post-merge progress.
+- Made the complete EID settings panel available while a run is paused and
+  kept it hidden during active gameplay.
 
 ## 0.5.0 - 2026-08-20
 

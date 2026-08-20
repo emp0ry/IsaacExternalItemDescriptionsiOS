@@ -104,4 +104,5 @@ independent counter array; the overlay displays the highest valid per-player
 counter instead of incorrectly summing two players.
 
 The pause browser reads PauseScreen state `1...3` as paused and `0` as live
-gameplay. An invalid read fails closed and leaves the button hidden.
+gameplay. The inventory and settings buttons are enabled only for a verified
+paused state; an invalid read fails closed and leaves both controls hidden.

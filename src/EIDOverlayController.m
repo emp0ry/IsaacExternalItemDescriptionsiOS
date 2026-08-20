@@ -468,12 +468,11 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (void)updateMenuModeForGameplay:(BOOL)gameplayActive {
     if (gameplayActive) {
         self.consecutiveMenuScans = 0;
-        self.settingsButton.hidden = YES;
-        self.settingsCard.hidden = YES;
         if (!self.menuMode) return;
         self.menuMode = NO;
+        self.settingsCard.hidden = YES;
         [self updateSettingsControls];
-        EIDLog(@"game state: gameplay active; settings hidden");
+        EIDLog(@"game state: gameplay active; settings available only while paused");
         return;
     }
     if (self.consecutiveMenuScans < 12) self.consecutiveMenuScans++;
@@ -489,9 +488,11 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (void)updatePauseInventoryForPaused:(BOOL)paused {
     BOOL available = paused && self.probe.inventoryStateAvailable;
     self.inventoryButton.hidden = !available;
+    self.settingsButton.hidden = !(self.menuMode || paused);
     if (!paused) {
         self.inventoryCard.hidden = YES;
         self.inventorySignature = nil;
+        if (!self.menuMode) self.settingsCard.hidden = YES;
         if (self.pauseUIActive) {
             self.selectedInventoryItem = nil;
             if (!self.menuMode) [self renderPickups:self.lastPickups];
@@ -501,7 +502,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         [self rebuildInventoryContentsIfNeeded:NO];
     }
     if (paused && !self.pauseUIActive) {
-        EIDLog(@"native pause detected; inventory button available");
+        EIDLog(@"native pause detected; inventory and settings buttons available");
     }
     self.pauseUIActive = paused;
 }
@@ -519,9 +520,11 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.settingsVerticalPositionLabel.text = [NSString stringWithFormat:
         @"Vertical position: %.0f px", verticalPosition];
     NSString *appVersion = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"unknown";
+    NSString *context = self.probe.paused ? @"Paused" :
+        (self.probe.gameplayActive ? @"In game" : @"Menu");
     self.settingsVersionLabel.text = [NSString stringWithFormat:
         @"%@ · iOS %@ · dataset: %@ · not Repentance+",
-        self.probe.gameplayActive ? @"In game" : @"Menu", appVersion,
+        context, appVersion,
         self.store.descriptionDataSet];
 }
 
@@ -733,10 +736,13 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     (void)sender;
     self.settingsCard.hidden = !self.settingsCard.hidden;
     if (!self.settingsCard.hidden) {
+        self.inventoryCard.hidden = YES;
         [self updateSettingsControls];
         [self.rootView bringSubviewToFront:self.settingsCard];
         self.panel.alpha = 0;
     }
+    EIDLog(@"settings panel %@ (%@)", self.settingsCard.hidden ? @"closed" : @"opened",
+           self.probe.paused ? @"paused" : (self.menuMode ? @"menu" : @"gameplay"));
 }
 
 - (void)closeSettings:(UIButton *)sender {
