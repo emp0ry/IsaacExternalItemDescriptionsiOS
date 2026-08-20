@@ -1,94 +1,146 @@
 # Isaac External Item Descriptions for iOS
 
-The first publicly released native gameplay mod for **The Binding of Isaac: Repentance on iOS**. It displays item descriptions inside the game without the desktop Lua mod API.
+The first publicly released native gameplay mod for **The Binding of Isaac: Repentance on iOS**. It brings External Item Descriptions-style information to the native iOS game without relying on Isaac's desktop Lua mod API.
 
 ![External Item Descriptions running in native iOS Repentance](docs/images/eid-gameplay.png)
 
-The project supports three loading modes from the same ARM64 code:
+The same ARM64 implementation supports jailbroken injection, direct app-bundle embedding, and LiveContainer private apps. The dylib itself is portable: ElleKit is used only by the optional jailbreak package as a loader.
 
-| Device | Release file |
-| --- | --- |
-| Jailbroken iPhone or iPad | `IsaacExternalItemDescriptions-rootless.deb` |
-| Non-jailbroken iPhone or iPad | `IsaacExternalItemDescriptions-Embedded.zip` |
-| LiveContainer private app | `IsaacExternalItemDescriptions-LiveContainer.framework.zip` |
+## Download
 
-The standalone dylib uses public iOS frameworks and does not link against ElleKit, Substrate, libhooker, or any jailbreak runtime. The rootless package uses ElleKit only as a loader.
+Download the current files from [GitHub Releases](https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/latest).
+
+| Installation | Release file | Included |
+| --- | --- | --- |
+| Rootless jailbreak with ElleKit | `IsaacExternalItemDescriptions-rootless.deb` | Dylib, loader filter, descriptions, icons, and transformation data |
+| LiveContainer private app | `IsaacExternalItemDescriptions-LiveContainer.framework.zip` | App-specific framework with all required resources |
+| Embedded/non-jailbroken app | `IsaacExternalItemDescriptions-Embedded.zip` | Dylib and complete `IsaacEID.bundle` for app-bundle injection |
+| Advanced/manual setup | `IsaacExternalItemDescriptions-Full-Build.zip` | Every build format, database, documentation, and checksums |
+
+A standalone `IsaacExternalItemDescriptions.dylib`, `descriptions.json`, and `SHA256SUMS` are also provided. No Isaac IPA or copyrighted game bundle is distributed.
 
 ## Features
 
-- Native in-game overlay with no external application or server
-- All 20 languages currently exposed by the original EID language manager, with English fallback for untranslated Repentance entries
-- Collectibles, trinkets, cards, runes, known pills, horse pills, Crane Game prizes, Dice Rooms, and Sacrifice Rooms
-- Original collectible, trinket, card, rune, and pill artwork from the installed game and original EID resources
-- Original EID-style object-name color (`ColorEIDObjName`), outlined compact text, scale and opacity controls
-- Original EID inline icon atlas support for description markup, including Q0–Q4 quality icons
-- Collectible quality read from Isaac metadata rather than a hard-coded item list
-- EID-style Name, Icon, Quality and Description visibility toggles
-- One consistent white icon for identified pills
-- Descriptions for previously held cards after they are dropped
-- Native per-run transformation progress calculated from the player's actual owned collectibles
-- Dice Room effects and the next Sacrifice Room payout, including the live sacrifice count
-- Spoiler protection for untouched cards, unidentified pills, and every collectible pedestal during Curse of the Blind
-- Bottom-right, menu-only settings button with a native 20-language picker
-- Configurable horizontal and vertical position (140 px from the left and 50 px from the top by default)
-- Safe executable-version gate and read-only native entity snapshots
+### Descriptions
+
+- Collectibles and trinkets
+- Cards and runes
+- Identified pills and horse pills
+- Crane Game prizes
+- Dice Room effects for all six faces
+- The next Sacrifice Room payout with the live step from `1/12` through `12/12`
+- Complete Repentance description data for all 20 upstream EID languages, with English fallback for untranslated entries
+
+The overlay tracks the player's position and displays the nearest eligible object. Long descriptions wrap normally and are not cut to a fixed character count.
+
+### Correct knowledge and run state
+
+- Untouched floor cards and runes remain hidden until the game marks them touched or a player holds them in a native pocket slot.
+- Pills remain hidden until Isaac's native ItemPool state identifies their effect.
+- Curse of the Blind suppresses every collectible description using the native level curse mask. The forced-blind field and question-mark sprite are retained as additional guards.
+- Transformation progress is calculated from the player's real owned-collectible table instead of nearby-item observations.
+- Replaced active items remain counted for the current run, matching persistent transformation contribution.
+- Native run identity and seed tracking reset learned cards, runes, and transformation history when a new run begins.
+
+### Artwork and presentation
+
+- Collectible and trinket artwork is loaded from the installed game.
+- Cards use Isaac's native `CardFronts` animation mapping.
+- Runes use the correct subtype frame from the attributed original EID card/rune atlas.
+- Identified pills use their actual native pill color mapped to the corresponding original EID `Pills` frame.
+- Original EID inline symbols, Q0-Q4 quality icons, transformation icons, colors, and description markup are rendered through UIKit.
+- The description has no background box and uses compact outlined text designed to remain readable over gameplay.
+- Item title, icon, and description disappear together after an item is collected.
+
+### In-game settings
+
+The **EID ⚙** button appears in the bottom-right corner while Isaac is in a menu and hides automatically during gameplay. Its settings include:
+
+- All 20 bundled languages
+- Horizontal and vertical position
+- Scale and opacity
+- Independent Name, Icon, Quality, and Description visibility
+- Position reset controls
+- Dataset/build information and original EID credits
+
+The default overlay position is 140 px from the left and 50 px from the top.
 
 ## Compatibility
 
-This release targets the ARM64 App Store build with bundle identifier `com.Nicalis.Isaac-iOS` and Mach-O UUID:
+The current native layout supports this App Store build:
 
-```text
-F4357753-A25F-30EE-BACF-63709F902895
-```
+| Property | Supported value |
+| --- | --- |
+| Bundle identifier | `com.Nicalis.Isaac-iOS` |
+| Architecture | ARM64 |
+| iOS game version | `1.4` |
+| Embedded game string | `Repentance v1.7.9b.J754` |
+| Mach-O UUID | `F4357753-A25F-30EE-BACF-63709F902895` |
+| Description dataset | Standard Repentance `rep` with `ab+` base tables |
 
-Native layouts can change between game updates. An unknown executable UUID is rejected before entity memory is scanned, so an unsupported build shows no overlay instead of risking a crash.
+Native layouts can change when the game executable changes. An unknown UUID is rejected before entity memory is scanned, so unsupported builds show no overlay instead of using unverified offsets. Repentance+ data is intentionally not used because it does not match the native iOS 1.4 executable.
 
 ## Installation
 
-### Jailbroken devices
+Back up Isaac's application data before replacing or re-signing an installation.
 
-Install `IsaacExternalItemDescriptions-rootless.deb` with a package manager or with `dpkg`, then restart Isaac. The package targets rootless ElleKit layouts.
+### Rootless jailbreak
 
-### Non-jailbroken devices
+Install the release package with a package manager, or from a shell:
 
-Extract `IsaacExternalItemDescriptions-Embedded.zip`. Place its dylib and `IsaacEID.bundle` in the app's `Frameworks` directory, add this Mach-O load command to the main executable, and sign the complete app bundle:
+```sh
+dpkg -i IsaacExternalItemDescriptions-rootless.deb
+```
+
+Restart Isaac after installation. The package installs an ElleKit filter for `com.Nicalis.Isaac-iOS`; the loaded dylib does not link against ElleKit, Substrate, libhooker, or another jailbreak runtime.
+
+### LiveContainer private app
+
+1. Extract `IsaacExternalItemDescriptions-LiveContainer.framework.zip` in Files.
+2. In LiveContainer, open **Tweaks** and create an app-specific folder such as `IsaacEID`.
+3. Open that folder, choose **Import Tweak**, and select `IsaacExternalItemDescriptions.framework`.
+4. Long-press Isaac, open **Settings**, and select the new folder under **Tweak Folder**.
+5. Keep **Don't Inject TweakLoader** and **Don't Load TweakLoader** disabled.
+6. If LiveContainer reports a signing problem, use **Force Sign** for the imported framework.
+
+Isaac must be configured as a private app. Do not place this framework in Global Tweaks. More detail is available in [Installation](docs/INSTALL.md#livecontainer-private-app).
+
+### Embedded/non-jailbroken app
+
+Extract `IsaacExternalItemDescriptions-Embedded.zip` into the app's `Frameworks` directory and add this load command to Isaac's main executable:
 
 ```text
 @executable_path/Frameworks/IsaacExternalItemDescriptions.dylib
 ```
 
-The dylib requires no JIT, executable-memory entitlement, daemon, or jailbreak filesystem access. The included patcher automates the bundle and Mach-O changes:
+The included tool performs the bundle copy and Mach-O modification on a user-supplied decrypted IPA:
 
 ```sh
 ./tools/patch-ipa.sh Isaac.ipa Isaac-EID.ipa
 ```
 
-Signing is intentionally separate. See [Installation](docs/INSTALL.md) for the available signing variables and important app-signing limitations.
+The result is unsigned unless `SIGNING_IDENTITY` is supplied. The complete app bundle must be signed after modification. The dylib requires no JIT, executable-memory entitlement, private entitlement, daemon, SSH service, or jailbreak filesystem access.
 
-### LiveContainer private app
+See [Installation](docs/INSTALL.md) for signing options and limitations.
 
-Extract `IsaacExternalItemDescriptions-LiveContainer.framework.zip`, import the framework into an app-specific LiveContainer tweak folder, and select that folder in Isaac's settings. Isaac must be a private app, and both **Don't Inject TweakLoader** and **Don't Load TweakLoader** must remain disabled. See the [LiveContainer instructions](docs/INSTALL.md#livecontainer-private-app) for the complete click-by-click setup.
+## Build from source
 
-## Original EID data and visuals
+Requirements:
 
-The dylib can read Isaac's installed item metadata without extra files. The original EID language packs and visual atlas can be generated locally from an existing External Item Descriptions checkout:
+- macOS and Xcode with an iOS SDK
+- Python 3
+- `dpkg-deb` for rootless package creation
+- A checkout of [wofsauge/External-Item-Descriptions](https://github.com/wofsauge/External-Item-Descriptions) when regenerating attributed data and visual resources
+
+Build and validate every public format:
 
 ```sh
-make EID_SOURCE=/path/to/External-Item-Descriptions descriptions parity-assets
+make release EID_SOURCE=/path/to/External-Item-Descriptions
 ```
 
-`descriptions` combines upstream `ab+` base tables with Repentance `rep` overrides. `parity-assets` copies the original EID inline atlas and ANM2 metadata into the build bundle and generates a compact token-to-animation map used by the native UIKit renderer. The asset importer also copies upstream attribution/license information when present.
-
-The installed iOS 1.4 executable identifies itself as `Repentance v1.7.9b.J754`, so the correct Steam-equivalent dataset is **Repentance (`rep`)**, not Repentance+.
-
-The parity renderer follows upstream EID defaults where they translate cleanly to iOS: object-name purple, Q0–Q4 as dedicated inline icons, compact 11px-equivalent line spacing, 0.75 default opacity, scale 1.0, and independent name/icon/quality/description visibility. See [EID parity](docs/EID_PARITY.md).
-
-## Build
-
-Requirements: macOS, Xcode, Python 3, `dpkg-deb`, and an iOS SDK.
+Useful individual targets:
 
 ```sh
-make EID_SOURCE=/path/to/External-Item-Descriptions descriptions parity-assets
 make test
 make dylib EXTRA_CFLAGS='-Wall -Wextra -Werror'
 make package EXTRA_CFLAGS='-Wall -Wextra -Werror'
@@ -96,18 +148,30 @@ make livecontainer EXTRA_CFLAGS='-Wall -Wextra -Werror'
 make audit
 ```
 
-Create clean public release artifacts in `dist/` with `make release`.
+`make audit` verifies that the resulting dylib does not reference jailbreak-only libraries. Release files are written to `dist/` and `packages/`.
 
-## Technical notes
+The description importer combines upstream `ab+` base tables with `rep` overrides. The asset importer builds the inline-icon map and copies the card/pill and transformation resources used by the UIKit renderer.
 
-The iOS build does not expose Isaac's desktop Lua API. This implementation resolves the native pickup, player, slot, effect, and grid-spike types in the main executable, takes bounded read-only snapshots of game state, and renders the nearest eligible description through UIKit.
+## How it works
 
-Verified native layouts are documented in [Native layout](docs/NATIVE_LAYOUT.md). Current device and packaging coverage is recorded in [Test matrix](docs/TEST_MATRIX.md).
+The native iOS game has no desktop Lua mod API. This project locates the supported Isaac executable by UUID, resolves native C++ RTTI for pickup, player, slot, effect, and grid-spike types, and reads bounded snapshots from its own process.
+
+Those snapshots provide nearby pickup identity, player position, card/rune knowledge, pill knowledge, owned collectibles, level curses, room effects, Sacrifice Room grid state, and run identity. The mod does not patch save data or write into Isaac's native gameplay objects.
+
+Verified offsets and their validation are documented in [Native layout](docs/NATIVE_LAYOUT.md). Device and packaging results are recorded in [Test matrix](docs/TEST_MATRIX.md), and presentation differences are tracked in [EID parity](docs/EID_PARITY.md).
+
+## Limitations
+
+- Only the executable UUID listed above is supported. A game update requires native-layout revalidation.
+- This is a native EID implementation, not a general Windows/Linux Lua-mod loader for iOS.
+- The in-game overlay currently presents the nearest supported description rather than every object in the room simultaneously.
+- Direct embedding requires modifying and signing the application. Re-signing can change the bundle identifier, application container, Keychain groups, and App Store receipt behavior.
+- The project does not alter StoreKit, DLC ownership, receipts, or purchase checks.
 
 ## Credits and legal
 
-Special thanks to **wofsauge and every External Item Descriptions contributor** for the original mod, its descriptions, translations, markup, visual resources, and years of maintenance. Visit the original External Item Descriptions GitHub project or Steam Workshop mod.
+Special thanks to **[wofsauge](https://github.com/wofsauge)** and every [External Item Descriptions](https://github.com/wofsauge/External-Item-Descriptions) contributor for the original mod, descriptions, translations, markup, atlases, and years of maintenance. The original mod is also available through the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=836319872).
 
-The bundled EID-derived resources remain credited to wofsauge and its contributors and are covered separately in [Third-party notices](THIRD_PARTY_NOTICES.md). Item artwork is loaded at runtime from the installed game and is never stored in this repository.
+The bundled EID-derived descriptions and visual resources are distributed with permission and remain credited to their original authors. Their attribution is preserved in [Third-party notices](THIRD_PARTY_NOTICES.md). Collectible, trinket, and native card artwork is loaded at runtime from the installed game.
 
-This is an unofficial project and is not affiliated with Nicalis, Edmund McMillen, Valve, or the External Item Descriptions maintainers. No game files, DLC, receipts, or purchase bypasses are distributed. Project source code is available under the [MIT License](LICENSE).
+This is an unofficial project and is not affiliated with Nicalis, Edmund McMillen, Valve, or the External Item Descriptions maintainers. No game application, DLC, receipt, or purchase bypass is included. The bridge source is available under the [MIT License](LICENSE).
