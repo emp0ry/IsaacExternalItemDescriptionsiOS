@@ -528,6 +528,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     if (variant == EIDPickupVariantCard) return russian ? @"Карта / руна" : @"Card / rune";
     if (variant == EIDPickupVariantPill) return russian ? @"Таблетка" : @"Pill";
     if (variant == EIDPickupVariantHorsePill) return russian ? @"Большая таблетка" : @"Horse pill";
+    if (variant == EIDPickupVariantDiceRoom) return russian ? @"Комната игральной кости" : @"Dice Room";
+    if (variant == EIDPickupVariantSacrificeRoom) return russian ? @"Комната жертвоприношений" : @"Sacrifice Room";
     return russian ? @"Артефакт" : @"Collectible";
 }
 
@@ -603,11 +605,19 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
 - (void)renderPickups:(NSArray<EIDPickupIdentity *> *)pickups {
     if (!pickups.count) {
-        self.itemIconView.image = nil;
-        self.itemIconView.hidden = YES;
-        [UIView animateWithDuration:0.15 animations:^{ self.panel.alpha = 0; }];
+        UIView *panel = self.panel;
+        [UIView animateWithDuration:0.15 animations:^{
+            panel.alpha = 0;
+        } completion:^(BOOL finished) {
+            if (!finished || panel.alpha > 0.01) return;
+            self.itemIconView.image = nil;
+            self.itemIconView.hidden = YES;
+            self.label.text = nil;
+            self.label.attributedText = nil;
+        }];
         return;
     }
+    [self.panel.layer removeAllAnimations];
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
     EIDDescription *displayItem = nil;
     NSUInteger shown = MIN(pickups.count, 1);

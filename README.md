@@ -18,15 +18,17 @@ The standalone dylib uses public iOS frameworks and does not link against ElleKi
 
 - Native in-game overlay with no external application or server
 - All 20 languages currently exposed by the original EID language manager, with English fallback for untranslated Repentance entries
-- Collectibles, trinkets, cards, runes, known pills, horse pills, and Crane Game prizes
-- Original collectible, trinket, and card artwork from the installed game
+- Collectibles, trinkets, cards, runes, known pills, horse pills, Crane Game prizes, Dice Rooms, and Sacrifice Rooms
+- Original collectible, trinket, card, rune, and pill artwork from the installed game and original EID resources
 - Original EID-style object-name color (`ColorEIDObjName`), outlined compact text, scale and opacity controls
 - Original EID inline icon atlas support for description markup, including Q0–Q4 quality icons
 - Collectible quality read from Isaac metadata rather than a hard-coded item list
 - EID-style Name, Icon, Quality and Description visibility toggles
 - One consistent white icon for identified pills
 - Descriptions for previously held cards after they are dropped
-- Spoiler protection for untouched cards, unidentified pills, and Curse of the Blind pedestals
+- Native per-run transformation progress calculated from the player's actual owned collectibles
+- Dice Room effects and the next Sacrifice Room payout, including the live sacrifice count
+- Spoiler protection for untouched cards, unidentified pills, and every collectible pedestal during Curse of the Blind
 - Bottom-right, menu-only settings button with a native 20-language picker
 - Configurable horizontal and vertical position (140 px from the left and 50 px from the top by default)
 - Safe executable-version gate and read-only native entity snapshots
@@ -98,7 +100,7 @@ Create clean public release artifacts in `dist/` with `make release`.
 
 ## Technical notes
 
-The iOS build does not expose Isaac's desktop Lua API. This implementation resolves the native pickup, player, and slot types in the main executable, takes bounded read-only snapshots of the fixed entity pool, and renders the nearest eligible pickup through UIKit.
+The iOS build does not expose Isaac's desktop Lua API. This implementation resolves the native pickup, player, slot, effect, and grid-spike types in the main executable, takes bounded read-only snapshots of game state, and renders the nearest eligible description through UIKit.
 
 Verified native layouts are documented in [Native layout](docs/NATIVE_LAYOUT.md). Current device and packaging coverage is recorded in [Test matrix](docs/TEST_MATRIX.md).
 

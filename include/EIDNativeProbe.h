@@ -9,6 +9,9 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
     EIDPickupVariantTrinket = 350,
     // Internal display variant. Native pickups still use variant 70 with bit 11 set.
     EIDPickupVariantHorsePill = 1070,
+    // Internal display variants for native room entities.
+    EIDPickupVariantDiceRoom = 2001,
+    EIDPickupVariantSacrificeRoom = 2002,
 };
 
 @interface EIDPickupIdentity : NSObject
@@ -22,8 +25,13 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 @property(nonatomic, copy, readonly) NSString *status;
 @property(nonatomic, readonly, getter=isSupportedBuild) BOOL supportedBuild;
 @property(atomic, readonly, getter=isGameplayActive) BOOL gameplayActive;
+@property(atomic, readonly) uint32_t runSeed;
+@property(atomic, readonly) NSUInteger runCounter;
+@property(atomic, readonly, getter=isOwnedCollectibleStateAvailable) BOOL ownedCollectibleStateAvailable;
 - (void)start;
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups;
+- (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID;
+- (NSInteger)transformationCollectibleCountForID:(NSInteger)collectibleID;
 // Compatibility API used by early integrations and exported diagnostic helpers.
 - (NSArray<NSNumber *> *)currentCollectibleIDs;
 @end

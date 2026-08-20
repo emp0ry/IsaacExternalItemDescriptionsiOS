@@ -31,9 +31,14 @@
 | LiveContainer 3.8.0 private-app launch | Pass: framework loaded, full database imported, native probe active, no crash |
 | Live card/rune entity detection | Pass: native variant 300 observed on device |
 | Untouched-card identity guard | Pass: untouched cards stay hidden; held cards are learned from the four native player pocket slots |
-| Native item artwork | Pass: exact Isaac collectible/trinket paths, card-atlas crops, card fallback, and one static native white pill icon rendered beside text |
+| Native item artwork | Pass: exact Isaac collectible/trinket paths and subtype-aware pocket-item artwork rendered beside text |
+| Native card/rune/pill artwork | Pass: subtype-aware card and rune frames plus original EID pill-atlas frames |
+| Transformation progress | Pass: native owned-collectible counts, duplicate handling, active-item run history, and run-seed reset |
+| Dice Room descriptions | Pass: live native face detection and localized effect description |
+| Sacrifice Room descriptions | Pass: native grid-spike detection and live next-payout counter |
+| Description removal transition | Pass: title, icon, and body now disappear together after collection |
 | Live trinket, known pill, and Crane rendering | Pending suitable in-game room |
-| Curse of the Blind live regression | Pending suitable seeded floor |
+| Curse of the Blind live regression | Pass: native `0x40` curse mask suppresses the debug collectible pedestal on device |
 
 The old allocator-enumeration development prototype was removed after it proved
 unsafe. The current entity scanner has run without a new crash since that

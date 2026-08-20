@@ -41,6 +41,19 @@ class BundledDescriptionsTests(unittest.TestCase):
         self.assertEqual(len(english["cards"]), 97)
         self.assertEqual(len(english["pills"]), 51)
         self.assertEqual(len(english["horsepills"]), 51)
+        self.assertEqual(len(english["dice"]), 6)
+        self.assertEqual(len(english["sacrifice"]), 12)
+        self.assertEqual(english["dice"]["4"]["name"], "Dice Room effects (4/6)")
+        self.assertEqual(
+            english["sacrifice"]["1"]["name"],
+            "Next Sacrifice Room payout (1/12)",
+        )
+
+    def test_room_titles_do_not_keep_markup_brackets(self) -> None:
+        for language in self.payload["languages"].values():
+            for category in ("dice", "sacrifice"):
+                for entry in language[category].values():
+                    self.assertFalse(entry["name"].startswith("["))
 
 
 if __name__ == "__main__":

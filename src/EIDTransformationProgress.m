@@ -30,11 +30,9 @@ static NSString *EIDTransformResourcePath(void) {
 @property(nonatomic, copy) NSDictionary<NSString *, NSArray<NSNumber *> *> *assignments;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *englishNames;
 @property(nonatomic, copy) NSDictionary<NSString *, NSDictionary<NSString *, NSString *> *> *namesByLanguage;
+@property(nonatomic, copy) NSDictionary<NSNumber *, NSArray<NSNumber *> *> *collectiblesByTransformation;
+@property(nonatomic, weak) EIDNativeProbe *probe;
 @property(nonatomic) NSInteger required;
-@property(nonatomic, strong) NSMutableSet<NSNumber *> *takenCollectibles;
-@property(nonatomic, strong) NSSet<NSNumber *> *previousVisibleCollectibles;
-@property(nonatomic) BOOL sawGameplay;
-@property(nonatomic) BOOL resetDuringCurrentNonGameplayPeriod;
 + (instancetype)shared;
 - (NSArray<NSNumber *> *)transformationsForCollectible:(NSInteger)collectible;
 - (NSInteger)progressForTransformation:(NSInteger)transformation;
@@ -54,8 +52,6 @@ static NSString *EIDTransformResourcePath(void) {
 
 - (instancetype)init {
     if (!(self = [super init])) return nil;
-    _takenCollectibles = [NSMutableSet set];
-    _previousVisibleCollectibles = [NSSet set];
     _required = 3;
 
     NSString *path = EIDTransformResourcePath();
@@ -69,8 +65,38 @@ static NSString *EIDTransformResourcePath(void) {
     if (rawLocalized) _namesByLanguage = rawLocalized;
     NSNumber *required = [json[@"required"] isKindOfClass:NSNumber.class] ? json[@"required"] : nil;
     if (required.integerValue > 0) _required = required.integerValue;
-    EIDLog(@"temporary transformation tracker loaded %lu assignments, %lu languages; requirement %ld",
-           (unsigned long)_assignments.count, (unsigned long)_namesByLanguage.count, (long)_required);
+    NSMutableDictionary<NSNumber *, NSMutableArray<NSNumber *> *> *members =
+        [NSMutableDictionary dictionary];
+    [_assignments enumerateKeysAndObjectsUsingBlock:
+        ^(NSString *key, NSArray<NSNumber *> *transformations, __unused BOOL *stop) {
+        NSArray<NSString *> *parts = [key componentsSeparatedByString:@":"];
+        if (parts.count != 2 || parts[0].integerValue != EIDPickupVariantCollectible) return;
+        NSInteger collectibleID = parts[1].integerValue;
+        if (collectibleID <= 0 || collectibleID > 732 ||
+            ![transformations isKindOfClass:NSArray.class]) return;
+        for (NSNumber *transformation in transformations) {
+            if (![transformation isKindOfClass:NSNumber.class] || transformation.integerValue <= 0) {
+                continue;
+            }
+            NSMutableArray<NSNumber *> *values = members[transformation];
+            if (!values) {
+                values = [NSMutableArray array];
+                members[transformation] = values;
+            }
+            [values addObject:@(collectibleID)];
+        }
+    }];
+    NSMutableDictionary<NSNumber *, NSArray<NSNumber *> *> *immutableMembers =
+        [NSMutableDictionary dictionary];
+    [members enumerateKeysAndObjectsUsingBlock:
+        ^(NSNumber *key, NSMutableArray<NSNumber *> *values, __unused BOOL *stop) {
+        immutableMembers[key] = values.copy;
+    }];
+    _collectiblesByTransformation = immutableMembers.copy;
+    EIDLog(@"native transformation tracker loaded %lu assignments, %lu groups, %lu languages; "
+           "requirement %ld",
+           (unsigned long)_assignments.count, (unsigned long)_collectiblesByTransformation.count,
+           (unsigned long)_namesByLanguage.count, (long)_required);
     return self;
 }
 
@@ -100,72 +126,46 @@ static NSString *EIDTransformResourcePath(void) {
 }
 
 - (NSInteger)progressForTransformation:(NSInteger)transformation {
-    if (transformation <= 0) return 0;
+    if (transformation <= 0 || !self.probe.ownedCollectibleStateAvailable) return 0;
     NSInteger count = 0;
-    for (NSNumber *collectible in self.takenCollectibles) {
-        NSArray<NSNumber *> *transforms = [self transformationsForCollectible:collectible.integerValue];
-        for (NSNumber *value in transforms) {
-            if (value.integerValue == transformation) {
-                count++;
-                break;
-            }
-        }
-        if (count >= self.required) return self.required;
+    for (NSNumber *collectible in self.collectiblesByTransformation[@(transformation)]) {
+        count += [self.probe transformationCollectibleCountForID:collectible.integerValue];
     }
-    return MIN(self.required, count);
+    return count;
+}
+
+- (void)logProgressForCollectible:(NSInteger)collectible
+                   transformations:(NSArray<NSNumber *> *)transformations {
+    if (!transformations.count) return;
+    NSMutableArray<NSString *> *parts = [NSMutableArray arrayWithCapacity:transformations.count];
+    for (NSNumber *transformation in transformations) {
+        NSInteger progress = [self progressForTransformation:transformation.integerValue];
+        [parts addObject:[NSString stringWithFormat:@"%@=%ld/%ld", transformation,
+                          (long)progress, (long)self.required]];
+    }
+    NSString *state = [NSString stringWithFormat:@"%lu:%ld:%@",
+                       (unsigned long)self.probe.runCounter, (long)collectible,
+                       [parts componentsJoinedByString:@","]];
+    static NSString *lastLoggedState;
+    if ([lastLoggedState isEqualToString:state]) return;
+    lastLoggedState = state;
+    EIDLog(@"transformation progress for collectible %ld: %@ (native inventory %@)",
+           (long)collectible, [parts componentsJoinedByString:@", "],
+           self.probe.ownedCollectibleStateAvailable ? @"ready" : @"unavailable");
 }
 
 - (void)resetForNewRun {
-    if (self.takenCollectibles.count || self.previousVisibleCollectibles.count) {
-        EIDLog(@"temporary transformation progress reset for new run");
-    }
-    [self.takenCollectibles removeAllObjects];
-    self.previousVisibleCollectibles = [NSSet set];
+    // Progress is a live read of the current native player inventory. The
+    // probe clears its snapshot on every authoritative run transition.
 }
 
 - (void)observeGameplayActive:(BOOL)gameplayActive {
-    if (gameplayActive) {
-        self.sawGameplay = YES;
-        self.resetDuringCurrentNonGameplayPeriod = NO;
-        return;
-    }
-    if (self.sawGameplay && !self.resetDuringCurrentNonGameplayPeriod) {
-        [self resetForNewRun];
-        self.resetDuringCurrentNonGameplayPeriod = YES;
-    }
+    (void)gameplayActive;
 }
 
 - (void)observePickups:(NSArray<EIDPickupIdentity *> *)pickups gameplayActive:(BOOL)gameplayActive {
-    [self observeGameplayActive:gameplayActive];
-    if (!gameplayActive) {
-        self.previousVisibleCollectibles = [NSSet set];
-        return;
-    }
-
-    NSMutableSet<NSNumber *> *current = [NSMutableSet set];
-    for (EIDPickupIdentity *pickup in pickups) {
-        if (pickup.variant == EIDPickupVariantCollectible && pickup.subtype > 0) {
-            [current addObject:@(pickup.subtype)];
-        }
-    }
-
-    NSMutableSet<NSNumber *> *removed = [self.previousVisibleCollectibles mutableCopy];
-    [removed minusSet:current];
-    for (NSNumber *collectible in removed) {
-        if ([self.takenCollectibles containsObject:collectible]) continue;
-        NSArray<NSNumber *> *transforms = [self transformationsForCollectible:collectible.integerValue];
-        if (!transforms.count) continue;
-        [self.takenCollectibles addObject:collectible];
-        NSMutableArray<NSString *> *parts = [NSMutableArray array];
-        for (NSNumber *transform in transforms) {
-            NSInteger progress = [self progressForTransformation:transform.integerValue];
-            [parts addObject:[NSString stringWithFormat:@"%ld=%ld/%ld", (long)transform.integerValue,
-                              (long)progress, (long)self.required]];
-        }
-        EIDLog(@"remembered transformation collectible %@ (%@)", collectible,
-               [parts componentsJoinedByString:@", "]);
-    }
-    self.previousVisibleCollectibles = current.copy;
+    (void)pickups;
+    (void)gameplayActive;
 }
 @end
 
@@ -218,7 +218,9 @@ static NSAttributedString *EIDLocalizeAndReplaceProgressInText(NSAttributedStrin
     EIDNativeProbe *probe = nil;
     @try { probe = [self valueForKey:@"probe"]; } @catch (__unused NSException *exception) {}
     BOOL gameplayActive = probe ? probe.gameplayActive : YES;
-    [[EIDTransformationProgress shared] observePickups:pickups gameplayActive:gameplayActive];
+    EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
+    tracker.probe = probe;
+    [tracker observePickups:pickups gameplayActive:gameplayActive];
 
     [self eid_progress_renderPickups:pickups];
 
@@ -226,6 +228,7 @@ static NSAttributedString *EIDLocalizeAndReplaceProgressInText(NSAttributedStrin
     if (!shown || shown.variant != EIDPickupVariantCollectible) return;
     NSArray<NSNumber *> *transforms = [[EIDTransformationProgress shared] transformationsForCollectible:shown.subtype];
     if (!transforms.count) return;
+    [tracker logProgressForCollectible:shown.subtype transformations:transforms];
 
     __weak id weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{

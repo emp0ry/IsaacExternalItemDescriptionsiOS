@@ -58,7 +58,9 @@ static UILabel *EIDHeaderLabelForController(id controller, UIView *panel) {
     header = [[UILabel alloc] initWithFrame:CGRectZero];
     header.numberOfLines = 1;
     header.backgroundColor = UIColor.clearColor;
-    header.adjustsFontSizeToFitWidth = NO;
+    header.adjustsFontSizeToFitWidth = YES;
+    header.minimumScaleFactor = 0.45;
+    header.baselineAdjustment = UIBaselineAdjustmentAlignCenters;
     header.lineBreakMode = NSLineBreakByClipping;
     header.userInteractionEnabled = NO;
     header.shadowColor = [UIColor colorWithWhite:0 alpha:0.95];
@@ -91,6 +93,23 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
 
     UILabel *bodyLabel = [self valueForKey:@"label"];
     UIView *panel = [self valueForKey:@"panel"];
+    if (!pickups.count) {
+        __weak id weakController = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.18 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            id controller = weakController;
+            if (!controller) return;
+            UIView *currentPanel = [controller valueForKey:@"panel"];
+            if (![currentPanel isKindOfClass:UIView.class] || currentPanel.alpha > 0.01) return;
+            UILabel *headerLabel = objc_getAssociatedObject(controller, EIDHeaderLabelKey);
+            UIImageView *logo = objc_getAssociatedObject(controller, EIDHeaderLogoKey);
+            headerLabel.attributedText = nil;
+            headerLabel.hidden = YES;
+            logo.image = nil;
+            logo.hidden = YES;
+        });
+        return;
+    }
     if (![bodyLabel isKindOfClass:UILabel.class] || ![panel isKindOfClass:UIView.class] || !bodyLabel.attributedText.length) return;
 
     NSAttributedString *rendered = bodyLabel.attributedText;
@@ -151,11 +170,12 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
     }];
 
     UILabel *headerLabel = EIDHeaderLabelForController(self, panel);
+    headerLabel.hidden = NO;
     headerLabel.attributedText = headerText;
 
-    CGFloat headerHeight = 19.0 * scale;
     CGFloat gap = 5.0 * scale;
     CGFloat textWidth = MAX(1, panel.bounds.size.width - textInset);
+    CGFloat headerHeight = 22.0 * scale;
     headerLabel.frame = CGRectMake(textInset, 0, textWidth, headerHeight);
 
     if (newline.location != NSNotFound && NSMaxRange(newline) < rendered.length) {

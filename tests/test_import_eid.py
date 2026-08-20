@@ -92,6 +92,28 @@ class ImportEIDTests(unittest.TestCase):
         )
         self.assertEqual(entries[1]["description"], description)
 
+    def test_room_description_header_assignment(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "language.lua"
+            path.write_text(
+                'EID.descriptions[languageCode].diceHeader = "[Dice Room effects]"\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                IMPORTER.parse_string_assignment(path, "diceHeader"),
+                "[Dice Room effects]",
+            )
+
+    def test_room_header_brackets_are_removed_for_display(self) -> None:
+        self.assertEqual(
+            IMPORTER.display_room_header("[Dice Room effects]", "dice"),
+            "Dice Room effects",
+        )
+        self.assertEqual(
+            IMPORTER.display_room_header("[Next Sacrifice Room payout]", "sacrifice"),
+            "Next Sacrifice Room payout",
+        )
+
     def test_discovers_union_of_base_and_repentance_languages(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

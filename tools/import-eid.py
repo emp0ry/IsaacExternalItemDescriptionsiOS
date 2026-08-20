@@ -15,6 +15,26 @@ LANGUAGE_CODE = re.compile(r'^\s*local\s+languageCode\s*=\s*["\']([^"\']+)["\']'
 IGNORED_LANGUAGE_FILES = {"item_data.lua", "transformations.lua"}
 
 
+def parse_string_assignment(path: Path, assignment: str) -> str | None:
+    pattern = re.compile(rf"^\s*EID\.descriptions\[languageCode\]\.{re.escape(assignment)}\s*=\s*")
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        match = pattern.match(line)
+        if not match:
+            continue
+        try:
+            value, _ = read_lua_string(line, match.end())
+            return value
+        except ValueError:
+            return None
+    return None
+
+
+def display_room_header(header: str, category: str) -> str:
+    if category in {"dice", "sacrifice"} and header.startswith("[") and header.endswith("]"):
+        return header[1:-1]
+    return header
+
+
 def read_lua_string(text: str, start: int) -> tuple[str, int]:
     while start < len(text) and text[start].isspace():
         start += 1
@@ -137,6 +157,8 @@ def main() -> int:
             "cards": {"cards", "repcards"},
             "pills": {"pills", "reppills"},
             "horsepills": {"horsepills"},
+            "dice": {"dice"},
+            "sacrifice": {"sacrifice"},
         }
         category_counts: list[str] = []
         for category, table_names in category_tables.items():
@@ -145,6 +167,16 @@ def main() -> int:
                 entries.update(parse_description_table(
                     path, table_names, pill_effect_ids=category in {"pills", "horsepills"}
                 ))
+            if category in {"dice", "sacrifice"}:
+                header_name = "diceHeader" if category == "dice" else "sacrificeHeader"
+                header = None
+                for path in files:
+                    header = parse_string_assignment(path, header_name) or header
+                maximum = len(entries)
+                if header:
+                    header = display_room_header(header, category)
+                    for index, entry in entries.items():
+                        entry["name"] = f"{header} ({index}/{maximum})"
             categories[category] = {str(key): entries[key] for key in sorted(entries)}
             category_counts.append(f"{category}={len(entries)}")
         languages[code] = categories

@@ -1,140 +1,160 @@
 #import "EIDNativeProbe.h"
 #import "EIDLogger.h"
 #import <UIKit/UIKit.h>
-#import <mach-o/dyld.h>
-#import <mach-o/loader.h>
-#import <mach/mach.h>
-#import <objc/message.h>
 #import <objc/runtime.h>
 
-// ui_cardspills.anm2 CardFronts contains an invisible frame 0.
-// Isaac's Card enum/subtype is intentionally used as the ANM2 frame number:
-// subtype 1 -> frame 1, subtype 2 -> frame 2, etc. This also covers runes
-// because they are part of the same CardFronts animation.
-
-static const char *kEIDRunResetSupportedUUID = "F4357753-A25F-30EE-BACF-63709F902895";
-static const uintptr_t kEIDRunResetGameGlobalOffset = 0xac3b90;
-
-typedef struct {
-    uintptr_t begin;
-    uintptr_t end;
-    uintptr_t capacity;
-} EIDRemotePointerVector;
-
-static BOOL EIDRunResetRead(vm_address_t address, void *destination, vm_size_t size) {
-    if (!address || !destination || !size) return NO;
-    vm_size_t copied = 0;
-    return vm_read_overwrite(mach_task_self(), address, size,
-                             (vm_address_t)destination, &copied) == KERN_SUCCESS && copied == size;
+static NSArray<NSString *> *EIDCardBundleRoots(void) {
+    NSString *main = NSBundle.mainBundle.bundlePath;
+    NSMutableArray<NSString *> *roots = [NSMutableArray arrayWithArray:@[
+        [main stringByAppendingPathComponent:@"Frameworks/IsaacEID.bundle"],
+        [main stringByAppendingPathComponent:@"IsaacEID.bundle"],
+        [main stringByAppendingPathComponent:
+            @"Frameworks/IsaacExternalItemDescriptions.framework/Resources/IsaacEID.bundle"],
+        [main stringByAppendingPathComponent:
+            @"Frameworks/IsaacExternalItemDescriptions.framework/IsaacEID.bundle"],
+        [NSHomeDirectory() stringByAppendingPathComponent:
+            @"Library/Application Support/IsaacExternalItemDescriptions"],
+        @"/var/jb/Library/Application Support/IsaacExternalItemDescriptions",
+        @"/Library/Application Support/IsaacExternalItemDescriptions"
+    ]];
+    NSBundle *framework = [NSBundle bundleForClass:NSClassFromString(@"EIDOverlayController")
+                                                   ?: NSObject.class];
+    if (framework.bundlePath.length) {
+        [roots addObject:[framework.bundlePath stringByAppendingPathComponent:
+                          @"Resources/IsaacEID.bundle"]];
+        [roots addObject:[framework.bundlePath stringByAppendingPathComponent:@"IsaacEID.bundle"]];
+        [roots addObject:framework.bundlePath];
+    }
+    return roots;
 }
 
-static NSString *EIDRunResetUUIDForHeader(const struct mach_header_64 *header) {
-    if (!header || header->magic != MH_MAGIC_64) return nil;
-    const uint8_t *cursor = (const uint8_t *)(header + 1);
-    const uint8_t *end = cursor + header->sizeofcmds;
-    for (uint32_t index = 0; index < header->ncmds; ++index) {
-        if (cursor + sizeof(struct load_command) > end) break;
-        const struct load_command *command = (const struct load_command *)cursor;
-        if (!command->cmdsize || cursor + command->cmdsize > end) break;
-        if (command->cmd == LC_UUID && command->cmdsize >= sizeof(struct uuid_command)) {
-            const struct uuid_command *uuidCommand = (const struct uuid_command *)cursor;
-            const unsigned char *u = uuidCommand->uuid;
-            return [NSString stringWithFormat:
-                @"%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
-                u[0],u[1],u[2],u[3],u[4],u[5],u[6],u[7],u[8],u[9],u[10],u[11],u[12],u[13],u[14],u[15]];
-        }
-        cursor += command->cmdsize;
+static NSString *EIDCardBundledResource(NSString *name) {
+    for (NSString *root in EIDCardBundleRoots()) {
+        NSString *path = [root stringByAppendingPathComponent:name];
+        if ([[NSFileManager defaultManager] isReadableFileAtPath:path]) return path;
     }
     return nil;
 }
 
-static const struct mach_header_64 *EIDRunResetIsaacHeader(void) {
-    NSString *wanted = [NSString stringWithUTF8String:kEIDRunResetSupportedUUID];
-    for (uint32_t index = 0; index < _dyld_image_count(); ++index) {
-        const struct mach_header_64 *header = (const struct mach_header_64 *)_dyld_get_image_header(index);
-        NSString *uuid = EIDRunResetUUIDForHeader(header);
-        if (uuid && [uuid caseInsensitiveCompare:wanted] == NSOrderedSame) return header;
+@interface EIDOriginalCardParser : NSObject <NSXMLParserDelegate>
+@property(nonatomic, strong) NSMutableArray *frames;
+@property(nonatomic) BOOL readingCards;
+@property(nonatomic) BOOL readingLayer;
+@end
+
+@implementation EIDOriginalCardParser
+- (instancetype)init {
+    if ((self = [super init])) _frames = [NSMutableArray array];
+    return self;
+}
+- (void)parser:(NSXMLParser *)parser didStartElement:(NSString *)elementName
+  namespaceURI:(NSString *)namespaceURI qualifiedName:(NSString *)qualifiedName
+     attributes:(NSDictionary<NSString *, NSString *> *)attributes {
+    (void)parser; (void)namespaceURI; (void)qualifiedName;
+    if ([elementName isEqualToString:@"Animation"]) {
+        self.readingCards = [attributes[@"Name"] isEqualToString:@"Cards"];
+        self.readingLayer = NO;
+    } else if ([elementName isEqualToString:@"LayerAnimation"] && self.readingCards) {
+        self.readingLayer = [attributes[@"LayerId"] integerValue] == 0;
+    } else if ([elementName isEqualToString:@"Frame"] && self.readingCards && self.readingLayer) {
+        CGFloat x = [attributes[@"XCrop"] doubleValue];
+        CGFloat y = [attributes[@"YCrop"] doubleValue];
+        CGFloat width = [attributes[@"Width"] doubleValue];
+        CGFloat height = [attributes[@"Height"] doubleValue];
+        BOOL visible = ![attributes[@"Visible"] isEqualToString:@"false"];
+        [self.frames addObject:(visible && width > 0 && height > 0)
+            ? [NSValue valueWithCGRect:CGRectMake(x, y, width, height)] : NSNull.null];
     }
-    return NULL;
 }
-
-static uintptr_t EIDCurrentRunIdentity(id probe) {
-    if (!probe) return 0;
-    NSNumber *offsetNumber = nil;
-    @try { offsetNumber = [probe valueForKey:@"playerVectorOffset"]; }
-    @catch (__unused NSException *exception) { return 0; }
-    if (![offsetNumber isKindOfClass:NSNumber.class]) return 0;
-    NSUInteger playerVectorOffset = offsetNumber.unsignedIntegerValue;
-    if (playerVectorOffset == NSUIntegerMax) return 0;
-
-    const struct mach_header_64 *header = EIDRunResetIsaacHeader();
-    if (!header) return 0;
-    uintptr_t game = 0;
-    if (!EIDRunResetRead((vm_address_t)header + kEIDRunResetGameGlobalOffset,
-                         &game, sizeof(game)) || !game) return 0;
-
-    EIDRemotePointerVector vector = {0};
-    if (!EIDRunResetRead(game + playerVectorOffset, &vector, sizeof(vector))) return 0;
-    if (!vector.begin || vector.end <= vector.begin || vector.capacity < vector.end) return 0;
-    if ((vector.end - vector.begin) % sizeof(uintptr_t) != 0) return 0;
-
-    uintptr_t firstPlayer = 0;
-    if (!EIDRunResetRead(vector.begin, &firstPlayer, sizeof(firstPlayer))) return 0;
-    return firstPlayer;
+- (void)parser:(NSXMLParser *)parser didEndElement:(NSString *)elementName
+  namespaceURI:(NSString *)namespaceURI qualifiedName:(NSString *)qualifiedName {
+    (void)parser; (void)namespaceURI; (void)qualifiedName;
+    if ([elementName isEqualToString:@"LayerAnimation"]) self.readingLayer = NO;
+    if ([elementName isEqualToString:@"Animation"]) self.readingCards = NO;
 }
+@end
 
-static void EIDResetTransformationTracker(NSString *reason) {
-    Class trackerClass = NSClassFromString(@"EIDTransformationProgress");
-    SEL sharedSEL = NSSelectorFromString(@"shared");
-    SEL resetSEL = NSSelectorFromString(@"resetForNewRun");
-    if (!trackerClass || ![trackerClass respondsToSelector:sharedSEL]) return;
-    id (*sendShared)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
-    id tracker = sendShared(trackerClass, sharedSEL);
-    if (!tracker || ![tracker respondsToSelector:resetSEL]) return;
-    void (*sendReset)(id, SEL) = (void (*)(id, SEL))objc_msgSend;
-    sendReset(tracker, resetSEL);
-    EIDLog(@"transformation progress reset: %@", reason);
+@interface EIDOriginalRuneArtwork : NSObject
+@property(nonatomic, strong) UIImage *atlas;
+@property(nonatomic, copy) NSArray *frames;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber *, id> *cache;
++ (instancetype)shared;
+- (UIImage *)imageForRuneSubtype:(NSInteger)subtype;
+@end
+
+@implementation EIDOriginalRuneArtwork
++ (instancetype)shared {
+    static EIDOriginalRuneArtwork *resolver;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ resolver = [EIDOriginalRuneArtwork new]; });
+    return resolver;
 }
+- (instancetype)init {
+    if (!(self = [super init])) return nil;
+    _cache = [NSMutableDictionary dictionary];
+    NSString *png = EIDCardBundledResource(@"eid_cardspills.png");
+    NSString *anm2 = EIDCardBundledResource(@"eid_cardspills.anm2");
+    _atlas = png.length ? [UIImage imageWithContentsOfFile:png] : nil;
+    NSData *data = anm2.length ? [NSData dataWithContentsOfFile:anm2] : nil;
+    if (data.length) {
+        EIDOriginalCardParser *delegate = [EIDOriginalCardParser new];
+        NSXMLParser *parser = [[NSXMLParser alloc] initWithData:data];
+        parser.delegate = delegate;
+        if ([parser parse]) _frames = delegate.frames.copy;
+    }
+    if (!_frames) _frames = @[];
+    EIDLog(@"original EID rune artwork: atlas %@, card/rune frames %lu",
+           _atlas ? @"yes" : @"no", (unsigned long)_frames.count);
+    return self;
+}
+- (UIImage *)imageForRuneSubtype:(NSInteger)subtype {
+    if (subtype < 32 || subtype > 41) return nil;
+    NSNumber *key = @(subtype);
+    id cached = self.cache[key];
+    if (cached) return cached == NSNull.null ? nil : cached;
+
+    // Original EID renders Card IDs with frame `cardID - 1`. The previous iOS
+    // adapter applied the native CardFronts offset to runes as well, which sent
+    // them into unrelated pickup-sheet cells.
+    NSInteger frameIndex = subtype - 1;
+    UIImage *image = nil;
+    if (self.atlas.CGImage && frameIndex >= 0 && frameIndex < (NSInteger)self.frames.count) {
+        id frameValue = self.frames[(NSUInteger)frameIndex];
+        if ([frameValue isKindOfClass:NSValue.class]) {
+            CGRect frame = [frameValue CGRectValue];
+            CGRect bounds = CGRectMake(0, 0, CGImageGetWidth(self.atlas.CGImage),
+                                       CGImageGetHeight(self.atlas.CGImage));
+            if (CGRectContainsRect(bounds, frame)) {
+                CGImageRef cropped = CGImageCreateWithImageInRect(self.atlas.CGImage, frame);
+                if (cropped) {
+                    image = [UIImage imageWithCGImage:cropped scale:1
+                                          orientation:UIImageOrientationUp];
+                    CGImageRelease(cropped);
+                }
+            }
+        }
+    }
+    self.cache[key] = image ?: NSNull.null;
+    return image;
+}
+@end
 
 @interface NSObject (EIDCardFrameFix)
-- (UIImage *)eid_anm2_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype;
-- (void)eid_runreset_updateMenuModeForGameplay:(BOOL)gameplayActive;
+- (UIImage *)eid_correct_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype;
 @end
 
 @implementation NSObject (EIDCardFrameFix)
-- (UIImage *)eid_anm2_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype {
+- (UIImage *)eid_correct_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype {
+    if (variant == EIDPickupVariantCard && subtype >= 32 && subtype <= 41) {
+        // Returning nil is safer than displaying a random card if an incomplete
+        // raw-dylib installation omitted the attributed EID artwork bundle.
+        return [[EIDOriginalRuneArtwork shared] imageForRuneSubtype:subtype];
+    }
     if (variant == EIDPickupVariantCard && subtype > 0) {
-        // EIDPocketArtworkFix currently converts its input with `subtype - 1`.
-        // Passing subtype + 1 makes its array index equal the actual ANM2 frame.
-        return [self eid_anm2_pocketIconForVariant:variant subtype:subtype + 1];
+        // Isaac's native CardFronts animation contains an invisible frame zero.
+        return [self eid_correct_pocketIconForVariant:variant subtype:subtype + 1];
     }
-    return [self eid_anm2_pocketIconForVariant:variant subtype:subtype];
-}
-
-- (void)eid_runreset_updateMenuModeForGameplay:(BOOL)gameplayActive {
-    static uintptr_t lastRunIdentity = 0;
-    static BOOL sawInactiveSinceRun = YES;
-
-    if (!gameplayActive) {
-        sawInactiveSinceRun = YES;
-    } else {
-        id probe = nil;
-        @try { probe = [self valueForKey:@"probe"]; }
-        @catch (__unused NSException *exception) {}
-        uintptr_t identity = EIDCurrentRunIdentity(probe);
-        if (identity) {
-            BOOL changedIdentity = lastRunIdentity && identity != lastRunIdentity;
-            BOOL restartedAfterInactive = sawInactiveSinceRun && lastRunIdentity != 0;
-            if (changedIdentity || restartedAfterInactive) {
-                EIDResetTransformationTracker(changedIdentity ? @"native run identity changed"
-                                                              : @"gameplay restarted after menu/death");
-            }
-            lastRunIdentity = identity;
-            sawInactiveSinceRun = NO;
-        }
-    }
-
-    [self eid_runreset_updateMenuModeForGameplay:gameplayActive];
+    return [self eid_correct_pocketIconForVariant:variant subtype:subtype];
 }
 @end
 
@@ -142,23 +162,14 @@ __attribute__((constructor)) static void EIDInstallCardFrameFix(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         Class cls = NSClassFromString(@"EIDOverlayController");
         if (!cls) return;
-
-        SEL cardReplacementSEL = @selector(eid_anm2_pocketIconForVariant:subtype:);
-        Method cardSource = class_getInstanceMethod(NSObject.class, cardReplacementSEL);
-        if (cardSource) {
-            class_addMethod(cls, cardReplacementSEL, method_getImplementation(cardSource), method_getTypeEncoding(cardSource));
-            Method cardOriginal = class_getInstanceMethod(cls, NSSelectorFromString(@"pocketIconForVariant:subtype:"));
-            Method cardReplacement = class_getInstanceMethod(cls, cardReplacementSEL);
-            if (cardOriginal && cardReplacement) method_exchangeImplementations(cardOriginal, cardReplacement);
-        }
-
-        SEL resetReplacementSEL = @selector(eid_runreset_updateMenuModeForGameplay:);
-        Method resetSource = class_getInstanceMethod(NSObject.class, resetReplacementSEL);
-        if (resetSource) {
-            class_addMethod(cls, resetReplacementSEL, method_getImplementation(resetSource), method_getTypeEncoding(resetSource));
-            Method resetOriginal = class_getInstanceMethod(cls, NSSelectorFromString(@"updateMenuModeForGameplay:"));
-            Method resetReplacement = class_getInstanceMethod(cls, resetReplacementSEL);
-            if (resetOriginal && resetReplacement) method_exchangeImplementations(resetOriginal, resetReplacement);
-        }
+        SEL replacementSEL = @selector(eid_correct_pocketIconForVariant:subtype:);
+        Method source = class_getInstanceMethod(NSObject.class, replacementSEL);
+        if (!source) return;
+        class_addMethod(cls, replacementSEL, method_getImplementation(source),
+                        method_getTypeEncoding(source));
+        Method original = class_getInstanceMethod(
+            cls, NSSelectorFromString(@"pocketIconForVariant:subtype:"));
+        Method replacement = class_getInstanceMethod(cls, replacementSEL);
+        if (original && replacement) method_exchangeImplementations(original, replacement);
     });
 }

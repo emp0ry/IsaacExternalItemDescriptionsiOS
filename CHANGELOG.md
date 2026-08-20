@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.0 - 2026-08-20
+
+- Fixed Curse of the Blind spoiler protection by reading the native level curse mask and suppressing every collectible pedestal while the curse is active.
+- Added Dice Room descriptions using the native dice-floor effect and its live face.
+- Added Sacrifice Room payout descriptions using the native room grid and current spike activation count.
+- Added real transformation progress calculated from the player's current owned-collectible table, with active-item history retained for the current run.
+- Added native run-seed tracking and a debounced run-end signal so card knowledge and transformation state reset reliably between runs.
+- Fixed card, rune, and pill artwork so each description uses the correct frame; pills use the original EID pill atlas.
+- Improved held-card and rune knowledge tracking through the native player pocket slots.
+- Removed EID markup brackets from Dice Room and Sacrifice Room headings and kept long headings on one fitted line.
+- Fixed the description overlay's two-stage disappearance when an item is collected.
+- Added localized Dice Room and Sacrifice Room data for all 20 bundled EID languages.
+
+## 0.4.1 - 2026-08-18
+
+- Fixed subtype-aware card and rune artwork frame selection.
+- Switched identified-pill artwork to the original EID pill atlas.
+- Improved per-run transformation reset detection.
+
 ## 0.4.0 - 2026-08-18
 
 - Added a much closer original External Item Descriptions presentation for iOS, including purple item titles, inline item artwork, original quality sprites, transformation icons, and improved description markup rendering.

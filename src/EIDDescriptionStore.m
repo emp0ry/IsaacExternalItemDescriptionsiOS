@@ -294,7 +294,15 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     self.descriptionDataSet = [NSString stringWithFormat:@"Repentance %@ (%@)", compatibleVersion, gameVersion];
     NSDictionary *language = [languages[self.languageCode] isKindOfClass:NSDictionary.class] ? languages[self.languageCode] : nil;
     NSDictionary *english = [languages[@"en_us"] isKindOfClass:NSDictionary.class] ? languages[@"en_us"] : nil;
-    NSDictionary<NSString *, NSNumber *> *categories = @{@"collectibles":@(EIDPickupVariantCollectible),@"trinkets":@(EIDPickupVariantTrinket),@"cards":@(EIDPickupVariantCard),@"pills":@(EIDPickupVariantPill),@"horsepills":@(EIDPickupVariantHorsePill)};
+    NSDictionary<NSString *, NSNumber *> *categories = @{
+        @"collectibles": @(EIDPickupVariantCollectible),
+        @"trinkets": @(EIDPickupVariantTrinket),
+        @"cards": @(EIDPickupVariantCard),
+        @"pills": @(EIDPickupVariantPill),
+        @"horsepills": @(EIDPickupVariantHorsePill),
+        @"dice": @(EIDPickupVariantDiceRoom),
+        @"sacrifice": @(EIDPickupVariantSacrificeRoom),
+    };
     [categories enumerateKeysAndObjectsUsingBlock:^(NSString *category, NSNumber *variantNumber, __unused BOOL *categoryStop) {
         NSMutableDictionary *entries = [NSMutableDictionary dictionary];
         if ([english[category] isKindOfClass:NSDictionary.class]) [entries addEntriesFromDictionary:english[category]];
