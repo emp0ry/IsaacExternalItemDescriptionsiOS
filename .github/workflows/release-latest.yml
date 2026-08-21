@@ -1,0 +1,38 @@
+name: Release latest version
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release
+        run: make release
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find . -type f \( -name '*.deb' -o -name '*.dylib' -o -name '*.zip' \) -not -path './release-assets/*' -exec cp {} release-assets/ \;
+          cd release-assets
+          shasum -a 256 * > SHA256SUMS
+          ls -lah
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="v0.4.2"
+          gh release create "$VERSION" release-assets/* \
+            --target "${GITHUB_SHA}" \
+            --title "Isaac External Item Descriptions iOS ${VERSION}" \
+            --notes "Latest Isaac External Item Descriptions iOS release.\n\nIncludes the current main-branch EID parity improvements, corrected item/card/rune/pill artwork handling, quality/header presentation, localized transformation names, and transformation progress support.\n\nKnown limitations:\n- Transformation progress is currently tracked heuristically and will be replaced with native run/player state when the required offsets are available.\n- Native layout support is tied to the currently verified Isaac iOS executable UUID."
