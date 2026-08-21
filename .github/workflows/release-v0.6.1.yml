@@ -1,5 +1,6 @@
 name: Release v0.6.1
 
+# Explicit push trigger for publishing v0.6.1
 on:
   push:
     branches: [main]
