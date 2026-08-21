@@ -1,0 +1,66 @@
+name: Release v0.6.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-v0.6.1.yml'
+      - 'package/control'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release
+        run: make release
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find . -type f \( -name '*.deb' -o -name '*.dylib' -o -name '*.zip' \) -not -path './release-assets/*' -exec cp {} release-assets/ \;
+          cd release-assets
+          shasum -a 256 * > SHA256SUMS
+          ls -lah
+
+      - name: Publish v0.6.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='v0.6.1'
+          NOTES=$(cat <<'EOF'
+## 0.6.1
+
+- Made transformation progress refresh immediately when one of multiple identical transformation pedestals is collected in the same room. The displayed count now combines the live inventory with Isaac's persisted PlayerForm state.
+
+## 0.6.0
+
+- Added a top-left pause-only inventory browser for collectibles, active items, trinkets, held cards and runes, identified pills, and all transformation progress.
+- Added native pause detection from the verified Repentance PauseScreen state.
+- Replaced session-only transformation reconstruction with Isaac's persisted 15-entry PlayerForm counter array, preserving progress across active-item replacement and save reloads.
+- Added native Super Bum familiar detection for correct post-merge progress.
+- Made the complete EID settings panel available while a run is paused and kept it hidden during active gameplay.
+EOF
+          )
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" release-assets/* --clobber
+            gh release edit "$VERSION" \
+              --target "${GITHUB_SHA}" \
+              --title "Isaac External Item Descriptions iOS ${VERSION}" \
+              --notes "$NOTES"
+          else
+            gh release create "$VERSION" release-assets/* \
+              --target "${GITHUB_SHA}" \
+              --title "Isaac External Item Descriptions iOS ${VERSION}" \
+              --notes "$NOTES"
+          fi
