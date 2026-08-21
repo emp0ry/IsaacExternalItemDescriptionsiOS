@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 - 2026-08-21
+
+- Made transformation progress refresh immediately when one of multiple identical
+  transformation pedestals is collected in the same room. The displayed count now
+  combines the live inventory with Isaac's persisted PlayerForm state.
+
 ## 0.6.0 - 2026-08-20
 
 - Added a top-left pause-only inventory browser for collectibles, active items,

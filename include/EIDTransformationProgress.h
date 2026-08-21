@@ -11,6 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<NSNumber *> *)allTransformationIdentifiers;
 - (NSArray<NSNumber *> *)transformationsForCollectible:(NSInteger)collectible;
 - (NSInteger)progressForTransformation:(NSInteger)transformation;
+- (NSString *)progressSignatureForPickups:(NSArray *)pickups;
 - (NSString *)localizedNameForTransformation:(NSInteger)transformation;
 - (NSString *)englishNameForTransformation:(NSInteger)transformation;
 @end

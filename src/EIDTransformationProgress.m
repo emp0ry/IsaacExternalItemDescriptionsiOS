@@ -162,9 +162,20 @@ static NSInteger EIDNativeFormIDForTransformation(NSInteger transformation) {
     if (transformation <= 0) return 0;
     NSInteger nativeForm = EIDNativeFormIDForTransformation(transformation);
     if (nativeForm != NSNotFound) {
-        if (!self.probe.transformationStateAvailable) return 0;
-        NSInteger count = [self.probe nativeTransformationCounterForFormID:nativeForm];
-        return MIN(self.required, MAX(0, count));
+        NSInteger nativeCount = self.probe.transformationStateAvailable
+            ? [self.probe nativeTransformationCounterForFormID:nativeForm] : 0;
+        NSInteger liveCount = 0;
+        if (self.probe.ownedCollectibleStateAvailable) {
+            for (NSNumber *collectible in self.collectiblesByTransformation[@(transformation)]) {
+                liveCount += [self.probe
+                    transformationCollectibleCountForID:collectible.integerValue];
+            }
+        }
+        // PlayerForm is authoritative across reloads and after an active item is
+        // replaced, but Isaac can update it a few frames after the live inventory.
+        // Taking the maximum gives an immediate in-room update without losing the
+        // persisted history that the inventory alone cannot reconstruct.
+        return MIN(self.required, MAX(0, MAX(nativeCount, liveCount)));
     }
 
     // Super Bum (EID 11) is a familiar merge, not an entry in the native
@@ -177,6 +188,21 @@ static NSInteger EIDNativeFormIDForTransformation(NSInteger transformation) {
         count += [self.probe ownedCollectibleCountForID:collectible.integerValue];
     }
     return MIN(self.required, MAX(0, count));
+}
+
+- (NSString *)progressSignatureForPickups:(NSArray<EIDPickupIdentity *> *)pickups {
+    EIDPickupIdentity *pickup = pickups.firstObject;
+    if (!pickup || pickup.variant != EIDPickupVariantCollectible) return @"";
+    NSArray<NSNumber *> *transformations = [self transformationsForCollectible:pickup.subtype];
+    if (!transformations.count) return @"";
+
+    NSMutableArray<NSString *> *parts = [NSMutableArray arrayWithCapacity:transformations.count];
+    for (NSNumber *transformation in transformations) {
+        [parts addObject:[NSString stringWithFormat:@"%@=%ld", transformation,
+                          (long)[self progressForTransformation:transformation.integerValue]]];
+    }
+    return [NSString stringWithFormat:@"%lu:%ld:%@", (unsigned long)self.probe.runCounter,
+            (long)pickup.subtype, [parts componentsJoinedByString:@","]];
 }
 
 - (void)logProgressForCollectible:(NSInteger)collectible
@@ -194,7 +220,7 @@ static NSInteger EIDNativeFormIDForTransformation(NSInteger transformation) {
     static NSString *lastLoggedState;
     if ([lastLoggedState isEqualToString:state]) return;
     lastLoggedState = state;
-    EIDLog(@"transformation progress for collectible %ld: %@ (persisted native counters %@)",
+    EIDLog(@"transformation progress for collectible %ld: %@ (native/live counters %@)",
            (long)collectible, [parts componentsJoinedByString:@", "],
            self.probe.transformationStateAvailable ? @"ready" : @"unavailable");
 }

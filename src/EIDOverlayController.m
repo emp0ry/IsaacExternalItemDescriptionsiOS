@@ -129,6 +129,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic) NSUInteger consecutiveMenuScans;
 @property(nonatomic, strong) EIDPickupIdentity *selectedInventoryItem;
 @property(nonatomic, copy) NSString *inventorySignature;
+@property(nonatomic, copy) NSString *transformationProgressSignature;
 @property(nonatomic) BOOL pauseUIActive;
 @end
 
@@ -454,7 +455,12 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
             BOOL paused = self.probe.gameplayActive && self.probe.pauseStateAvailable &&
                 self.probe.paused;
             [self updatePauseInventoryForPaused:paused];
-            if (![pickups isEqualToArray:self.lastPickups]) {
+            NSString *progressSignature = [[EIDTransformationProgress shared]
+                progressSignatureForPickups:pickups];
+            BOOL progressChanged = ![progressSignature
+                isEqualToString:self.transformationProgressSignature ?: @""];
+            self.transformationProgressSignature = progressSignature;
+            if (![pickups isEqualToArray:self.lastPickups] || progressChanged) {
                 self.lastPickups = pickups;
                 if (!self.menuMode && !paused && !self.selectedInventoryItem) {
                     [self renderPickups:pickups];

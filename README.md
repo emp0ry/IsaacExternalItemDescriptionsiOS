@@ -38,8 +38,8 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Untouched floor cards and runes remain hidden until the game marks them touched or a player holds them in a native pocket slot.
 - Pills remain hidden until Isaac's native ItemPool state identifies their effect.
 - Curse of the Blind suppresses every collectible description using the native level curse mask. The forced-blind field and question-mark sprite are retained as additional guards.
-- Transformation progress is read from the player's native persisted transformation state instead of nearby-item observations.
-- The 14 normal transformations use Isaac's persisted native PlayerForm counters, so replaced active items and saved/reloaded runs keep their real progress. Super Bum completion is read from its native merged familiar.
+- Transformation progress combines Isaac's persisted PlayerForm counters with the live owned-item table. It updates immediately after a pickup while still preserving progress across active-item replacement and save reloads.
+- The 14 normal transformations use the native counters and inventory state. Super Bum completion is read from its native merged familiar.
 - Native run identity and seed tracking reset learned cards and run-only knowledge when a new run begins.
 
 ### Artwork and presentation
