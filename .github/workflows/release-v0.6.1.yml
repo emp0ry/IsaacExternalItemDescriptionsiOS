@@ -1,22 +1,27 @@
 name: Release v0.6.1
 
-# Explicit push trigger for publishing v0.6.1
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/release-v0.6.1.yml'
       - 'package/control'
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
   contents: write
+  issues: read
 
 jobs:
   release:
+    if: github.event_name != 'issues' || github.event.issue.title == 'release-v0.6.1-trigger'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Build release
         run: make release
@@ -56,12 +61,12 @@ EOF
           if gh release view "$VERSION" >/dev/null 2>&1; then
             gh release upload "$VERSION" release-assets/* --clobber
             gh release edit "$VERSION" \
-              --target "${GITHUB_SHA}" \
+              --target main \
               --title "Isaac External Item Descriptions iOS ${VERSION}" \
               --notes "$NOTES"
           else
             gh release create "$VERSION" release-assets/* \
-              --target "${GITHUB_SHA}" \
+              --target main \
               --title "Isaac External Item Descriptions iOS ${VERSION}" \
               --notes "$NOTES"
           fi
