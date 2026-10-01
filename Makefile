@@ -101,6 +101,7 @@ audit: dylib
 	@if nm -u "$(DYLIB)" | rg -i 'substrate|ellekit|libhooker|/var/jb'; then echo "ERROR: jailbreak-only dependency detected"; exit 1; else echo "Portable dependency audit passed"; fi
 
 test:
+	mkdir -p "$(PROJECT_ROOT)/build"
 	"$(HOST_CLANGXX)" -isysroot "$(HOST_SDK)" -std=c++17 -Wall -Wextra -Werror -I"$(PROJECT_ROOT)/include" \
 		"$(PROJECT_ROOT)/tests/test_pickup_policy.cpp" -o "$(PROJECT_ROOT)/build/test_pickup_policy"
 	"$(PROJECT_ROOT)/build/test_pickup_policy"
