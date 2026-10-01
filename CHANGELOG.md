@@ -1,12 +1,13 @@
 # Changelog
 
-## 0.7.2 - 2026-10-01
+## 0.7.3 - 2026-10-01
 
-- Isolated the LiveContainer EID interface in its own transparent, non-key,
-  pass-through window instead of inserting views into the host application's
-  controller hierarchy.
-- Kept the native jailbreak and directly embedded overlay paths unchanged.
-- Added explicit native detection of Isaac running as a LiveContainer guest image.
+- Restored the proven single-window pass-through overlay used by v0.6.1.
+- Fixed EID buttons, settings controls, sliders, and inventory rows not receiving
+  touches in LiveContainer.
+- Kept all non-EID touches routed to Isaac without creating a second `UIWindow`
+  or inserting EID views into the game controller hierarchy.
+- Withdrew the broken v0.7.2 tag and release.
 
 ## 0.7.1 - 2026-10-01
 

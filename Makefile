@@ -105,6 +105,7 @@ test:
 	"$(HOST_CLANGXX)" -isysroot "$(HOST_SDK)" -std=c++17 -Wall -Wextra -Werror -I"$(PROJECT_ROOT)/include" \
 		"$(PROJECT_ROOT)/tests/test_pickup_policy.cpp" -o "$(PROJECT_ROOT)/build/test_pickup_policy"
 	"$(PROJECT_ROOT)/build/test_pickup_policy"
+	python3 "$(PROJECT_ROOT)/tests/test_overlay_architecture.py"
 	python3 "$(PROJECT_ROOT)/tests/test_import_eid.py"
 	python3 "$(PROJECT_ROOT)/tests/test_bundled_descriptions.py"
 	python3 -m py_compile "$(PROJECT_ROOT)/tools/import-eid.py" "$(PROJECT_ROOT)/tools/import-eid-assets.py" "$(PROJECT_ROOT)/tools/macho-add-dylib.py"

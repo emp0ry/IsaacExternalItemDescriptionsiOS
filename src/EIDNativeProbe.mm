@@ -1155,7 +1155,6 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic, copy) NSString *executableUUID;
 @property(nonatomic, copy) NSString *status;
 @property(nonatomic, getter=isSupportedBuild) BOOL supportedBuild;
-@property(nonatomic, getter=isGuestImage) BOOL guestImage;
 @property(atomic, getter=isGameplayActive) BOOL gameplayActive;
 @property(atomic, getter=isPauseStateAvailable) BOOL pauseStateAvailable;
 @property(atomic, getter=isPaused) BOOL paused;
@@ -1207,11 +1206,9 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 - (instancetype)init {
     self = [super init];
     if (self) {
-        const mach_header_64 *isaacHeader = IsaacExecutableHeader(nullptr);
         _executableUUID = IsaacExecutableUUID();
         NSString *supportedUUID = [NSString stringWithUTF8String:kSupportedUUID];
         _supportedBuild = [_executableUUID caseInsensitiveCompare:supportedUUID] == NSOrderedSame;
-        _guestImage = isaacHeader && isaacHeader->filetype == MH_DYLIB;
         _status = _supportedBuild ? @"Locating native pickup RTTI" : @"Unsupported Isaac executable";
         _lastPickups = @[];
         _inventoryItems = @[];

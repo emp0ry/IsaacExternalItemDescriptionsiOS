@@ -96,16 +96,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 @end
 
-@interface EIDOverlayWindow : UIWindow
-@end
-@implementation EIDOverlayWindow
-- (BOOL)canBecomeKeyWindow { return NO; }
-@end
-
 @interface EIDOverlayController ()
 @property(nonatomic, strong) EIDDescriptionStore *store;
 @property(nonatomic, strong) EIDNativeProbe *probe;
-@property(nonatomic, strong) EIDOverlayWindow *isolatedWindow;
 @property(nonatomic, strong) EIDPassthroughView *rootView;
 @property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UIImageView *itemIconView;
@@ -197,63 +190,21 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (void)attachOverlayIfNeeded {
     UIWindow *window = [self gameWindow];
     if (!window) return;
-    UIView *hostView = nil;
-    if (self.probe.isGuestImage) {
-        UIWindowScene *windowScene = window.windowScene;
-        if (!windowScene) return;
-        if (!self.isolatedWindow || self.isolatedWindow.windowScene != windowScene) {
-            self.isolatedWindow.hidden = YES;
-            EIDOverlayWindow *isolatedWindow = [[EIDOverlayWindow alloc]
-                initWithWindowScene:windowScene];
-            isolatedWindow.windowLevel = UIWindowLevelNormal + 1;
-            isolatedWindow.backgroundColor = UIColor.clearColor;
-            isolatedWindow.opaque = NO;
-
-            UIViewController *controller = [UIViewController new];
-            EIDPassthroughView *passthrough = [[EIDPassthroughView alloc]
-                initWithFrame:windowScene.coordinateSpace.bounds];
-            passthrough.backgroundColor = UIColor.clearColor;
-            passthrough.opaque = NO;
-            passthrough.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-                UIViewAutoresizingFlexibleHeight;
-            controller.view = passthrough;
-            isolatedWindow.rootViewController = controller;
-            isolatedWindow.frame = windowScene.coordinateSpace.bounds;
-            isolatedWindow.hidden = NO;
-            self.isolatedWindow = isolatedWindow;
-            EIDLog(@"LiveContainer overlay isolated from the guest game window");
-        } else {
-            self.isolatedWindow.frame = windowScene.coordinateSpace.bounds;
-        }
-        hostView = self.isolatedWindow.rootViewController.view;
-    } else {
-        UIViewController *rootController = window.rootViewController;
-        // Accessing -view before it is loaded would itself force Isaac's controller
-        // hierarchy to initialise early. Only attach after the game has finished doing so.
-        if (!rootController.isViewLoaded) return;
-        hostView = rootController.view;
-        if (!hostView || hostView.window != window) return;
-    }
-    if (!hostView || CGRectIsEmpty(hostView.bounds)) return;
-    if (self.rootView.superview == hostView) return;
+    if (CGRectIsEmpty(window.bounds)) return;
+    if (self.rootView.superview == window) return;
     [self.rootView removeFromSuperview];
-    [self.settingsButton removeFromSuperview];
-    [self.inventoryButton removeFromSuperview];
-    [self.settingsCard removeFromSuperview];
-    [self.inventoryCard removeFromSuperview];
 
-    EIDPassthroughView *root = [[EIDPassthroughView alloc] initWithFrame:hostView.bounds];
+    EIDPassthroughView *root = [[EIDPassthroughView alloc] initWithFrame:window.bounds];
     root.backgroundColor = UIColor.clearColor;
-    // The always-present description surface never needs input. Interactive
-    // controls are small sibling views installed below, so Isaac's full game
-    // surface remains the hit-test target everywhere else.
-    root.userInteractionEnabled = NO;
+    // The root only claims touches that land on EID controls. Its hit-test
+    // implementation returns nil everywhere else, preserving Isaac's game input.
+    root.userInteractionEnabled = YES;
     root.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
     CGFloat leftMargin = [self overlayLeftMargin];
     UIView *panel = [[UIView alloc] initWithFrame:CGRectZero];
     panel.frame = CGRectMake(leftMargin, [self overlayTopMargin],
-                             MIN(340, hostView.bounds.size.width - leftMargin - EIDOverlayRightMargin),
+                             MIN(340, window.bounds.size.width - leftMargin - EIDOverlayRightMargin),
                              80);
     panel.backgroundColor = UIColor.clearColor;
     panel.clipsToBounds = NO;
@@ -281,8 +232,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     [panel insertSubview:itemIcon belowSubview:label];
 
     UILabel *diagnostics = [[UILabel alloc] initWithFrame:
-        CGRectMake(leftMargin, hostView.bounds.size.height - 50,
-                   hostView.bounds.size.width - leftMargin - EIDOverlayRightMargin, 36)];
+        CGRectMake(leftMargin, window.bounds.size.height - 50,
+                   window.bounds.size.width - leftMargin - EIDOverlayRightMargin, 36)];
     diagnostics.backgroundColor = [UIColor colorWithWhite:0 alpha:0.72];
     diagnostics.textColor = UIColor.systemGreenColor;
     diagnostics.font = [UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular];
@@ -293,8 +244,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     diagnostics.hidden = !self.diagnosticsEnabled;
 
     UIButton *settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    settingsButton.frame = CGRectMake(hostView.bounds.size.width - 78,
-                                      hostView.bounds.size.height - 46, 64, 32);
+    settingsButton.frame = CGRectMake(window.bounds.size.width - 78,
+                                      window.bounds.size.height - 46, 64, 32);
     settingsButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
     settingsButton.backgroundColor = [UIColor colorWithWhite:0 alpha:0.72];
     settingsButton.layer.cornerRadius = 8;
@@ -317,11 +268,11 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
               forControlEvents:UIControlEventTouchUpInside];
     inventoryButton.hidden = YES;
 
-    CGFloat cardWidth = MIN(410, hostView.bounds.size.width - 40);
-    CGFloat cardHeight = MIN(310, hostView.bounds.size.height - 30);
+    CGFloat cardWidth = MIN(410, window.bounds.size.width - 40);
+    CGFloat cardHeight = MIN(310, window.bounds.size.height - 30);
     UIView *settingsCard = [[UIView alloc] initWithFrame:
-        CGRectMake((hostView.bounds.size.width - cardWidth) * 0.5,
-                   (hostView.bounds.size.height - cardHeight) * 0.5, cardWidth, cardHeight)];
+        CGRectMake((window.bounds.size.width - cardWidth) * 0.5,
+                   (window.bounds.size.height - cardHeight) * 0.5, cardWidth, cardHeight)];
     settingsCard.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
         UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin |
         UIViewAutoresizingFlexibleBottomMargin;
@@ -376,7 +327,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
     UISlider *positionSlider = [[UISlider alloc] initWithFrame:CGRectMake(18, 132, cardWidth - 104, 32)];
     positionSlider.minimumValue = EIDMinimumOverlayLeftMargin;
-    positionSlider.maximumValue = MAX(EIDDefaultOverlayLeftMargin, hostView.bounds.size.width - 220.0);
+    positionSlider.maximumValue = MAX(EIDDefaultOverlayLeftMargin, window.bounds.size.width - 220.0);
     positionSlider.value = [self overlayLeftMargin];
     [positionSlider addTarget:self action:@selector(positionChanged:) forControlEvents:UIControlEventValueChanged];
     [settingsCard addSubview:positionSlider];
@@ -400,7 +351,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         CGRectMake(18, 192, cardWidth - 104, 32)];
     verticalPositionSlider.minimumValue = EIDMinimumOverlayTopMargin;
     verticalPositionSlider.maximumValue = MAX(EIDDefaultOverlayTopMargin,
-                                               hostView.bounds.size.height - 120.0);
+                                               window.bounds.size.height - 120.0);
     verticalPositionSlider.value = [self overlayTopMargin];
     [verticalPositionSlider addTarget:self action:@selector(verticalPositionChanged:)
                       forControlEvents:UIControlEventValueChanged];
@@ -426,11 +377,11 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     creditsLabel.textAlignment = NSTextAlignmentCenter;
     [settingsCard addSubview:creditsLabel];
 
-    CGFloat inventoryWidth = MIN(440, hostView.bounds.size.width - 30);
-    CGFloat inventoryHeight = MIN(350, hostView.bounds.size.height - 24);
+    CGFloat inventoryWidth = MIN(440, window.bounds.size.width - 30);
+    CGFloat inventoryHeight = MIN(350, window.bounds.size.height - 24);
     UIView *inventoryCard = [[UIView alloc] initWithFrame:
-        CGRectMake((hostView.bounds.size.width - inventoryWidth) * 0.5,
-                   (hostView.bounds.size.height - inventoryHeight) * 0.5,
+        CGRectMake((window.bounds.size.width - inventoryWidth) * 0.5,
+                   (window.bounds.size.height - inventoryHeight) * 0.5,
                    inventoryWidth, inventoryHeight)];
     inventoryCard.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
         UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin |
@@ -470,12 +421,11 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
     [root addSubview:panel];
     [root addSubview:diagnostics];
-    // Keep EID inside Isaac's established controller hierarchy. A new direct
-    // UIWindow child can change the assumptions used by the game's virtual-stick
-    // setup, especially when LiveContainer supplies the outer window.
-    [hostView addSubview:root];
-    [hostView addSubview:settingsButton];
-    [hostView addSubview:inventoryButton];
+    [root addSubview:settingsButton];
+    [root addSubview:inventoryButton];
+    [root addSubview:settingsCard];
+    [root addSubview:inventoryCard];
+    [window addSubview:root];
     self.rootView = root;
     self.panel = panel;
     self.itemIconView = itemIcon;
@@ -533,7 +483,6 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         if (!self.menuMode) return;
         self.menuMode = NO;
         self.settingsCard.hidden = YES;
-        [self.settingsCard removeFromSuperview];
         [self updateSettingsControls];
         EIDLog(@"game state: gameplay active; settings available only while paused");
         return;
@@ -554,12 +503,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.settingsButton.hidden = !(self.menuMode || paused);
     if (!paused) {
         self.inventoryCard.hidden = YES;
-        [self.inventoryCard removeFromSuperview];
         self.inventorySignature = nil;
-        if (!self.menuMode) {
-            self.settingsCard.hidden = YES;
-            [self.settingsCard removeFromSuperview];
-        }
+        if (!self.menuMode) self.settingsCard.hidden = YES;
         if (self.pauseUIActive) {
             self.selectedInventoryItem = nil;
             if (!self.menuMode) [self renderPickups:self.lastPickups];
@@ -771,25 +716,18 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (void)toggleInventory:(UIButton *)sender {
     (void)sender;
     if (!self.probe.paused || !self.probe.inventoryStateAvailable) return;
-    if (!self.inventoryCard.superview && self.rootView.superview) {
-        [self.rootView.superview addSubview:self.inventoryCard];
-    }
     self.inventoryCard.hidden = !self.inventoryCard.hidden;
     self.settingsCard.hidden = YES;
-    [self.settingsCard removeFromSuperview];
     if (!self.inventoryCard.hidden) {
         [self rebuildInventoryContentsIfNeeded:YES];
-        [self.inventoryCard.superview bringSubviewToFront:self.inventoryCard];
+        [self.rootView bringSubviewToFront:self.inventoryCard];
         self.panel.alpha = 0;
-    } else {
-        [self.inventoryCard removeFromSuperview];
     }
 }
 
 - (void)closeInventory:(UIButton *)sender {
     (void)sender;
     self.inventoryCard.hidden = YES;
-    [self.inventoryCard removeFromSuperview];
 }
 
 - (void)selectInventoryIdentity:(UIButton *)sender {
@@ -802,25 +740,18 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                                                                     subtype:subtype];
     self.selectedInventoryItem = identity;
     self.inventoryCard.hidden = YES;
-    [self.inventoryCard removeFromSuperview];
     [self renderPickups:@[identity]];
     EIDLog(@"pause inventory selected %@", identity);
 }
 
 - (void)toggleSettings:(UIButton *)sender {
     (void)sender;
-    if (!self.settingsCard.superview && self.rootView.superview) {
-        [self.rootView.superview addSubview:self.settingsCard];
-    }
     self.settingsCard.hidden = !self.settingsCard.hidden;
     if (!self.settingsCard.hidden) {
         self.inventoryCard.hidden = YES;
-        [self.inventoryCard removeFromSuperview];
         [self updateSettingsControls];
-        [self.settingsCard.superview bringSubviewToFront:self.settingsCard];
+        [self.rootView bringSubviewToFront:self.settingsCard];
         self.panel.alpha = 0;
-    } else {
-        [self.settingsCard removeFromSuperview];
     }
     EIDLog(@"settings panel %@ (%@)", self.settingsCard.hidden ? @"closed" : @"opened",
            self.probe.paused ? @"paused" : (self.menuMode ? @"menu" : @"gameplay"));
@@ -829,7 +760,6 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (void)closeSettings:(UIButton *)sender {
     (void)sender;
     self.settingsCard.hidden = YES;
-    [self.settingsCard removeFromSuperview];
 }
 
 - (void)positionChanged:(UISlider *)slider {
