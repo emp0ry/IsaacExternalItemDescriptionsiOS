@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2 - 2026-10-01
+
+- Isolated the LiveContainer EID interface in its own transparent, non-key,
+  pass-through window instead of inserting views into the host application's
+  controller hierarchy.
+- Kept the native jailbreak and directly embedded overlay paths unchanged.
+- Added explicit native detection of Isaac running as a LiveContainer guest image.
+
 ## 0.7.1 - 2026-10-01
 
 - Delayed EID startup until Isaac becomes active and moved the overlay into the

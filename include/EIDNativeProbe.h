@@ -27,6 +27,7 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 @property(nonatomic, copy, readonly) NSString *executableUUID;
 @property(nonatomic, copy, readonly) NSString *status;
 @property(nonatomic, readonly, getter=isSupportedBuild) BOOL supportedBuild;
+@property(nonatomic, readonly, getter=isGuestImage) BOOL guestImage;
 @property(atomic, readonly, getter=isGameplayActive) BOOL gameplayActive;
 @property(atomic, readonly, getter=isPauseStateAvailable) BOOL pauseStateAvailable;
 @property(atomic, readonly, getter=isPaused) BOOL paused;

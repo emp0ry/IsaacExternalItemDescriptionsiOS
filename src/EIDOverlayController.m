@@ -96,9 +96,16 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 @end
 
+@interface EIDOverlayWindow : UIWindow
+@end
+@implementation EIDOverlayWindow
+- (BOOL)canBecomeKeyWindow { return NO; }
+@end
+
 @interface EIDOverlayController ()
 @property(nonatomic, strong) EIDDescriptionStore *store;
 @property(nonatomic, strong) EIDNativeProbe *probe;
+@property(nonatomic, strong) EIDOverlayWindow *isolatedWindow;
 @property(nonatomic, strong) EIDPassthroughView *rootView;
 @property(nonatomic, strong) UIView *panel;
 @property(nonatomic, strong) UIImageView *itemIconView;
@@ -190,12 +197,44 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (void)attachOverlayIfNeeded {
     UIWindow *window = [self gameWindow];
     if (!window) return;
-    UIViewController *rootController = window.rootViewController;
-    // Accessing -view before it is loaded would itself force Isaac's controller
-    // hierarchy to initialise early. Only attach after the game has finished doing so.
-    if (!rootController.isViewLoaded) return;
-    UIView *hostView = rootController.view;
-    if (!hostView || hostView.window != window || CGRectIsEmpty(hostView.bounds)) return;
+    UIView *hostView = nil;
+    if (self.probe.isGuestImage) {
+        UIWindowScene *windowScene = window.windowScene;
+        if (!windowScene) return;
+        if (!self.isolatedWindow || self.isolatedWindow.windowScene != windowScene) {
+            self.isolatedWindow.hidden = YES;
+            EIDOverlayWindow *isolatedWindow = [[EIDOverlayWindow alloc]
+                initWithWindowScene:windowScene];
+            isolatedWindow.windowLevel = UIWindowLevelNormal + 1;
+            isolatedWindow.backgroundColor = UIColor.clearColor;
+            isolatedWindow.opaque = NO;
+
+            UIViewController *controller = [UIViewController new];
+            EIDPassthroughView *passthrough = [[EIDPassthroughView alloc]
+                initWithFrame:windowScene.coordinateSpace.bounds];
+            passthrough.backgroundColor = UIColor.clearColor;
+            passthrough.opaque = NO;
+            passthrough.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                UIViewAutoresizingFlexibleHeight;
+            controller.view = passthrough;
+            isolatedWindow.rootViewController = controller;
+            isolatedWindow.frame = windowScene.coordinateSpace.bounds;
+            isolatedWindow.hidden = NO;
+            self.isolatedWindow = isolatedWindow;
+            EIDLog(@"LiveContainer overlay isolated from the guest game window");
+        } else {
+            self.isolatedWindow.frame = windowScene.coordinateSpace.bounds;
+        }
+        hostView = self.isolatedWindow.rootViewController.view;
+    } else {
+        UIViewController *rootController = window.rootViewController;
+        // Accessing -view before it is loaded would itself force Isaac's controller
+        // hierarchy to initialise early. Only attach after the game has finished doing so.
+        if (!rootController.isViewLoaded) return;
+        hostView = rootController.view;
+        if (!hostView || hostView.window != window) return;
+    }
+    if (!hostView || CGRectIsEmpty(hostView.bounds)) return;
     if (self.rootView.superview == hostView) return;
     [self.rootView removeFromSuperview];
     [self.settingsButton removeFromSuperview];
