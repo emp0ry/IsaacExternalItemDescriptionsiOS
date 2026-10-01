@@ -143,6 +143,7 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 @property(nonatomic, copy) NSString *languageCode;
 @property(nonatomic, copy) NSArray<NSString *> *availableLanguageCodes;
 @property(nonatomic, copy) NSString *descriptionDataSet;
+@property(nonatomic, copy) NSString *unidentifiedPillName;
 @end
 
 @implementation EIDDescriptionStore
@@ -154,6 +155,7 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
         _languageCode = [self resolvedLanguageCode];
         _availableLanguageCodes = @[@"en_us"];
         _descriptionDataSet = @"Isaac metadata";
+        _unidentifiedPillName = @"Unidentified Pill";
         [self reload];
     }
     return self;
@@ -190,6 +192,11 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 
 - (EIDDescription *)descriptionForPickupVariant:(NSInteger)variant subtype:(NSInteger)subtype {
     if (variant == EIDPickupVariantTrinket) subtype &= 0x7fff;
+    if (variant == EIDPickupVariantUnidentifiedPill) {
+        return [[EIDDescription alloc] initWithPickupVariant:variant subtype:subtype
+            name:self.unidentifiedPillName.length ? self.unidentifiedPillName : @"Unidentified Pill"
+            detail:@"?" iconPath:nil quality:-1];
+    }
     return self.items[EIDDescriptionKey(variant, subtype)];
 }
 
@@ -294,6 +301,13 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     self.descriptionDataSet = [NSString stringWithFormat:@"Repentance %@ (%@)", compatibleVersion, gameVersion];
     NSDictionary *language = [languages[self.languageCode] isKindOfClass:NSDictionary.class] ? languages[self.languageCode] : nil;
     NSDictionary *english = [languages[@"en_us"] isKindOfClass:NSDictionary.class] ? languages[@"en_us"] : nil;
+    NSDictionary *languageStrings = [language[@"strings"] isKindOfClass:NSDictionary.class]
+        ? language[@"strings"] : nil;
+    NSDictionary *englishStrings = [english[@"strings"] isKindOfClass:NSDictionary.class]
+        ? english[@"strings"] : nil;
+    NSString *unidentifiedPill = [languageStrings[@"unidentified_pill"] isKindOfClass:NSString.class]
+        ? languageStrings[@"unidentified_pill"] : englishStrings[@"unidentified_pill"];
+    self.unidentifiedPillName = unidentifiedPill.length ? unidentifiedPill : @"Unidentified Pill";
     NSDictionary<NSString *, NSNumber *> *categories = @{
         @"collectibles": @(EIDPickupVariantCollectible),
         @"trinkets": @(EIDPickupVariantTrinket),

@@ -35,19 +35,21 @@ The overlay tracks the player's position and displays the nearest eligible objec
 
 ### Correct knowledge and run state
 
-- Untouched floor cards and runes remain hidden until the game marks them touched or a player holds them in a native pocket slot.
-- Pills remain hidden until Isaac's native ItemPool state identifies their effect.
+- Card, rune, Soul Stone, and pill visibility follows original EID's separate defaults instead of treating `Touched` as a universal knowledge flag.
+- Reachable ordinary floor cards and runes are described immediately. Purchasable ordinary cards and every `Options?` card stay unidentified; purchasable Soul Stones remain visible.
+- Reachable pills are shown in shops and `Options?` choices. Isaac's native ItemPool state decides whether the real effect or only a localized **Unidentified Pill** label may be shown.
+- Unreachable ordinary cards, runes, and pills remain unidentified. Soul Stones keep original EID's default exception, and flying players bypass the obstruction check.
 - Curse of the Blind suppresses every collectible description using the native level curse mask. The forced-blind field and question-mark sprite are retained as additional guards.
 - Transformation progress combines Isaac's persisted PlayerForm counters with the live owned-item table. It updates immediately after a pickup while still preserving progress across active-item replacement and save reloads.
 - The 14 normal transformations use the native counters and inventory state. Super Bum completion is read from its native merged familiar.
-- Native run identity and seed tracking reset learned cards and run-only knowledge when a new run begins.
+- Native run identity and seed tracking reset run-only state when a new run begins.
 
 ### Artwork and presentation
 
 - Collectible and trinket artwork is loaded from the installed game.
 - Cards use Isaac's native `CardFronts` animation mapping.
 - Runes use the correct subtype frame from the attributed original EID card/rune atlas.
-- Identified pills use their actual native pill color mapped to the corresponding original EID `Pills` frame.
+- Identified and unidentified pills use their actual native pill color mapped to the corresponding original EID `Pills` frame.
 - Original EID inline symbols, Q0-Q4 quality icons, transformation icons, colors, and description markup are rendered through UIKit.
 - The description has no background box and uses compact outlined text designed to remain readable over gameplay.
 - Item title, icon, and description disappear together after an item is collected.

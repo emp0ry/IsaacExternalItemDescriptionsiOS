@@ -43,6 +43,11 @@ class BundledDescriptionsTests(unittest.TestCase):
         self.assertEqual(len(english["horsepills"]), 51)
         self.assertEqual(len(english["dice"]), 6)
         self.assertEqual(len(english["sacrifice"]), 12)
+        self.assertEqual(english["strings"]["unidentified_pill"], "Unidentified Pill")
+        self.assertEqual(
+            self.payload["languages"]["ru"]["strings"]["unidentified_pill"],
+            "Неизвестная пилюля",
+        )
         self.assertEqual(english["dice"]["4"]["name"], "Dice Room effects (4/6)")
         self.assertEqual(
             english["sacrifice"]["1"]["name"],

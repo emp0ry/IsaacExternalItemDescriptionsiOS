@@ -109,6 +109,18 @@ class ImportEIDTests(unittest.TestCase):
             IMPORTER.display_room_header("[Dice Room effects]", "dice"),
             "Dice Room effects",
         )
+
+    def test_unidentified_pill_translation_assignment(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "language.lua"
+            path.write_text(
+                'EID.descriptions[languageCode].unidentifiedPill = "Неизвестная пилюля"\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                IMPORTER.parse_string_assignment(path, "unidentifiedPill"),
+                "Неизвестная пилюля",
+            )
         self.assertEqual(
             IMPORTER.display_room_header("[Next Sacrifice Room payout]", "sacrifice"),
             "Next Sacrifice Room payout",

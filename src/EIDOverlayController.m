@@ -797,6 +797,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     if (variant == EIDPickupVariantCard) return russian ? @"Карта / руна" : @"Card / rune";
     if (variant == EIDPickupVariantPill) return russian ? @"Таблетка" : @"Pill";
     if (variant == EIDPickupVariantHorsePill) return russian ? @"Большая таблетка" : @"Horse pill";
+    if (variant == EIDPickupVariantUnidentifiedPill) return russian ? @"Неизвестная пилюля" : @"Unidentified pill";
     if (variant == EIDPickupVariantDiceRoom) return russian ? @"Комната игральной кости" : @"Dice Room";
     if (variant == EIDPickupVariantSacrificeRoom) return russian ? @"Комната жертвоприношений" : @"Sacrifice Room";
     return russian ? @"Артефакт" : @"Collectible";
@@ -841,7 +842,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
 - (UIImage *)pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype {
     if (variant != EIDPickupVariantCard && variant != EIDPickupVariantPill &&
-        variant != EIDPickupVariantHorsePill) return nil;
+        variant != EIDPickupVariantHorsePill &&
+        variant != EIDPickupVariantUnidentifiedPill) return nil;
     NSString *key = [NSString stringWithFormat:@"%ld:%ld", (long)variant, (long)subtype];
     id cached = self.pocketIconCache[key];
     if (cached) return cached == NSNull.null ? nil : cached;

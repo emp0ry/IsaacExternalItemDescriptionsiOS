@@ -1,5 +1,6 @@
 #import "EIDNativeProbe.h"
 #import "EIDLogger.h"
+#include "EIDPickupPolicy.hpp"
 
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
@@ -199,8 +200,12 @@ constexpr size_t kEntitySpriteLayerStatesOffset = 0xf8;
 constexpr size_t kEntitySpriteLayerCountOffset = 0x100;
 constexpr size_t kGridEntityDescOffset = 0x8;
 constexpr size_t kGridEntityVarDataOffset = kGridEntityDescOffset + 0x14;
-constexpr size_t kPickupTouchedOffset = 0x560;
 constexpr size_t kPickupForceBlindOffset = 0x562;
+constexpr size_t kPickupPriceOffset = 0x564;
+// Live-verified on the supported iOS build: an ordinary floor card has 0 here,
+// while an Options? shop card had 2. +0x570 belongs to a different field and
+// contained -1, which previously caused every ordinary card to fail closed.
+constexpr size_t kPickupOptionsIndexOffset = 0x56c;
 constexpr size_t kCranePrizeCollectibleOffset = 0x570;
 constexpr size_t kPlayerPocketItemsOffset = 0x1c10;
 constexpr size_t kPlayerPocketItemCount = 4;
@@ -208,6 +213,7 @@ constexpr size_t kPlayerTrinketSlotsOffset = 0x1ab0;
 constexpr size_t kPlayerTrinketSlotCount = 2;
 constexpr size_t kPlayerCollectibleCountsOffset = 0x1ab8;
 constexpr size_t kPlayerTransformationCountersOffset = 0x1c54;
+constexpr size_t kPlayerCanFlyOffset = 0x1954;
 constexpr size_t kNativeTransformationCount = 15;
 constexpr size_t kMaximumCollectibleID = 732;
 constexpr size_t kLayerStateSize = 0x90;
@@ -223,6 +229,9 @@ constexpr size_t kRoomDescriptorDataOffset = 0x10;
 constexpr size_t kRoomConfigTypeOffset = 0x8;
 constexpr size_t kRoomGridEntitiesOffset = 0x30;
 constexpr size_t kRoomGridEntityCount = 0x1c0;
+constexpr size_t kRoomGridWidthOffset = 0x14;
+constexpr size_t kRoomGridHeightOffset = 0x18;
+constexpr size_t kRoomGridPathsOffset = 0xe98;
 constexpr int32_t kSacrificeRoomType = 13;
 constexpr int32_t kGridSpikesType = 0x8;
 constexpr int32_t kSuperBumFamiliarVariant = 102;
@@ -245,21 +254,14 @@ struct VMPickup {
     float x = 0;
     float y = 0;
     bool hasPosition = false;
+    bool isShopItem = false;
+    int32_t optionsPickupIndex = 0;
 };
 
 struct VMPlayer {
     vm_address_t address = 0;
     float x = 0;
     float y = 0;
-};
-
-struct VMCardObservation {
-    vm_address_t address = 0;
-    int32_t subtype = 0;
-    float x = 0;
-    float y = 0;
-    bool hasPosition = false;
-    bool touched = false;
 };
 
 struct VMPlayerPocketItem {
@@ -289,8 +291,6 @@ struct VMRegionResult {
     bool superBumActive = false;
     std::array<VMPickup, kMaxItems> pickups{};
     size_t pickupCount = 0;
-    std::array<VMCardObservation, kMaxItems> cardObservations{};
-    size_t cardObservationCount = 0;
     size_t blindPickupCount = 0;
     size_t unreadableBlindStateCount = 0;
     std::array<VMPlayer, kMaxPlayers> players{};
@@ -449,6 +449,19 @@ static bool ReadPlayerPocketItems(
     return true;
 }
 
+static bool ReadPlayerCanFly(vm_address_t playerAddress, bool& canFly) {
+    uint32_t nativeValue = UINT32_MAX;
+    if (!ReadOwnTaskMemory(playerAddress + kPlayerCanFlyOffset,
+                           &nativeValue, sizeof(nativeValue))) {
+        canFly = false;
+        return false;
+    }
+    // This iOS build exposes the evaluated flag as a four-byte scalar. During
+    // gameplay true is represented by 1.0f; integer 1 is accepted for compatible
+    // builds while every other value fails closed.
+    return EIDPickupPolicy::DecodeNativeCanFly(nativeValue, canFly);
+}
+
 static bool ReadPlayerCollectibleCounts(
     vm_address_t playerAddress,
     std::array<int32_t, kMaximumCollectibleID + 1>& counts) {
@@ -543,6 +556,83 @@ static bool ReadCurrentRoomAddress(vm_address_t& roomAddress) {
     return true;
 }
 
+struct VMRoomPathMap {
+    int32_t width = 0;
+    int32_t height = 0;
+    size_t pathCount = 0;
+    std::array<int32_t, EIDPickupPolicy::kMaximumRoomGridCells> paths{};
+};
+
+static bool ReadCurrentRoomPathMap(VMRoomPathMap& map) {
+    vm_address_t room = 0;
+    if (!ReadCurrentRoomAddress(room) ||
+        !ReadOwnTaskMemory(room + kRoomGridWidthOffset, &map.width, sizeof(map.width)) ||
+        !ReadOwnTaskMemory(room + kRoomGridHeightOffset, &map.height, sizeof(map.height))) {
+        return false;
+    }
+    if (map.width < 3 || map.height < 3 || map.width > 64 || map.height > 64) return false;
+    const int64_t count = static_cast<int64_t>(map.width) * map.height;
+    if (count <= 0 || count > static_cast<int64_t>(map.paths.size())) return false;
+    map.pathCount = static_cast<size_t>(count);
+    if (!ReadOwnTaskMemory(room + kRoomGridPathsOffset, map.paths.data(),
+                           map.pathCount * sizeof(map.paths[0]))) return false;
+    // Native Room::GetGridCollision treats values above 999 as blocked. EID's
+    // own stricter policy uses <=900. Reject implausible data before applying it.
+    for (size_t index = 0; index < map.pathCount; ++index) {
+        if (map.paths[index] < 0 || map.paths[index] > 100000) return false;
+    }
+    return true;
+}
+
+static bool PickupHasReachablePath(const VMPickup& pickup,
+                                   const VMRegionResult& players,
+                                   const VMRoomPathMap *roomMap) {
+    if (!pickup.hasPosition || !players.playerCount) return false;
+    for (size_t playerIndex = 0; playerIndex < players.playerCount; ++playerIndex) {
+        const VMPlayer& player = players.players[playerIndex];
+        bool canFly = false;
+        if (ReadPlayerCanFly(player.address, canFly) && canFly) return true;
+        if (!roomMap) continue;
+        EIDPickupPolicy::GridPoint start;
+        EIDPickupPolicy::GridPoint finish;
+        if (!EIDPickupPolicy::WorldToGrid(player.x, player.y, roomMap->width,
+                                          roomMap->height, start) ||
+            !EIDPickupPolicy::WorldToGrid(pickup.x, pickup.y, roomMap->width,
+                                          roomMap->height, finish)) continue;
+        if (EIDPickupPolicy::HasGridPath(roomMap->paths.data(), roomMap->pathCount,
+                                         roomMap->width, roomMap->height,
+                                         start, finish)) return true;
+    }
+    return false;
+}
+
+static size_t SuppressHiddenCardAndPillIdentities(VMRegionResult& pickups,
+                                                   const VMRegionResult& players) {
+    VMRoomPathMap roomMap;
+    const bool roomPathAvailable = ReadCurrentRoomPathMap(roomMap);
+    size_t output = 0;
+    size_t suppressed = 0;
+    for (size_t index = 0; index < pickups.pickupCount; ++index) {
+        const VMPickup& pickup = pickups.pickups[index];
+        bool reachable = true;
+        if (pickup.variant == EIDPickupVariantCard ||
+            EIDPickupPolicy::IsPill(pickup.variant)) {
+            reachable = PickupHasReachablePath(
+                pickup, players, roomPathAvailable ? &roomMap : nullptr);
+        }
+        if (!EIDPickupPolicy::ShouldRevealFloorIdentity(
+                pickup.variant, pickup.subtype, pickup.isShopItem,
+                pickup.optionsPickupIndex, reachable)) {
+            suppressed++;
+            continue;
+        }
+        if (output != index) pickups.pickups[output] = pickup;
+        output++;
+    }
+    pickups.pickupCount = output;
+    return suppressed;
+}
+
 static bool ReadCurrentRoomType(int32_t& roomType) {
     roomType = 0;
     vm_address_t room = 0;
@@ -563,7 +653,7 @@ static bool ReadCurrentRoomType(int32_t& roomType) {
     return true;
 }
 
-static bool ResolveKnownPill(int32_t rawSubtype, int32_t& variant, int32_t& subtype) {
+static bool ResolvePillPresentation(int32_t rawSubtype, int32_t& variant, int32_t& subtype) {
     uint32_t rawColor = static_cast<uint32_t>(rawSubtype);
     uint32_t color = rawColor & kPillColorMask;
     if (color == 0 || color > kGoldenPillColor) return false;
@@ -583,7 +673,11 @@ static bool ResolveKnownPill(int32_t rawSubtype, int32_t& variant, int32_t& subt
         subtype = 9999;
         return true;
     }
-    if (identified != 1) return false;
+    if (identified != 1) {
+        variant = EIDPickupVariantUnidentifiedPill;
+        subtype = rawSubtype;
+        return true;
+    }
 
     int32_t effect = -1;
     if (!ReadOwnTaskMemory(itemPool + kItemPoolPillEffectsOffset + color * sizeof(effect),
@@ -678,20 +772,24 @@ static PickupVisibility PickupVisibilityState(const uint8_t *object, size_t avai
 
 static bool IsDescribableVariant(int32_t variant) {
     return variant == EIDPickupVariantPill || variant == EIDPickupVariantCollectible ||
-        variant == EIDPickupVariantHorsePill || variant == EIDPickupVariantCard ||
+        variant == EIDPickupVariantHorsePill ||
+        variant == EIDPickupVariantUnidentifiedPill || variant == EIDPickupVariantCard ||
         variant == EIDPickupVariantTrinket || variant == EIDPickupVariantDiceRoom ||
         variant == EIDPickupVariantSacrificeRoom;
 }
 
 static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype,
-                        float x, float y, bool hasPosition) {
+                        float x, float y, bool hasPosition,
+                        bool isShopItem = false, int32_t optionsPickupIndex = 0) {
     if (!IsDescribableVariant(variant) || subtype <= 0 || subtype > 65535) return;
     // Subtype zero and out-of-range tarot IDs are unknown/hidden card identities.
     if (variant == EIDPickupVariantCard && subtype > 97) return;
     // Keep duplicate identities: two equal cards/trinkets may exist at different positions,
     // and proximity must choose the actual nearest entity rather than the first copy.
     if (result.pickupCount < result.pickups.size()) {
-        result.pickups[result.pickupCount++] = {variant, subtype, x, y, hasPosition};
+        result.pickups[result.pickupCount++] = {
+            variant, subtype, x, y, hasPosition, isShopItem, optionsPickupIndex
+        };
     }
 }
 
@@ -758,16 +856,6 @@ static void AddVMPlayer(VMRegionResult& result, vm_address_t address, float x, f
     }
 }
 
-static void AddVMCardObservation(VMRegionResult& result, vm_address_t address, int32_t subtype,
-                                 float x, float y, bool hasPosition, bool touched) {
-    if (subtype <= 0 || subtype > 97 || result.cardObservationCount >= result.cardObservations.size()) {
-        return;
-    }
-    result.cardObservations[result.cardObservationCount++] = {
-        address, subtype, x, y, hasPosition, touched
-    };
-}
-
 static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t size,
                        size_t scanLimit, vm_address_t sourceAddress, VMRegionResult& result) {
     if (size < kEntityTypeOffset + 12) return;
@@ -812,23 +900,30 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
             if (activeObject && identity[0] == 5 && IsDescribableVariant(identity[1])) {
                 int32_t displayVariant = identity[1];
                 int32_t displaySubtype = identity[2];
-                if (displayVariant == EIDPickupVariantCard) {
-                    bool touched = offset + kPickupTouchedOffset < size &&
-                        bytes[offset + kPickupTouchedOffset] != 0;
-                    AddVMCardObservation(result, sourceAddress + offset, displaySubtype,
-                                         x, y, positionAvailable, touched);
-                    // Card visibility is decided after the player and pickup snapshots are
-                    // combined, allowing EID to remember a real pickup/drop transition even
-                    // when this iOS build clears the native Touched flag on the new entity.
-                    continue;
+                int32_t price = 0;
+                int32_t optionsPickupIndex = 0;
+                bool pickupMetadataAvailable =
+                    offset + kPickupOptionsIndexOffset + sizeof(optionsPickupIndex) <= size;
+                if (pickupMetadataAvailable) {
+                    memcpy(&price, bytes + offset + kPickupPriceOffset, sizeof(price));
+                    memcpy(&optionsPickupIndex,
+                           bytes + offset + kPickupOptionsIndexOffset,
+                           sizeof(optionsPickupIndex));
+                    if (optionsPickupIndex < 0 || optionsPickupIndex > 4096) {
+                        pickupMetadataAvailable = false;
+                    }
                 }
+                // Fail closed for card identity if its shop/options metadata cannot
+                // be read; showing it could reveal a purchase or Options? choice.
+                if (displayVariant == EIDPickupVariantCard && !pickupMetadataAvailable) continue;
                 if (displayVariant == EIDPickupVariantPill &&
-                    !ResolveKnownPill(displaySubtype, displayVariant, displaySubtype)) continue;
+                    !ResolvePillPresentation(displaySubtype, displayVariant, displaySubtype)) continue;
                 PickupVisibility visibility = identity[1] == EIDPickupVariantCollectible
                     ? PickupVisibilityState(bytes + offset, size - offset)
                     : PickupVisibility::Visible;
                 if (visibility == PickupVisibility::Visible) {
-                    AddVMPickup(result, displayVariant, displaySubtype, x, y, positionAvailable);
+                    AddVMPickup(result, displayVariant, displaySubtype, x, y,
+                                positionAvailable, price != 0, optionsPickupIndex);
                 } else if (visibility == PickupVisibility::Blind) {
                     result.blindPickupCount++;
                 } else {
@@ -1093,14 +1188,13 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic) BOOL loggedPositionValidation;
 @property(nonatomic) BOOL loggedBlindPedestal;
 @property(nonatomic) BOOL loggedUnreadableBlindState;
-@property(nonatomic, strong) NSMutableSet<NSNumber *> *knownCardSubtypes;
-@property(nonatomic) BOOL loggedUnreadablePocketItems;
 @property(nonatomic) BOOL loggedUnreadableCollectibleCounts;
 @property(nonatomic) BOOL loggedUnreadableInventory;
 @property(nonatomic) BOOL loggedUnreadableTransformations;
 @property(nonatomic) NSInteger lastLoggedRoomType;
 @property(nonatomic) uint32_t lastLoggedCurseMask;
 @property(nonatomic) NSInteger lastSacrificePayout;
+@property(nonatomic) NSInteger lastHiddenCardOrPillCount;
 @property(nonatomic) BOOL nativeRunActive;
 @property(nonatomic) NSUInteger consecutiveEmptyPlayerScans;
 @property(nonatomic) BOOL pillPoolReady;
@@ -1122,11 +1216,11 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         _nativeTransformationCounters = @[];
         _activeCollectibleIDs = [NSSet set];
         _activeCollectibleHistory = [NSMutableDictionary dictionary];
-        _knownCardSubtypes = [NSMutableSet set];
         _playerVectorOffset = NSUIntegerMax;
         _lastLoggedRoomType = NSIntegerMin;
         _lastLoggedCurseMask = UINT32_MAX;
         _lastSacrificePayout = -1;
+        _lastHiddenCardOrPillCount = NSIntegerMin;
         _lastPauseState = -1;
     }
     return self;
@@ -1157,7 +1251,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         ? @"LiveContainer guest dylib" : @"native executable";
     EIDLog(@"%@; executable UUID %@; image mode %@", self.status,
            self.executableUUID, imageMode);
-    EIDLog(@"native card/rune and pill knowledge will activate from current run state");
+    EIDLog(@"original EID floor visibility active (shop, Options?, path and pill knowledge)");
     self.activeCollectibleIDs = LoadActiveCollectibleIdentifiers();
     EIDLog(@"native active-item history ready (%lu collectible definitions)",
            (unsigned long)self.activeCollectibleIDs.count);
@@ -1187,7 +1281,6 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         self.pauseStateAvailable = NO;
         self.paused = NO;
         [self.activeCollectibleHistory removeAllObjects];
-        [self.knownCardSubtypes removeAllObjects];
         self.pillPoolReady = NO;
         return;
     }
@@ -1209,8 +1302,6 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         self.nativeTransformationCounters = @[];
         self.transformationStateAvailable = NO;
         [self.activeCollectibleHistory removeAllObjects];
-        [self.knownCardSubtypes removeAllObjects];
-        self.loggedUnreadablePocketItems = NO;
         self.loggedUnreadableCollectibleCounts = NO;
         self.loggedUnreadableInventory = NO;
         self.loggedUnreadableTransformations = NO;
@@ -1374,7 +1465,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
             } else if (pocket.type == 0) {
                 int32_t variant = EIDPickupVariantPill;
                 int32_t subtype = 0;
-                if (ResolveKnownPill(pocket.id, variant, subtype)) {
+                if (ResolvePillPresentation(pocket.id, variant, subtype)) {
                     addIdentity(variant, subtype);
                 }
             }
@@ -1591,40 +1682,15 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         SuppressCollectiblePickups(pickupResult);
     }
 
-    // Some iOS card drops are created with Touched cleared. Read the game's four native
-    // pocket slots first, so a concrete card is learned while the player actually holds
-    // it. The learned identity then remains visible if that card is dropped later, while
-    // a never-held floor card remains hidden.
-    if (playerResult.playerCount) {
-        for (size_t playerIndex = 0; playerIndex < playerResult.playerCount; ++playerIndex) {
-            std::array<VMPlayerPocketItem, kPlayerPocketItemCount> pocketItems{};
-            if (!ReadPlayerPocketItems(playerResult.players[playerIndex].address, pocketItems)) {
-                if (!self.loggedUnreadablePocketItems) {
-                    self.loggedUnreadablePocketItems = YES;
-                    EIDLog(@"native player pocket slots unreadable; card learning suppressed");
-                }
-                continue;
-            }
-            for (size_t slot = 0; slot < pocketItems.size(); ++slot) {
-                const VMPlayerPocketItem& item = pocketItems[slot];
-                if (item.type != 1 || item.id <= 0 || item.id > 97) continue;
-                NSNumber *subtype = @(item.id);
-                if (![self.knownCardSubtypes containsObject:subtype]) {
-                    [self.knownCardSubtypes addObject:subtype];
-                    EIDLog(@"card/rune %@ learned from native player pocket slot %lu",
-                           subtype, (unsigned long)slot);
-                }
-            }
-        }
-    }
-
-    for (size_t index = 0; index < pickupResult.cardObservationCount; ++index) {
-        const VMCardObservation& card = pickupResult.cardObservations[index];
-        if (card.touched) [self.knownCardSubtypes addObject:@(card.subtype)];
-        if (card.touched || [self.knownCardSubtypes containsObject:@(card.subtype)]) {
-            AddVMPickup(pickupResult, EIDPickupVariantCard, card.subtype,
-                        card.x, card.y, card.hasPosition);
-        }
+    // Original EID does not use Pickup.Touched as general card knowledge. Apply
+    // its default shop, Options?, Soul Stone and reachability rules instead.
+    const size_t hiddenCardOrPillCount =
+        SuppressHiddenCardAndPillIdentities(pickupResult, playerResult);
+    if (self.lastHiddenCardOrPillCount != (NSInteger)hiddenCardOrPillCount) {
+        self.lastHiddenCardOrPillCount = (NSInteger)hiddenCardOrPillCount;
+        EIDLog(@"original EID visibility suppressed %lu card/pill identit%@",
+               (unsigned long)hiddenCardOrPillCount,
+               hiddenCardOrPillCount == 1 ? @"y" : @"ies");
     }
 
     if (pickupResult.blindPickupCount && !self.loggedBlindPedestal) {

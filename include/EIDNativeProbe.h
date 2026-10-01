@@ -9,6 +9,9 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
     EIDPickupVariantTrinket = 350,
     // Internal display variant. Native pickups still use variant 70 with bit 11 set.
     EIDPickupVariantHorsePill = 1070,
+    // Internal display variant. Subtype preserves the native PillColor for artwork,
+    // while the description store exposes no effect information.
+    EIDPickupVariantUnidentifiedPill = 2070,
     // Internal display variants for native room entities.
     EIDPickupVariantDiceRoom = 2001,
     EIDPickupVariantSacrificeRoom = 2002,

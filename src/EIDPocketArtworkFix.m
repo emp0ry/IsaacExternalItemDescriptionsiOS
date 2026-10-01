@@ -11,6 +11,8 @@ static const uintptr_t kEIDGameGlobalOffset = 0xac3b90;
 static const size_t kEIDGameItemPoolOffset = 0x242c0;
 static const size_t kEIDItemPoolPillEffectsOffset = 0xa2c;
 static const uint32_t kEIDGoldenPillColor = 14;
+static const uint32_t kEIDPillColorMask = 0x7ff;
+static const uint32_t kEIDHorsePillFlag = 1u << 11;
 
 static BOOL EIDReadMemory(vm_address_t address, void *destination, vm_size_t size) {
     if (!address || !destination || !size) return NO;
@@ -140,6 +142,7 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
 + (instancetype)shared;
 - (UIImage *)cardImageForSubtype:(NSInteger)subtype;
 - (UIImage *)pillImageForEffectSubtype:(NSInteger)subtype horse:(BOOL)horse;
+- (UIImage *)pillImageForColor:(NSInteger)color horse:(BOOL)horse;
 @end
 
 @implementation EIDPocketArtworkResolver
@@ -208,6 +211,9 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
 }
 - (UIImage *)pillImageForEffectSubtype:(NSInteger)subtype horse:(BOOL)horse {
     NSInteger color = [self pillColorForEffectSubtype:subtype];
+    return [self pillImageForColor:color horse:horse];
+}
+- (UIImage *)pillImageForColor:(NSInteger)color horse:(BOOL)horse {
     if (color <= 0) return nil;
     NSString *key = [NSString stringWithFormat:@"pill:%ld:%d", (long)color, horse];
     id cached = self.cache[key];
@@ -218,9 +224,7 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
     UIImage *image = EIDGridCrop(self.pillPickupAtlas, index, 32);
     if (!image) image = EIDGridCrop(self.pillPickupAtlas, index, 16);
 
-    if (!image) {
-        EIDLog(@"no individual pill artwork for effect %ld color %ld", (long)subtype, (long)color);
-    }
+    if (!image) EIDLog(@"no individual pill artwork for color %ld", (long)color);
     self.cache[key] = image ?: NSNull.null;
     return image;
 }
@@ -238,6 +242,12 @@ static UIImage *EIDGridCrop(UIImage *atlas, NSInteger index, NSInteger cell) {
     if (variant == EIDPickupVariantPill || variant == EIDPickupVariantHorsePill) {
         return [[EIDPocketArtworkResolver shared] pillImageForEffectSubtype:subtype
                                                                      horse:(variant == EIDPickupVariantHorsePill)];
+    }
+    if (variant == EIDPickupVariantUnidentifiedPill) {
+        uint32_t rawColor = (uint32_t)subtype;
+        return [[EIDPocketArtworkResolver shared]
+            pillImageForColor:(rawColor & kEIDPillColorMask)
+                         horse:(rawColor & kEIDHorsePillFlag) != 0];
     }
     return [self eid_fixed_pocketIconForVariant:variant subtype:subtype];
 }

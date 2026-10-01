@@ -27,3 +27,11 @@ The desktop mod currently defaults to:
 5. **Modes** — retain the current fixed overlay and add local/near-item presentation where native coordinates are reliable.
 
 The upstream EID repository remains the behavioral reference. Assets copied into distributable builds must retain upstream attribution and compatible licensing notices.
+
+## Pickup knowledge parity
+
+The iOS native probe mirrors upstream defaults independently for ordinary
+cards/runes, Soul Stones, and pills. It reads native shop price and
+`OptionsPickupIndex` fields, native pill-identification state, room grid paths,
+and player flight. `Pickup::Touched` is not used as a blanket identity rule.
+Unknown pills keep their real color icon but never reveal their effect.

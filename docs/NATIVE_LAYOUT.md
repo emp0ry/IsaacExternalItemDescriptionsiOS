@@ -29,9 +29,13 @@ allocator and does not directly dereference mutable game allocations.
 | Entity logical position | `0x310` | Player and pedestal movement matched the screen |
 | ANM2 layer-state pointer | `0x0f8` | Runtime snapshot and native spritesheet access |
 | ANM2 layer count | `0x100` | Six live pedestal layers observed |
-| Pickup touched byte | `0x560` | Native pickup init/collision/morph preservation code |
+| Pickup auto-update-price byte | `0x560` | Native shop-price update code |
+| Pickup touched byte | `0x561` | Native pickup init/collision/morph preservation code |
 | Pickup forced-blind byte | `0x562` | ARM64 disassembly of native `SetForceBlind` |
+| Pickup price | `0x564` | Native `IsShopItem` returns `Price != 0` |
+| Pickup Options index | `0x56c` | Live shop and floor pickup instances; positive values identify an `Options?` group |
 | Crane Game prize collectible | `0x570` | ARM64 disassembly of `Entity_Slot::SetPrizeCollectible` |
+| Player can-fly word | `Entity_Player + 0x1954` | Evaluated flight state (`0.0f` / `1.0f`) used by the native collision branch |
 | Player pocket items | `Entity_Player + 0x1c10` | Live held-card and rune identity matched pocket slots |
 | Player trinket slots | `Entity_Player + 0x1ab0` | Native GetTrinket call sites and both live slots |
 | Player collectible-count table | `Entity_Player + 0x1ab8` | Live inventory changes matched collected items |
@@ -41,6 +45,8 @@ allocator and does not directly dereference mutable game allocations.
 | Game run seed | `Game + 0x25d44` | Stable within a run and changed when starting a new run |
 | Game pause-menu state | `Game + 0x10dfd8` | PauseScreen state switch; valid values are `0...3` |
 | Room grid-entity table | `Room + 0x30` | Live Sacrifice Room spikes and activation count |
+| Room grid width / height | `Room + 0x14` / `+0x18` | Native grid-index conversion and bounds checks |
+| Room grid-path table | `Room + 0xe98` | Native `GetGridCollision` and path update code |
 | Game ItemPool | `Game + 0x242c0` | Native `GetPillEffect` call sites |
 | ItemPool pill effect array | `ItemPool + 0xa2c` | ARM64 `GetPillEffect` implementation |
 | ItemPool identified-pill bytes | `ItemPool + 0xa68` | Native identification code and state copy |
@@ -59,20 +65,25 @@ including pedestals whose sprite-layer state has not caught up yet.
 - Variant `100`: collectibles
 - Variant `300`: cards and runes
 - Variant `350`: trinkets (including the golden-trinket high flag)
-- Variant `70`: pills, only after native identification; effect IDs are resolved
+- Variant `70`: pills; identified colors resolve to effect IDs
+- Internal variant `2070`: unidentified pills; native color is retained for artwork without exposing the effect
 - Type `6`, variant `16`: Crane Game prize collectible
 - Type `1000`, variant `76`: Dice Room floor effect; subtype `0...5` maps to faces `1...6`
 - Room type `13`, grid type `8`: Sacrifice Room spikes; `VarData + 1` is the next payout
 
-Normal descriptions use the resolved effect plus one, matching upstream EID's
-lookup convention. Bit 11 selects the horse-pill table. Golden color 14 uses
-the upstream random-effect Golden Pill entry. Unknown pills fail closed.
-Cards are revealed by a nonzero native touched flag or by reading the four native
-player pocket slots at `Entity_Player + 0x1c10`. Each slot is an 8-byte
-`{ id, type }` record; `type == 1` identifies a card/rune. The pocket path handles
-iOS drops that create a new entity with `Touched` cleared. This learned identity
-lasts only for the current run. A newly discovered floor card is therefore
-still hidden until it is actually held by a player.
+Normal pill descriptions use the resolved effect plus one, matching upstream
+EID's lookup convention. Bit 11 selects the horse-pill table. Golden color 14
+uses the upstream random-effect Golden Pill entry. Unknown pills preserve only
+their color and render the upstream localized unidentified label.
+
+Floor card/rune/pill visibility mirrors original EID's defaults. The native
+price at `Entity_Pickup + 0x564` marks a shop pickup when nonzero, and the
+`OptionsPickupIndex` at `+0x56c` marks an `Options?` choice when positive.
+Ordinary shop cards and all `Options?` cards are hidden; shop Soul Stones and
+shop/`Options?` pills are shown. Reachability uses the native room dimensions
+and `Room::_gridPaths`, with the same four-direction search and `path <= 900`
+rule as upstream EID. The verified native `CanFly` word bypasses obstruction.
+`Pickup::Touched` is deliberately not used as a general card-knowledge flag.
 
 The native `Entity_Player::_playerForms` array has 15 persisted `int32`
 counters starting at `+0x1c54`. Isaac copies the complete 60-byte array into

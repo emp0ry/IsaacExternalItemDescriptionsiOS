@@ -17,7 +17,7 @@
 | All-language upstream import | Pass: 20 EID languages; English fallback fills untranslated Repentance entries |
 | Menu/game detector | Pass: native player-presence detector with 12-scan menu debounce |
 | EID settings | Pass: bottom-right button is available in menus and while paused, hidden during active gameplay; native language picker, layout controls, 140/50 px defaults, credits and dataset version |
-| Unknown-pill spoiler guard | Pass: native identified byte required |
+| Unknown-pill spoiler guard | Pass: native identified byte selects real effect; otherwise only localized unidentified label and color are exposed |
 | Native pill color-to-effect mapping | Pass: ARM64 ItemPool layout verified |
 | Crane Game prize field | Pass: ARM64 setter/layout verified |
 | Startup information banner | Removed: settings are reachable from the bottom-right button while in the menu |
@@ -30,7 +30,9 @@
 | LiveContainer guest `MH_DYLIB` UUID selection | Pass: UUID `F4357753-A25F-30EE-BACF-63709F902895` selected on device |
 | LiveContainer 3.8.0 private-app launch | Pass: framework loaded, full database imported, native probe active, no crash |
 | Live card/rune entity detection | Pass: native variant 300 observed on device |
-| Untouched-card identity guard | Pass: untouched cards stay hidden; held cards are learned from the four native player pocket slots |
+| Original EID card/pill policy unit matrix | Pass: shop, Soul Stone, Options?, unidentified-pill and obstruction defaults |
+| Native room path algorithm | Pass: exact ARM64 room fields plus four-direction `path <= 900` tests; live obstacle-room regression pending |
+| Live shop/Options?/Soul Stone policy | Pending suitable in-game pickups after device deployment |
 | Native item artwork | Pass: exact Isaac collectible/trinket paths and subtype-aware pocket-item artwork rendered beside text |
 | Native card/rune/pill artwork | Pass: subtype-aware card and rune frames plus original EID pill-atlas frames |
 | Transformation progress | Pass: live persisted PlayerForm counters survived a save reload and reported Conjoined `1/3` plus Bookworm `1/3`; Super Bum uses verified familiar type/variant state |
