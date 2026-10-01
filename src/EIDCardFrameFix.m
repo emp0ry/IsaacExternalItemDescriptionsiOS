@@ -74,19 +74,19 @@ static NSString *EIDCardBundledResource(NSString *name) {
 }
 @end
 
-@interface EIDOriginalRuneArtwork : NSObject
+@interface EIDOriginalCardArtwork : NSObject
 @property(nonatomic, strong) UIImage *atlas;
 @property(nonatomic, copy) NSArray *frames;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id> *cache;
 + (instancetype)shared;
-- (UIImage *)imageForRuneSubtype:(NSInteger)subtype;
+- (UIImage *)imageForCardSubtype:(NSInteger)subtype;
 @end
 
-@implementation EIDOriginalRuneArtwork
+@implementation EIDOriginalCardArtwork
 + (instancetype)shared {
-    static EIDOriginalRuneArtwork *resolver;
+    static EIDOriginalCardArtwork *resolver;
     static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{ resolver = [EIDOriginalRuneArtwork new]; });
+    dispatch_once(&onceToken, ^{ resolver = [EIDOriginalCardArtwork new]; });
     return resolver;
 }
 - (instancetype)init {
@@ -103,19 +103,20 @@ static NSString *EIDCardBundledResource(NSString *name) {
         if ([parser parse]) _frames = delegate.frames.copy;
     }
     if (!_frames) _frames = @[];
-    EIDLog(@"original EID rune artwork: atlas %@, card/rune frames %lu",
+    EIDLog(@"original EID card artwork: atlas %@, card/rune frames %lu",
            _atlas ? @"yes" : @"no", (unsigned long)_frames.count);
     return self;
 }
-- (UIImage *)imageForRuneSubtype:(NSInteger)subtype {
-    if (subtype < 32 || subtype > 41) return nil;
+- (UIImage *)imageForCardSubtype:(NSInteger)subtype {
+    if (subtype <= 0 || subtype > (NSInteger)self.frames.count) return nil;
     NSNumber *key = @(subtype);
     id cached = self.cache[key];
     if (cached) return cached == NSNull.null ? nil : cached;
 
-    // Original EID renders Card IDs with frame `cardID - 1`. The previous iOS
-    // adapter applied the native CardFronts offset to runes as well, which sent
-    // them into unrelated pickup-sheet cells.
+    // Original EID renders every card-family ID with frame `cardID - 1`.
+    // This is required not only for runes, but also for Rune Shard, Cracked Key,
+    // and Soul Stones: their native iOS CardFronts entries are hidden, and the
+    // generic pickup-sheet fallback selects unrelated artwork.
     NSInteger frameIndex = subtype - 1;
     UIImage *image = nil;
     if (self.atlas.CGImage && frameIndex >= 0 && frameIndex < (NSInteger)self.frames.count) {
@@ -145,10 +146,10 @@ static NSString *EIDCardBundledResource(NSString *name) {
 
 @implementation NSObject (EIDCardFrameFix)
 - (UIImage *)eid_correct_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype {
-    if (variant == EIDPickupVariantCard && subtype >= 32 && subtype <= 41) {
+    if (variant == EIDPickupVariantCard && subtype > 0 && subtype <= 97) {
         // Returning nil is safer than displaying a random card if an incomplete
         // raw-dylib installation omitted the attributed EID artwork bundle.
-        return [[EIDOriginalRuneArtwork shared] imageForRuneSubtype:subtype];
+        return [[EIDOriginalCardArtwork shared] imageForCardSubtype:subtype];
     }
     if (variant == EIDPickupVariantCard && subtype > 0) {
         // Isaac's native CardFronts animation contains an invisible frame zero.
