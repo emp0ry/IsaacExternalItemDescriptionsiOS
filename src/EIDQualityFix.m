@@ -103,6 +103,9 @@ static NSDictionary<NSNumber *, NSNumber *> *EIDResolvedQualities(void) {
                                                      name:description.name
                                                    detail:description.detail
                                                  iconPath:description.iconPath
-                                                  quality:resolved.integerValue];
+                                                  quality:resolved.integerValue
+                                                 itemType:description.itemType
+                                               maxCharges:description.maxCharges
+                                               chargeType:description.chargeType];
 }
 @end

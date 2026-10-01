@@ -1,56 +1,130 @@
-name: Release
+name: Build and Release
 
 on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: eid-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
-  release:
+  build-release:
     runs-on: macos-15
     steps:
       - name: Checkout iOS port
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Checkout original EID resources
-        uses: actions/checkout@v4
+      - name: Checkout attributed EID resources
+        uses: actions/checkout@v5
         with:
           repository: wofsauge/External-Item-Descriptions
+          ref: 3b5010128a8b38c2ca02c66441ddf8b8d8f10de3
           path: upstream-eid
 
       - name: Install packaging tools
+        shell: bash
         run: |
-          if ! command -v dpkg-deb >/dev/null 2>&1; then brew install dpkg; fi
-          if ! command -v rg >/dev/null 2>&1; then brew install ripgrep; fi
+          set -euo pipefail
+          command -v dpkg-deb >/dev/null 2>&1 || brew install dpkg
+          command -v rg >/dev/null 2>&1 || brew install ripgrep
 
-      - name: Read release version
+      - name: Read and validate version
         id: version
+        shell: bash
         run: |
+          set -euo pipefail
           version="$(awk '/^Version:/ { print $2 }' package/control)"
           test -n "$version"
           test -f "docs/RELEASE_NOTES_v${version}.md"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            test "$GITHUB_REF_NAME" = "v${version}" || {
+              echo "Tag $GITHUB_REF_NAME does not match package version v${version}" >&2
+              exit 1
+            }
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Build release
-        run: make release EID_SOURCE="$GITHUB_WORKSPACE/upstream-eid"
-
-      - name: Create full build archive
+      - name: Build and verify every distribution
+        shell: bash
         run: |
+          set -euo pipefail
+          make release \
+            EID_SOURCE="$GITHUB_WORKSPACE/upstream-eid" \
+            EXTRA_CFLAGS='-Wall -Wextra -Werror'
+
+      - name: Verify release contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            dist/IsaacExternalItemDescriptions.dylib
+            dist/IsaacExternalItemDescriptions-rootless.deb
+            dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip
+            dist/IsaacExternalItemDescriptions-Embedded.zip
+            dist/descriptions.json
+            dist/SHA256SUMS
+          )
+          for file in "${required[@]}"; do test -s "$file"; done
+          test -s build/IsaacEID.bundle/eid_inline_icons.png
+          test -s build/IsaacEID.bundle/eid_transform_icons.png
+          test -s build/IsaacEID.bundle/eid_cardspills.png
+          unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip > "$RUNNER_TEMP/embedded-files.txt"
+          unzip -l dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip > "$RUNNER_TEMP/livecontainer-files.txt"
+          grep -q 'IsaacEID.bundle/eid_transform_icons.png' "$RUNNER_TEMP/embedded-files.txt"
+          grep -q 'Resources/IsaacEID.bundle/descriptions.json' "$RUNNER_TEMP/livecontainer-files.txt"
+
+      - name: Create complete archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf full-build IsaacExternalItemDescriptions-Full-Build.zip
           mkdir -p full-build
           cp -R dist/. full-build/
-          cp THIRD_PARTY_NOTICES.md README.md "docs/RELEASE_NOTES_v${{ steps.version.outputs.version }}.md" full-build/
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent full-build IsaacExternalItemDescriptions-Full-Build.zip
+          cp README.md THIRD_PARTY_NOTICES.md \
+            "docs/RELEASE_NOTES_v${{ steps.version.outputs.version }}.md" full-build/
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            full-build IsaacExternalItemDescriptions-Full-Build.zip
+
+      - name: Upload verified build
+        uses: actions/upload-artifact@v6
+        with:
+          name: IsaacExternalItemDescriptions-v${{ steps.version.outputs.version }}
+          path: |
+            dist/IsaacExternalItemDescriptions.dylib
+            dist/IsaacExternalItemDescriptions-rootless.deb
+            dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip
+            dist/IsaacExternalItemDescriptions-Embedded.zip
+            dist/descriptions.json
+            dist/SHA256SUMS
+            IsaacExternalItemDescriptions-Full-Build.zip
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
         run: |
-          version="${{ steps.version.outputs.version }}"
-          gh release create "v${version}" \
+          set -euo pipefail
+          gh release create "v${VERSION}" \
+            --verify-tag \
             --target "$GITHUB_SHA" \
-            --title "Isaac External Item Descriptions iOS v${version}" \
-            --notes-file "docs/RELEASE_NOTES_v${version}.md" \
+            --title "Isaac External Item Descriptions iOS v${VERSION}" \
+            --notes-file "docs/RELEASE_NOTES_v${VERSION}.md" \
+            --latest \
             dist/IsaacExternalItemDescriptions.dylib \
             dist/IsaacExternalItemDescriptions-rootless.deb \
             dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip \

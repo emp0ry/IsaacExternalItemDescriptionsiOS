@@ -51,6 +51,7 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Runes use the correct subtype frame from the attributed original EID card/rune atlas.
 - Identified and unidentified pills use their actual native pill color mapped to the corresponding original EID `Pills` frame.
 - Original EID inline symbols, Q0-Q4 quality icons, transformation icons, colors, and description markup are rendered through UIKit.
+- Active collectibles show the original EID battery and maximum-charge indicator. Normal, timed, and special/dynamic charge types use their matching upstream symbols.
 - The description has no background box and uses compact outlined text designed to remain readable over gameplay.
 - Item title, icon, and description disappear together after an item is collected.
 
@@ -63,6 +64,7 @@ The **EID ⚙** button appears in the bottom-right corner while Isaac is in a me
 - Scale and opacity
 - Independent Name, Icon, Quality, and Description visibility
 - Position reset controls
+- A scrollable layout that keeps every control usable on smaller displays
 - Dataset/build information and original EID credits
 
 The default overlay position is 140 px from the left and 50 px from the top.
