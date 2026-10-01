@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.1 - 2026-10-01
+
+- Delayed EID startup until Isaac becomes active and moved the overlay into the
+  established game view hierarchy, preventing the virtual movement stick from
+  remaining at the top-left launch position.
+- Made the always-present description surface non-interactive and attach settings
+  and inventory cards only while they are open.
+- Localized the unidentified-pill title for all bundled languages even when an
+  older imported description database is still installed.
+- Removed the redundant question-mark description line from unidentified pills.
+- Improved pixel-art sharpness for quality, battery, charge-number, and inline
+  icons on Retina displays.
+- Removed the empty body gap when an entry only has a title.
+
+## 0.7.0 - 2026-10-01
+
+- Matched upstream EID visibility rules for cards, runes, Soul Stones, shops,
+  `Options?`, obstructions, player flight, identified pills, and Curse of the Blind.
+- Added original EID active-item battery and charge indicators.
+- Kept the normal title size when charge information is present.
+- Added a scrollable settings panel with Scale and Opacity percentage labels.
+
 ## 0.6.1 - 2026-08-21
 
 - Made transformation progress refresh immediately when one of multiple identical

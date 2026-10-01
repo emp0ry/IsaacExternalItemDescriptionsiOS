@@ -186,6 +186,29 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 
 @implementation EIDDescriptionStore
 
+static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
+    static NSDictionary<NSString *, NSString *> *names;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // Keep this tiny UI string in code as well as descriptions.json. Older
+        // app-support databases take precedence so users can import their own EID
+        // data; they must not force the title back to English after a language change.
+        names = @{
+            @"bul": @"Неидентифицирано хапче", @"cs_cz": @"Neznámá Pilulka",
+            @"de": @"Unidentifizierte Pille", @"el_gr": @"Άγνωστο Χάπι",
+            @"en_us": @"Unidentified Pill", @"spa": @"Píldora sin identificar",
+            @"fr": @"Pilule non identifiée", @"it": @"Pillola non identificata",
+            @"ja_jp": @"未識別のピル", @"ko_kr": @"확인하지 않은 알약",
+            @"nl_nl": @"Unidentified Pill", @"pl": @"Nieznana Pigułka",
+            @"pt": @"Comprimido não identificado", @"pt_br": @"Pílula não identificada",
+            @"ro_ro": @"Unidentified Pill", @"ru": @"Неизвестная пилюля",
+            @"tr_tr": @"Tanımlanmamış Hap", @"uk_ua": @"Невідома пігулка",
+            @"vi": @"Viên thuốc không xác định", @"zh_cn": @"未识别的胶囊",
+        };
+    });
+    return names[languageCode] ?: names[@"en_us"];
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {
@@ -193,7 +216,7 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
         _languageCode = [self resolvedLanguageCode];
         _availableLanguageCodes = @[@"en_us"];
         _descriptionDataSet = @"Isaac metadata";
-        _unidentifiedPillName = @"Unidentified Pill";
+        _unidentifiedPillName = EIDUnidentifiedPillName(_languageCode);
         [self reload];
     }
     return self;
@@ -356,7 +379,11 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     NSDictionary *englishStrings = [english[@"strings"] isKindOfClass:NSDictionary.class]
         ? english[@"strings"] : nil;
     NSString *unidentifiedPill = [languageStrings[@"unidentified_pill"] isKindOfClass:NSString.class]
-        ? languageStrings[@"unidentified_pill"] : englishStrings[@"unidentified_pill"];
+        ? languageStrings[@"unidentified_pill"] : nil;
+    if (!unidentifiedPill.length) unidentifiedPill = EIDUnidentifiedPillName(self.languageCode);
+    if (!unidentifiedPill.length && [englishStrings[@"unidentified_pill"] isKindOfClass:NSString.class]) {
+        unidentifiedPill = englishStrings[@"unidentified_pill"];
+    }
     self.unidentifiedPillName = unidentifiedPill.length ? unidentifiedPill : @"Unidentified Pill";
     NSDictionary<NSString *, NSNumber *> *categories = @{
         @"collectibles": @(EIDPickupVariantCollectible),

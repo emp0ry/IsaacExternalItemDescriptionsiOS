@@ -28,13 +28,17 @@ __attribute__((constructor)) static void EIDConstructor(void) {
     @autoreleasepool {
         dispatch_async(dispatch_get_main_queue(), ^{
             NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-            [center addObserverForName:UIApplicationDidFinishLaunchingNotification
-                                object:nil queue:NSOperationQueue.mainQueue
-                            usingBlock:^(__unused NSNotification *note) { EIDStart(); }];
             [center addObserverForName:UIApplicationDidBecomeActiveNotification
                                 object:nil queue:NSOperationQueue.mainQueue
                             usingBlock:^(__unused NSNotification *note) { EIDStart(); }];
-            if (UIApplication.sharedApplication.applicationState != UIApplicationStateInactive) EIDStart();
+            // Do not install UIKit overlays from the launch notification. Isaac creates
+            // and positions its virtual controls during that phase; inserting another
+            // top-level view there can leave the movement stick at its uninitialised
+            // origin until the first gameplay touch. Waiting for the active state keeps
+            // bootstrap independent of observer ordering during application launch.
+            if (UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
+                EIDStart();
+            }
         });
     }
 }
