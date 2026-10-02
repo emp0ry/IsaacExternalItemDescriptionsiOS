@@ -16,12 +16,12 @@ constexpr int32_t kLastSoulStoneSubtype = 97;
 constexpr int32_t kMaximumWalkableGridPath = 900;
 constexpr size_t kMaximumRoomGridCells = 0x1c0;
 
-inline bool DecodeNativeCanFly(uint32_t value, bool& canFly) {
+inline bool DecodeNativeCanFly(uint8_t value, bool& canFly) {
     if (value == 0) {
         canFly = false;
         return true;
     }
-    if (value == 1 || value == 0x3f800000u) {
+    if (value == 1) {
         canFly = true;
         return true;
     }

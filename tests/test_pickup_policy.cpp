@@ -9,8 +9,8 @@ int main() {
     bool canFly = false;
     assert(DecodeNativeCanFly(0, canFly) && !canFly);
     assert(DecodeNativeCanFly(1, canFly) && canFly);
-    assert(DecodeNativeCanFly(0x3f800000u, canFly) && canFly);
-    assert(!DecodeNativeCanFly(0x40000000u, canFly) && !canFly);
+    assert(!DecodeNativeCanFly(2, canFly) && !canFly);
+    assert(!DecodeNativeCanFly(0xff, canFly) && !canFly);
 
     // Current upstream EID defaults for cards and runes.
     assert(ShouldRevealFloorIdentity(300, 1, false, 0, true));   // reachable floor card

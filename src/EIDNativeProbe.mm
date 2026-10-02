@@ -213,6 +213,9 @@ constexpr size_t kPlayerTrinketSlotsOffset = 0x1ab0;
 constexpr size_t kPlayerTrinketSlotCount = 2;
 constexpr size_t kPlayerCollectibleCountsOffset = 0x1ab8;
 constexpr size_t kPlayerTransformationCountersOffset = 0x1c54;
+// Live-verified Entity_Player flight boolean. The supported ARM64 executable
+// reads this exact byte with ldrb in its movement/collision paths. Reading a
+// four-byte scalar here is incorrect because the adjacent bytes are unrelated.
 constexpr size_t kPlayerCanFlyOffset = 0x1954;
 constexpr size_t kNativeTransformationCount = 15;
 constexpr size_t kMaximumCollectibleID = 732;
@@ -450,15 +453,14 @@ static bool ReadPlayerPocketItems(
 }
 
 static bool ReadPlayerCanFly(vm_address_t playerAddress, bool& canFly) {
-    uint32_t nativeValue = UINT32_MAX;
+    uint8_t nativeValue = UINT8_MAX;
     if (!ReadOwnTaskMemory(playerAddress + kPlayerCanFlyOffset,
                            &nativeValue, sizeof(nativeValue))) {
         canFly = false;
         return false;
     }
-    // This iOS build exposes the evaluated flag as a four-byte scalar. During
-    // gameplay true is represented by 1.0f; integer 1 is accepted for compatible
-    // builds while every other value fails closed.
+    // This build stores the evaluated flight state as a native C++ bool. Reject
+    // values other than 0/1 so an incompatible layout fails closed.
     return EIDPickupPolicy::DecodeNativeCanFly(nativeValue, canFly);
 }
 

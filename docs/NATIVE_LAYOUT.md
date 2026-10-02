@@ -35,7 +35,7 @@ allocator and does not directly dereference mutable game allocations.
 | Pickup price | `0x564` | Native `IsShopItem` returns `Price != 0` |
 | Pickup Options index | `0x56c` | Live shop and floor pickup instances; positive values identify an `Options?` group |
 | Crane Game prize collectible | `0x570` | ARM64 disassembly of `Entity_Slot::SetPrizeCollectible` |
-| Player can-fly word | `Entity_Player + 0x1954` | Evaluated flight state (`0.0f` / `1.0f`) used by the native collision branch |
+| Player can-fly byte | `Entity_Player + 0x1954` | Live flight state and repeated native `ldrb` call sites in movement/collision paths; must be read as one byte rather than as the adjacent four-byte word |
 | Player pocket items | `Entity_Player + 0x1c10` | Live held-card and rune identity matched pocket slots |
 | Player trinket slots | `Entity_Player + 0x1ab0` | Native GetTrinket call sites and both live slots |
 | Player collectible-count table | `Entity_Player + 0x1ab8` | Live inventory changes matched collected items |
