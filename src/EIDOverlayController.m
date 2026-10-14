@@ -101,6 +101,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, strong) EIDNativeProbe *probe;
 @property(nonatomic, strong) EIDPassthroughView *rootView;
 @property(nonatomic, strong) UIView *panel;
+@property(nonatomic, strong) UIView *descriptionBackground;
 @property(nonatomic, strong) UIImageView *itemIconView;
 @property(nonatomic, strong) UILabel *label;
 @property(nonatomic, strong) UILabel *diagnosticsLabel;
@@ -463,6 +464,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
             [self updatePauseInventoryForPaused:paused];
             NSString *progressSignature = [[EIDTransformationProgress shared]
                 progressSignatureForPickups:pickups];
+            NSArray *ownedKeys = [[[self.probe currentOwnedItemKeys] allObjects]
+                sortedArrayUsingSelector:@selector(compare:)];
+            NSData *contextBytes = [NSJSONSerialization dataWithJSONObject:self.probe.descriptionState
+                options:NSJSONWritingSortedKeys error:nil];
+            NSString *contextSignature = contextBytes ? [[NSString alloc] initWithData:contextBytes encoding:NSUTF8StringEncoding] : @"";
+            progressSignature = [NSString stringWithFormat:@"%@:%ld:%ld:%@:%@", progressSignature,
+                (long)self.probe.primaryPlayerType, (long)self.probe.gameDifficulty,
+                [ownedKeys componentsJoinedByString:@","], contextSignature];
             BOOL progressChanged = ![progressSignature
                 isEqualToString:self.transformationProgressSignature ?: @""];
             self.transformationProgressSignature = progressSignature;
@@ -470,6 +479,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                 self.lastPickups = pickups;
                 if (!self.menuMode && !paused && !self.selectedInventoryItem) {
                     [self renderPickups:pickups];
+                } else if (paused && self.selectedInventoryItem && self.settingsCard.hidden) {
+                    [self renderPickups:@[self.selectedInventoryItem]];
                 }
                 EIDLog(@"visible describable pickups: %@", pickups);
             }
@@ -593,6 +604,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     for (EIDPickupIdentity *item in items) {
         [signature appendFormat:@"%ld:%ld,", (long)item.variant, (long)item.subtype];
     }
+    for (EIDPickupIdentity *item in [self.probe currentSmeltedTrinkets]) {
+        [signature appendFormat:@"smelted=%ld,",(long)item.subtype];
+    }
     EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
     tracker.probe = self.probe;
     for (NSNumber *identifier in tracker.allTransformationIdentifiers) {
@@ -676,6 +690,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     NSArray<NSDictionary *> *sections = @[
         @{@"title": russian ? @"Предметы" : @"Collectibles", @"items": collectibles},
         @{@"title": russian ? @"Брелоки" : @"Trinkets", @"items": trinkets},
+        @{@"title": russian ? @"Проглоченные брелоки" : @"Smelted trinkets", @"items": [self.probe currentSmeltedTrinkets]},
         @{@"title": russian ? @"Карты, руны и таблетки" : @"Cards, runes & pills",
           @"items": pockets},
     ];
@@ -971,6 +986,25 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                self.panel.frame.origin.y,
                self.panel.frame.origin.x + self.itemIconView.frame.origin.x);
     }
+}
+
+- (void)applyDescriptionBackground {
+    if (!self.panel) return;
+    if (!self.descriptionBackground) {
+        UIView *backdrop = [[UIView alloc] initWithFrame:CGRectInset(self.panel.bounds, -6, -4)];
+        backdrop.userInteractionEnabled = NO;
+        backdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        backdrop.layer.cornerRadius = 7;
+        [self.panel insertSubview:backdrop atIndex:0];
+        self.descriptionBackground = backdrop;
+    }
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    BOOL enabled = [defaults boolForKey:@"IsaacEIDBackgroundEnabled"];
+    CGFloat opacity = [defaults objectForKey:@"IsaacEIDBackgroundOpacity"]
+        ? [defaults doubleForKey:@"IsaacEIDBackgroundOpacity"] : .28;
+    self.descriptionBackground.hidden = !enabled;
+    self.descriptionBackground.backgroundColor = [UIColor colorWithWhite:0 alpha:MIN(1, MAX(0, opacity))];
+    self.descriptionBackground.frame = CGRectInset(self.panel.bounds, -6, -4);
 }
 
 - (NSString *)renderMarkup:(NSString *)input {

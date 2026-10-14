@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.8.0 - 2026-10-14
+
+### Added
+
+- Character-aware descriptions with Lost/Keeper no-effect and lethal-use warnings,
+  health-type replacements, Birthright descriptions, and co-op difference notices.
+- Additional character rules for Eye Drops, Uranus/Tainted Samson, Keeper/IV Bag,
+  tainted Clicker, Dead Cat, and Lilith/Tainted Lilith with BFFS!.
+- All 335 imported standard-Repentance weapon override rules in both directions,
+  including weapon priorities, Azazel, and combination-specific synergy text.
+- Car Battery and Tarot Cloth conditional descriptions, numeric effect changes,
+  special active-item behavior, and no-synergy warnings.
+- Book of Virtues wisp previews using 165 upstream wisp records, including health,
+  damage, orbit, tear effects, single-room wisps, and no-wisp cases.
+- Judas/Black Judas Birthright passive Book of Belial bonuses for supported actives.
+- Tainted Cain salvage descriptions with personal Birthright/trinket bonuses,
+  room-pool rewards, and quest-item/special-context protection.
+- A separate pause-inventory section for smelted/swallowed normal and golden
+  trinkets, also included in owned-item conditional checks.
+- Consolation Prize predictions using normalized stats, weighted consumables,
+  tie markers, Bethany charge pools, and co-op summaries.
+- Pandora's Box current-floor payout highlighting, including Greed/Greedier,
+  late-game routes, Void/Home, and Strange Key's overriding reward.
+- An optional black description background with independent opacity controls.
+- Imported contextual localization with English fallback across all 20 languages.
+
+### Fixed
+
+- Lost warnings and Birthright descriptions using the wrong character names due
+  to Lua/native character-index differences, including the incorrect Eden warning.
+- Judas' Birthright bonuses disappearing because passive Book of Belial is
+  virtual ownership rather than a raw collectible-count entry.
+- Greed-only text appearing in normal runs or being duplicated in Greed, including
+  Russian Contract from Below; mode-specific room/wave wording is now applied.
+- Adult/Stompy pill transformation rendering, including identified horse pills,
+  and counters being capped at completion instead of showing values such as `4/3`.
+- Stale contextual descriptions after inventory changes while standing still,
+  and asynchronous transformation text replacement.
+- Same-character co-op players borrowing another player's Birthright/trinkets;
+  pause conditional checks now use the primary player's personal inventory.
+- Pandora's Box floor rewards appearing on one long semicolon-separated line.
+- Missing Repentance stat-icon aliases, including the damage sword in Bethany's
+  wisp stats; older resource bundles also get runtime alias fallback.
+- Numeric conditional replacements matching only part of a decimal or applying
+  the same replacement more than once.
+
+### Documentation and validation
+
+- Updated README and website with six new full-resolution gameplay screenshots,
+  replacing the old The Pact image; added clearer feature and limitation coverage.
+- Added character acceptance commands, native-layout notes, and parity scope.
+- Expanded C++/Objective-C/Python regression checks for conditional descriptions,
+  all-language fallback, native state validation, icons, and LiveContainer assets.
+- Retained portable ARM64, rootless, LiveContainer, and embedded distributions.
+  No IPA, game binary, save, or credential is distributed.
+- Tainted Cain/Tainted Lilith gameplay checks remain pending; their host tests do
+  not establish full in-game parity. See the [full release notes](docs/RELEASE_NOTES_v0.8.0.md).
+
 ## 0.7.3 - 2026-10-01
 
 - Restored the proven single-window pass-through overlay used by v0.6.1.

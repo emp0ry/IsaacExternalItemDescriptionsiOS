@@ -2,7 +2,7 @@
 
 The first publicly released native gameplay mod for **The Binding of Isaac: Repentance on iOS**. It brings External Item Descriptions-style information to the native iOS game without relying on Isaac's desktop Lua mod API.
 
-![External Item Descriptions running in native iOS Repentance](docs/images/eid-gameplay.png)
+![Brimstone description with original EID icons and live Leviathan transformation progress in native iOS Repentance](docs/images/eid-brimstone-transformation.png)
 
 The same ARM64 implementation supports jailbroken injection, direct app-bundle embedding, and LiveContainer private apps. The dylib itself is portable: ElleKit is used only by the optional jailbreak package as a loader.
 
@@ -18,6 +18,18 @@ Download the current files from [GitHub Releases](https://github.com/emp0ry/Isaa
 | Advanced/manual setup | `IsaacExternalItemDescriptions-Full-Build.zip` | Every build format, database, documentation, and checksums |
 
 A standalone `IsaacExternalItemDescriptions.dylib`, `descriptions.json`, and `SHA256SUMS` are also provided. No Isaac IPA or copyrighted game bundle is distributed.
+
+### What's new in v0.8.0
+
+Character-aware descriptions, weapon override warnings, Car Battery and Tarot Cloth
+synergies, Book of Virtues wisp previews, Judas' Birthright bonuses, Tainted Cain
+salvage information, smelted trinkets, Consolation Prize predictions, and current-floor
+highlighting for Pandora's Box. This release also fixes pill transformation counters,
+Greed notices, character names, and missing stat icons, and adds an optional description
+background and a new screenshot gallery.
+
+Read the [complete v0.8.0 release notes](docs/RELEASE_NOTES_v0.8.0.md) for every
+addition, fix, and remaining testing limitation.
 
 ## Features
 
@@ -42,6 +54,18 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Curse of the Blind suppresses every collectible description using the native level curse mask. The forced-blind field and question-mark sprite are retained as additional guards.
 - Transformation progress combines Isaac's persisted PlayerForm counters with the live owned-item table. It updates immediately after a pickup while still preserving progress across active-item replacement and save reloads.
 - The 14 normal transformations use the native counters and inventory state. Super Bum completion is read from its native merged familiar.
+- Puberty/Adult and other identified pill transformations use the persisted counters, including horse pills. Unknown pills never expose transformation information.
+- Transformation counters retain the actual count after completion, so progress can display `4/3` and higher.
+- Static character-specific EID rules adjust descriptions for the nearest player, including Lost/Keeper no-effect and lethal-use warnings, health-type replacements, and Birthright effects.
+- Additional character context includes Eye Drops, Tainted Samson/Uranus, Keeper/IV Bag, tainted Clicker, Dead Cat, and Lilith/Tainted Lilith BFFS! effects. Co-op differences are annotated and pause ownership checks use the primary player's inventory.
+- Tainted Cain pedestals show salvage information with room-pool rewards, Birthright and trinket bonuses, while protecting quest items and special contexts.
+- Book of Virtues previews wisp stats and special effects; Judas' passive Birthright Book of Belial adds active-item bonuses.
+- Greed and Greedier use upstream mode-specific descriptions and room-to-wave wording where supported.
+- Weapon descriptions warn when an owned item overrides a pickup's effect, and in the reverse direction when the pickup would override an owned item. Repentance weapon priorities and special synergies follow original EID, including Dr. Fetus/Trisagion, Epic Fetus, Brimstone, Mom's Knife, Tech X, C Section, Spirit Sword, and Azazel's native weapon.
+- Car Battery and Tarot Cloth apply original Repentance conditional descriptions, including numeric effect changes, special behavior, and no-synergy active items.
+- Swallowed/smelted normal and golden trinkets appear in a separate pause-inventory section and participate in owned-item conditional checks.
+- Consolation Prize previews the lowest normalized stat and lowest weighted consumable pool. Tied candidates have a `?`; Bethany's soul charges and Tainted Bethany's blood charges are included.
+- Pandora's Box highlights the current native floor payout in green, including Greed/Greedier, the late-game route, Void, and Home. Strange Key highlights its overriding reward instead. Missing floor entries in older translations remain unhighlighted.
 - Native run identity and seed tracking reset run-only state when a new run begins.
 
 ### Artwork and presentation
@@ -52,7 +76,7 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Identified and unidentified pills use their actual native pill color mapped to the corresponding original EID `Pills` frame.
 - Original EID inline symbols, Q0-Q4 quality icons, transformation icons, colors, and description markup are rendered through UIKit.
 - Active collectibles show the original EID battery and maximum-charge indicator. Normal, timed, and special/dynamic charge types use their matching upstream symbols.
-- The description has no background box and uses compact outlined text designed to remain readable over gameplay.
+- Compact outlined text is shown without a background by default. An optional rounded black backdrop has its own opacity setting.
 - Item title, icon, and description disappear together after an item is collected.
 
 ### In-game settings
@@ -62,6 +86,7 @@ The **EID ⚙** button appears in the bottom-right corner while Isaac is in a me
 - All 20 bundled languages
 - Horizontal and vertical position
 - Scale and opacity
+- Optional description background and independent background opacity
 - Independent Name, Icon, Quality, and Description visibility
 - Position reset controls
 - A scrollable layout that keeps every control usable on smaller displays
@@ -77,6 +102,24 @@ It opens a scrollable browser containing the player's current collectibles,
 active item, trinkets, held cards and runes, identified pills, and progress for
 all transformations. Selecting an item closes the browser and renders its full
 EID description. The button and browser disappear as soon as gameplay resumes.
+
+## Screenshots
+
+Actual gameplay from the native iOS version. Click a screenshot to view it at full resolution.
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/images/eid-weapon-overrides.png"><img src="docs/images/eid-weapon-overrides.png" alt="Dr. Fetus description warning that it overrides Brimstone" width="100%"></a><br>Weapon override warnings</td>
+    <td width="50%"><a href="docs/images/eid-pandoras-box.png"><img src="docs/images/eid-pandoras-box.png" alt="Pandora's Box with the current Basement I reward highlighted in green" width="100%"></a><br>Current-floor reward highlighting</td>
+  </tr>
+  <tr>
+    <td><a href="docs/images/eid-sacrifice-room.png"><img src="docs/images/eid-sacrifice-room.png" alt="Sacrifice Room description showing the next payout at step 1 of 12" width="100%"></a><br>Live Sacrifice Room payouts</td>
+    <td><a href="docs/images/eid-lost-breakfast.png"><img src="docs/images/eid-lost-breakfast.png" alt="Breakfast description showing No effect for The Lost" width="100%"></a><br>Character-specific descriptions</td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><a href="docs/images/eid-lost-no-effect-warning.png"><img src="docs/images/eid-lost-no-effect-warning.png" alt="Breakfast marked No effect for The Lost instead of displaying an irrelevant health bonus" width="50%"></a><br>No-effect warnings for health-only items on The Lost</td>
+  </tr>
+</table>
 
 ## Compatibility
 
@@ -180,6 +223,9 @@ Verified offsets and their validation are documented in [Native layout](docs/NAT
 - The in-game overlay currently presents the nearest supported description rather than every object in the room simultaneously.
 - Direct embedding requires modifying and signing the application. Re-signing can change the bundle identifier, application container, Keychain groups, and App Store receipt behavior.
 - The project does not alter StoreKit, DLC ownership, receipts, or purchase checks.
+- Contextual descriptions cover the documented Repentance rules, not every upstream EID synergy. Void-absorbed actives and complete twin/subplayer presentation are not implemented.
+- Pause-inventory entries remain aggregated in co-op, while personal conditional ownership is scoped to the primary player. Book of Virtues pedestal previews include all owned actives rather than only the selected primary slot.
+- Tainted Cain and Tainted Lilith context is implemented and covered by host tests, but gameplay verification is pending because those characters are not unlocked on the test account. See [character acceptance checks](docs/CHARACTER_CONTEXT_TESTING.md).
 
 ## Credits and legal
 

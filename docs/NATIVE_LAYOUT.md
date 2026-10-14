@@ -7,6 +7,42 @@ This project supports the ARM64 Isaac executable whose `LC_UUID` is:
 Unknown executables fail closed before entity memory is scanned. Offsets must be
 revalidated for every new UUID.
 
+## Read-only dynamic description fields
+
+All fields below are for the UUID above, and are bounds/type checked before use:
+
+| Field | Offset | Native reference |
+| --- | --- | --- |
+| Pandora reward stage | `Game + 0x0` | Pandora branch `0x10058b438`; stage tables `0x10058bb50`, `0x10058dcf8` |
+| Pandora late-game route | `Game + 0x4` | Cathedral/Chest branches `0x100590928`, `0x100590358` |
+| Move speed | `Player + 0x194c` (float) | Consolation Prize stat comparison `0x100502140` |
+| Max fire delay | `Player + 0x1834` (float) | `0x10050214c` |
+| Damage | `Player + 0x1844` (float) | `0x100502158` |
+| Tear range | `Player + 0x1854` (float) | `0x100502164` |
+| Coins / bombs / keys | `Player + 0x16e0 / 0x16dc / 0x16d4` (int32) | Native weighted comparison `0x1005035d8` onwards |
+| Bethany soul / blood charges | `Player + 0x2478 / 0x247c` (int32) | Character branches `0x100503610`, `0x100503640` |
+| Smelted trinket vector | `Player + 0x1b60` (begin/end/capacity pointers) | Native indexed count access `0x100509680`, `0x1005096d4` |
+| Challenge ID | `Game + 0x1cf438` (int32) | Tainted Cain pickup guard `0x100720a68`; Cantripped is 43 |
+| Current room index | `Game + 0x21558` (int32) | Tainted Cain pickup guard `0x100720a90`; native excluded index is -12 |
+| Current dimension | `Game + 0x21560` (int32) | Tainted Cain pickup guard `0x100720a84`; Death Certificate is dimension 2 |
+| Room-type pool maps | `ItemPool + 0x920` normal / `+0x998` Greed (int32 arrays) | `GetPoolForRoom` at `0x100877a3c`, indexed by room type |
+| Non-quest-item suppression | `Player + 0x284c` (byte) | `HasCollectible` guard `0x1004eebe0`; checked before reporting effective Belial |
+
+`HasCollectible(59)` at `0x1004eed80` returns true for Judas/Black Judas (types
+3/12) with Birthright (619), independently of a raw inventory count of 59.
+The presentation snapshot reproduces this branch read-only, including the
+suppression guard. The raw inventory and game state are not modified.
+
+The pool mapper's Error Room (type 3) branch performs a random room-type choice.
+That branch is not executed or simulated: Error Rooms get no guaranteed-room
+pickup claim. The challenge/dimension/index offsets above are statically verified
+against the supported executable; gameplay acceptance testing is recorded separately.
+
+Each smelted slot is four bytes: regular and golden signed int16 counts.
+Vector bounds, four-byte stride, counts, and the supported trinket-ID range
+are checked; malformed snapshots cannot become inventory identities.
+The vector validation/decoding policy is also exercised by host tests.
+
 ## Runtime types
 
 The resolver finds C++ RTTI and primary vtables in the loaded main executable:
@@ -36,6 +72,8 @@ allocator and does not directly dereference mutable game allocations.
 | Pickup Options index | `0x56c` | Live shop and floor pickup instances; positive values identify an `Options?` group |
 | Crane Game prize collectible | `0x570` | ARM64 disassembly of `Entity_Slot::SetPrizeCollectible` |
 | Player can-fly byte | `Entity_Player + 0x1954` | Live flight state and repeated native `ldrb` call sites in movement/collision paths; must be read as one byte rather than as the adjacent four-byte word |
+| Player character type | `Entity_Player + 0x1738` | Repentance ChangePlayerType/character-specific branches read this int32; valid native types are 0–40 |
+| Game difficulty | `Game + 0x24f9d8` | Native IsGreedMode at `0x10088c994` reads `(difficulty & ~1) == 2`: normal 0, hard 1, Greed 2, Greedier 3 |
 | Player pocket items | `Entity_Player + 0x1c10` | Live held-card and rune identity matched pocket slots |
 | Player trinket slots | `Entity_Player + 0x1ab0` | Native GetTrinket call sites and both live slots |
 | Player collectible-count table | `Entity_Player + 0x1ab8` | Live inventory changes matched collected items |

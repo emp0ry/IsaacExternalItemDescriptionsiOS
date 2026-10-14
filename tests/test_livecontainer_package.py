@@ -2,6 +2,7 @@
 """Validate the LiveContainer framework without changing a guest application."""
 
 import hashlib
+import json
 import plistlib
 import subprocess
 import sys
@@ -40,6 +41,17 @@ def main() -> None:
         prefix = f"{framework.name}/"
         if prefix + "Info.plist" not in names or prefix + executable.name not in names:
             fail("archive does not preserve the framework layout")
+        resources = framework / "Resources/IsaacEID.bundle"
+        if (resources / "descriptions.json").is_file():
+            icons_path = resources / "eid_inline_icons.json"
+            icons = json.loads(icons_path.read_text(encoding="utf-8"))
+            for token in ("Damage", "Speed", "Tears", "Range", "Shotspeed", "Luck",
+                          "AngelChance", "DevilChance", "Tearsize"):
+                if token not in icons or icons[token] != icons.get(token + "REP"):
+                    fail(f"missing or incorrect Repentance stat alias: {token}")
+            archived_icons = prefix + "Resources/IsaacEID.bundle/eid_inline_icons.json"
+            if zipped.read(archived_icons) != icons_path.read_bytes():
+                fail("archive contains stale inline icon data")
 
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     print(f"LiveContainer framework package passed ({digest[:16]})")

@@ -155,12 +155,13 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 
 @interface EIDQualityXMLParser : NSObject <NSXMLParserDelegate>
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *qualities;
+@property(nonatomic, strong) NSMutableSet<NSNumber *> *questIDs;
 @end
 
 @implementation EIDQualityXMLParser
 - (instancetype)init {
     self = [super init];
-    if (self) _qualities = [NSMutableDictionary dictionary];
+    if (self) { _qualities = [NSMutableDictionary dictionary]; _questIDs = [NSMutableSet set]; }
     return self;
 }
 - (void)parser:(NSXMLParser *)parser didStartElement:(NSString *)elementName
@@ -173,6 +174,8 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     NSInteger itemID = identifier.integerValue;
     NSInteger value = quality.integerValue;
     if (itemID > 0 && value >= 0 && value <= 4) self.qualities[@(itemID)] = @(value);
+    if ([[attributes[@"tags"] componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        containsObject:@"quest"]) [self.questIDs addObject:@(itemID)];
 }
 @end
 
@@ -182,6 +185,8 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 @property(nonatomic, copy) NSArray<NSString *> *availableLanguageCodes;
 @property(nonatomic, copy) NSString *descriptionDataSet;
 @property(nonatomic, copy) NSString *unidentifiedPillName;
+@property(nonatomic, copy) NSDictionary *contextData;
+@property(nonatomic, copy) NSDictionary *nativeMetadata;
 @end
 
 @implementation EIDDescriptionStore
@@ -213,6 +218,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
     self = [super init];
     if (self) {
         _items = [NSMutableDictionary dictionary];
+        _contextData = @{};
         _languageCode = [self resolvedLanguageCode];
         _availableLanguageCodes = @[@"en_us"];
         _descriptionDataSet = @"Isaac metadata";
@@ -299,6 +305,8 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
 }
 
 - (void)loadGameItemMetadata {
+    NSMutableSet *quests = [NSMutableSet set];
+    BOOL questMetadataAvailable = NO;
     NSString *bundlePath = NSBundle.mainBundle.bundlePath;
     NSArray<NSString *> *relativePaths = @[@"rebirth-resources/data/items.xml", @"afterbirth-resources/data/items.xml",
         @"afterbirthplus-resources/data/items.xml", @"repentance-resources/data/items.xml"];
@@ -317,6 +325,8 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
         EIDQualityXMLParser *delegate = [[EIDQualityXMLParser alloc] init];
         NSXMLParser *parser = [[NSXMLParser alloc] initWithData:data]; parser.delegate = delegate;
         if (![parser parse]) continue;
+        [quests unionSet:delegate.questIDs];
+        questMetadataAvailable = YES;
         [delegate.qualities enumerateKeysAndObjectsUsingBlock:^(NSNumber *itemID, NSNumber *quality, __unused BOOL *stop) {
             NSString *key = EIDDescriptionKey(EIDPickupVariantCollectible, itemID.integerValue);
             EIDDescription *existing = self.items[key];
@@ -327,6 +337,13 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
         }];
     }
 
+    NSMutableArray *actives = [NSMutableArray array];
+    for (EIDDescription *item in self.items.allValues)
+        if (item.pickupVariant == EIDPickupVariantCollectible && item.itemType == EIDCollectibleItemTypeActive)
+            [actives addObject:@(item.collectibleID)];
+    self.nativeMetadata = @{@"active_ids":[actives sortedArrayUsingSelector:@selector(compare:)],
+        @"quest_ids":[quests.allObjects sortedArrayUsingSelector:@selector(compare:)],
+        @"quest_metadata_available":@(questMetadataAvailable)};
     __block NSUInteger activeCount = 0, timedCount = 0, specialCount = 0;
     [self.items enumerateKeysAndObjectsUsingBlock:^(__unused NSString *key, EIDDescription *item,
                                                      __unused BOOL *stop) {
@@ -354,6 +371,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
 }
 
 - (void)loadImportedDescriptions {
+    self.contextData = @{};
     NSString *selectedPath = nil;
     for (NSString *path in [self importedDescriptionPaths]) if ([[NSFileManager defaultManager] isReadableFileAtPath:path]) { selectedPath = path; break; }
     if (!selectedPath) { EIDLog(@"no imported EID description database; using game item metadata"); return; }
@@ -374,6 +392,39 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
     self.descriptionDataSet = [NSString stringWithFormat:@"Repentance %@ (%@)", compatibleVersion, gameVersion];
     NSDictionary *language = [languages[self.languageCode] isKindOfClass:NSDictionary.class] ? languages[self.languageCode] : nil;
     NSDictionary *english = [languages[@"en_us"] isKindOfClass:NSDictionary.class] ? languages[@"en_us"] : nil;
+    NSMutableDictionary *context = [NSMutableDictionary dictionary];
+    for (NSString *key in @[@"conditionals", @"heart_replacements", @"birthright", @"greed_no_effect_notes",
+                            @"car_battery", @"tarot_cloth", @"stat_names", @"pickup_names",
+                            @"pandora_floor_lines", @"context_strings", @"BFFSSynergies", @"book_of_belial",
+                            @"wisp_texts", @"wisp_extras", @"tear_flags"]) {
+        NSMutableDictionary *entries = [NSMutableDictionary dictionary];
+        if ([english[key] isKindOfClass:NSDictionary.class]) [entries addEntriesFromDictionary:english[key]];
+        if ([language[key] isKindOfClass:NSDictionary.class]) [entries addEntriesFromDictionary:language[key]];
+        context[key] = entries.copy;
+    }
+    if ([root[@"context_rules"] isKindOfClass:NSArray.class]) context[@"rules"] = root[@"context_rules"];
+    if ([root[@"weapon_rules"] isKindOfClass:NSArray.class]) context[@"weapon_rules"] = root[@"weapon_rules"];
+    if ([root[@"car_battery_metadata"] isKindOfClass:NSDictionary.class])
+        context[@"car_battery_metadata"] = root[@"car_battery_metadata"];
+    NSMutableDictionary *itemNames = [NSMutableDictionary dictionary];
+    for (NSString *category in @[@"collectibles", @"trinkets"]) {
+        NSString *prefix = [category isEqualToString:@"collectibles"] ? @"5.100." : @"5.350.";
+        for (NSDictionary *localization in @[english ?: @{}, language ?: @{}]) {
+            [localization[category] enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSDictionary *entry, __unused BOOL *stop) {
+                NSString *name = [entry isKindOfClass:NSDictionary.class] ? entry[@"name"] : nil;
+                if ([name isKindOfClass:NSString.class] && name.length) itemNames[[prefix stringByAppendingString:key]] = name;
+            }];
+        }
+    }
+    context[@"item_names"] = itemNames.copy;
+    context[@"native_metadata"] = self.nativeMetadata ?: @{};
+    if ([root[@"character_metadata"] isKindOfClass:NSDictionary.class])
+        context[@"character_metadata"] = root[@"character_metadata"];
+    if ([root[@"health_amounts"] isKindOfClass:NSDictionary.class]) context[@"health_amounts"] = root[@"health_amounts"];
+    if ([root[@"healing_items"] isKindOfClass:NSArray.class]) context[@"healing_items"] = root[@"healing_items"];
+    self.contextData = context.copy;
+    EIDLog(@"imported context: %lu weapon rules, language %@; read-only native inventory",
+        (unsigned long)[context[@"weapon_rules"] count], self.languageCode);
     NSDictionary *languageStrings = [language[@"strings"] isKindOfClass:NSDictionary.class]
         ? language[@"strings"] : nil;
     NSDictionary *englishStrings = [english[@"strings"] isKindOfClass:NSDictionary.class]

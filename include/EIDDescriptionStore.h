@@ -61,6 +61,7 @@ typedef NS_ENUM(NSInteger, EIDActiveChargeType) {
 @property(nonatomic, copy, readonly) NSString *languageCode;
 @property(nonatomic, copy, readonly) NSArray<NSString *> *availableLanguageCodes;
 @property(nonatomic, copy, readonly) NSString *descriptionDataSet;
+@property(nonatomic, copy, readonly) NSDictionary *contextData;
 - (void)reload;
 - (void)setLanguageCode:(NSString *)languageCode;
 - (NSString *)displayNameForLanguageCode:(NSString *)languageCode;

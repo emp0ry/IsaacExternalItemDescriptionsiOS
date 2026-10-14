@@ -1,12 +1,19 @@
 #import "EIDDescriptionStore.h"
 #import "EIDNativeProbe.h"
 #import "EIDLogger.h"
+#import "EIDTransformationProgress.h"
+#import "EIDContextDescriptions.h"
+#import "EIDDynamicDescriptions.h"
+#import "EIDCharacterSynergies.h"
+#import "EIDInlineIconPolicy.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <stdlib.h>
 
 static NSString *const EIDScaleKey=@"IsaacEIDScale",*const EIDTransparencyKey=@"IsaacEIDTransparency",*const EIDShowNameKey=@"IsaacEIDShowItemName",*const EIDShowIconKey=@"IsaacEIDShowItemIcon",*const EIDShowQualityKey=@"IsaacEIDShowQuality",*const EIDShowDescriptionKey=@"IsaacEIDShowItemDescription";
+static NSString *const EIDBackgroundKey = @"IsaacEIDBackgroundEnabled";
+static NSString *const EIDBackgroundOpacityKey = @"IsaacEIDBackgroundOpacity";
 static UIColor *EIDObjNameColor(void){return [UIColor colorWithRed:.8 green:.3 blue:.8 alpha:1];}
 static UIColor *EIDTransformationColor(void){return [UIColor colorWithRed:.42 green:.64 blue:1 alpha:1];}
 static NSArray<NSString*> *EIDResourceRoots(void){NSMutableArray*roots=[NSMutableArray array];NSString*main=NSBundle.mainBundle.bundlePath;[roots addObjectsFromArray:@[[main stringByAppendingPathComponent:@"Frameworks/IsaacEID.bundle"],[main stringByAppendingPathComponent:@"IsaacEID.bundle"],[main stringByAppendingPathComponent:@"Frameworks/IsaacExternalItemDescriptions.framework/Resources/IsaacEID.bundle"],[main stringByAppendingPathComponent:@"Frameworks/IsaacExternalItemDescriptions.framework/IsaacEID.bundle"],[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/IsaacExternalItemDescriptions"],@"/var/jb/Library/Application Support/IsaacExternalItemDescriptions",@"/Library/Application Support/IsaacExternalItemDescriptions"]];NSBundle*framework=[NSBundle bundleForClass:NSClassFromString(@"EIDOverlayController")?:NSObject.class];if(framework.bundlePath.length){[roots addObject:[framework.bundlePath stringByAppendingPathComponent:@"Resources/IsaacEID.bundle"]];[roots addObject:[framework.bundlePath stringByAppendingPathComponent:@"IsaacEID.bundle"]];[roots addObject:framework.bundlePath];}return roots;}
@@ -26,7 +33,25 @@ static UIImage *EIDCrop(UIImage*image,CGRect r){if(!image.CGImage)return nil;CGR
 @implementation EIDInlineAtlas
 +(instancetype)shared{static id x;static dispatch_once_t once;dispatch_once(&once,^{x=[self new];});return x;}
 -(instancetype)init{if(!(self=[super init]))return nil;_cache=[NSMutableDictionary dictionary];_image=[UIImage imageWithContentsOfFile:EIDResource(@"eid_inline_icons.png")];_animations=EIDParseAnimations(@"eid_inline_icons.anm2");NSData*m=[NSData dataWithContentsOfFile:EIDResource(@"eid_inline_icons.json")];id map=m?[NSJSONSerialization JSONObjectWithData:m options:0 error:nil]:nil;_map=[map isKindOfClass:NSDictionary.class]?map:@{};return self;}
--(UIImage*)imageForToken:(NSString*)t{if(!t.length)return nil;UIImage*c=self.cache[t];if(c)return c;NSDictionary*m=self.map[t];if(![m isKindOfClass:NSDictionary.class])return nil;NSArray*f=self.animations[m[@"animation"]];NSInteger i=[m[@"frame"]integerValue];if(i<0||i>=(NSInteger)f.count)return nil;id v=f[(NSUInteger)i];if(![v isKindOfClass:NSValue.class])return nil;UIImage*out=EIDCrop(self.image,[v CGRectValue]);if(out)self.cache[t]=out;return out;}
+- (UIImage *)imageForToken:(NSString *)token {
+    if (!token.length) return nil;
+    UIImage *cached = self.cache[token];
+    if (cached) return cached;
+    NSDictionary *mapping = self.map[token];
+    if (![mapping isKindOfClass:NSDictionary.class]) {
+        NSString *alias = EIDRepentanceStatIconAlias(token);
+        mapping = alias ? self.map[alias] : nil;
+    }
+    if (![mapping isKindOfClass:NSDictionary.class]) return nil;
+    NSArray *frames = self.animations[mapping[@"animation"]];
+    NSInteger index = [mapping[@"frame"] integerValue];
+    if (index < 0 || index >= (NSInteger)frames.count) return nil;
+    id frame = frames[(NSUInteger)index];
+    if (![frame isKindOfClass:NSValue.class]) return nil;
+    UIImage *image = EIDCrop(self.image,[frame CGRectValue]);
+    if (image) self.cache[token] = image;
+    return image;
+}
 -(UIImage*)imageForAnimation:(NSString*)animation frame:(NSInteger)frame{if(!animation.length||frame<0)return nil;NSString*k=[NSString stringWithFormat:@"%@:%ld",animation,(long)frame];UIImage*c=self.cache[k];if(c)return c;NSArray*f=self.animations[animation];if(frame>=(NSInteger)f.count)return nil;id v=f[(NSUInteger)frame];if(![v isKindOfClass:NSValue.class])return nil;UIImage*out=EIDCrop(self.image,[v CGRectValue]);if(out)self.cache[k]=out;return out;}
 @end
 
@@ -60,11 +85,77 @@ static NSAttributedString*QualityFallback(NSInteger q,UIFont*f,CGFloat s){return
 static UIImage*EIDTrimVisiblePixels(UIImage*image){CGImageRef cg=image.CGImage;if(!cg)return image;size_t w=CGImageGetWidth(cg),h=CGImageGetHeight(cg),row=w*4;if(!w||!h)return image;unsigned char*pixels=calloc(h,row);if(!pixels)return image;CGColorSpaceRef cs=CGColorSpaceCreateDeviceRGB();CGContextRef c=CGBitmapContextCreate(pixels,w,h,8,row,cs,kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big);CGColorSpaceRelease(cs);if(!c){free(pixels);return image;}CGContextDrawImage(c,CGRectMake(0,0,w,h),cg);CGContextRelease(c);size_t minX=w,minY=h,maxX=0,maxY=0;BOOL found=NO;for(size_t y=0;y<h;y++)for(size_t x=0;x<w;x++)if(pixels[y*row+x*4+3]>8){found=YES;minX=MIN(minX,x);minY=MIN(minY,y);maxX=MAX(maxX,x);maxY=MAX(maxY,y);}free(pixels);if(!found)return image;CGRect r=CGRectMake(minX,minY,maxX-minX+1,maxY-minY+1);CGImageRef cropped=CGImageCreateWithImageInRect(cg,r);if(!cropped)return image;UIImage*out=[UIImage imageWithCGImage:cropped scale:1 orientation:UIImageOrientationUp];CGImageRelease(cropped);return out;}
 static UIImage*EIDActiveChargeImage(EIDDescription*item){UIImage*battery=[[EIDTransformData shared]iconForAnimation:@"active" frame:0];if(!battery)return nil;UIImage*charge=nil;if(item.chargeType==EIDActiveChargeTypeTimed)charge=[[EIDInlineAtlas shared]imageForAnimation:@"Misc" frame:6];else if(item.chargeType==EIDActiveChargeTypeSpecial)charge=[[EIDInlineAtlas shared]imageForAnimation:@"numbers" frame:13];else if(item.maxCharges>=0&&item.maxCharges<=12)charge=[[EIDInlineAtlas shared]imageForAnimation:@"numbers" frame:item.maxCharges];CGSize canvas=CGSizeMake(MAX(16,9+charge.size.width),MAX(16,8+charge.size.height));UIGraphicsBeginImageContextWithOptions(canvas,NO,1);CGContextRef c=UIGraphicsGetCurrentContext();CGContextSetInterpolationQuality(c,kCGInterpolationNone);[battery drawInRect:CGRectMake(0,0,16,16)];if(charge)[charge drawAtPoint:CGPointMake(9,8)];UIImage*out=UIGraphicsGetImageFromCurrentImageContext();UIGraphicsEndImageContext();return EIDTrimVisiblePixels(out);}
 static void AppendActiveCharge(NSMutableAttributedString*out,EIDDescription*item,UIFont*font,CGFloat scale){if(item.itemType!=EIDCollectibleItemTypeActive)return;NSDictionary*attrs=Attrs(font,UIColor.whiteColor,scale);UIImage*composite=EIDActiveChargeImage(item);NSAttributedString*indicator=EIDAttachment(composite,12.0,scale,-1.8,YES);if(indicator)[out appendAttributedString:indicator];else [out appendAttributedString:[[NSAttributedString alloc]initWithString:[NSString stringWithFormat:@"[A:%ld]",(long)item.maxCharges] attributes:attrs]];[out appendAttributedString:[[NSAttributedString alloc]initWithString:@" " attributes:attrs]];}
-static NSDictionary*Colors(void){static id c;static dispatch_once_t once;dispatch_once(&once,^{c=@{@"ColorEIDText":UIColor.whiteColor,@"ColorText":UIColor.whiteColor,@"ColorEIDObjName":EIDObjNameColor(),@"ColorObjName":EIDObjNameColor(),@"ColorRed":UIColor.redColor,@"ColorBlue":UIColor.blueColor,@"ColorYellow":UIColor.yellowColor,@"ColorCyan":UIColor.cyanColor,@"ColorPink":UIColor.magentaColor,@"ColorOrange":[UIColor orangeColor]};});return c;}
-static void AppendMarkup(NSMutableAttributedString*out,NSString*text,UIFont*f,CGFloat s){if(!text.length||[text isEqualToString:@"?"])return;text=[text stringByReplacingOccurrencesOfString:@"#" withString:@"\n• "];if(![text hasPrefix:@"• "]&&text.length)text=[@"• " stringByAppendingString:text];text=[text stringByReplacingOccurrencesOfString:@"↑" withString:@"{{ArrowUp}}"];text=[text stringByReplacingOccurrencesOfString:@"↓" withString:@"{{ArrowDown}}"];NSRegularExpression*r=[NSRegularExpression regularExpressionWithPattern:@"\\{\\{([^}]+)\\}\\}" options:0 error:nil];NSArray*ms=[r matchesInString:text options:0 range:NSMakeRange(0,text.length)];NSUInteger cur=0;UIColor*color=UIColor.whiteColor;for(NSTextCheckingResult*m in ms){if(m.range.location>cur)[out appendAttributedString:[[NSAttributedString alloc]initWithString:[text substringWithRange:NSMakeRange(cur,m.range.location-cur)] attributes:Attrs(f,color,s)]];NSString*t=[text substringWithRange:[m rangeAtIndex:1]];if([t isEqualToString:@"ColorReset"]||[t isEqualToString:@"CR"])color=UIColor.whiteColor;else if(Colors()[t])color=Colors()[t];else if(![t hasPrefix:@"Color"]){NSAttributedString*a=Attachment([[EIDInlineAtlas shared]imageForToken:t],f.pointSize,s,-1.5);if(a)[out appendAttributedString:a];}cur=NSMaxRange(m.range);}if(cur<text.length)[out appendAttributedString:[[NSAttributedString alloc]initWithString:[text substringFromIndex:cur] attributes:Attrs(f,color,s)]];}
+static NSDictionary*Colors(void){static id c;static dispatch_once_t once;dispatch_once(&once,^{c=@{@"ColorEIDText":UIColor.whiteColor,@"ColorText":UIColor.whiteColor,@"ColorEIDObjName":EIDObjNameColor(),@"ColorObjName":EIDObjNameColor(),@"ColorRed":UIColor.redColor,@"ColorBlue":UIColor.blueColor,@"ColorYellow":UIColor.yellowColor,@"ColorCyan":UIColor.cyanColor,@"ColorPink":UIColor.magentaColor,@"ColorOrange":[UIColor orangeColor],@"ColorBagComplete":UIColor.greenColor,@"ColorGreen":UIColor.greenColor,@"ColorGray":UIColor.grayColor,@"ColorShinyPurple":[UIColor colorWithRed:.8 green:.4 blue:1 alpha:1],@"BlinkYellowGreen":[UIColor colorWithRed:.7 green:1 blue:.2 alpha:1]};});return c;}
+static UIImage *InlineItemImage(NSString *token, EIDDescriptionStore *store) {
+    static NSRegularExpression *expression;
+    static NSCache<NSString *, UIImage *> *cache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        expression = [NSRegularExpression regularExpressionWithPattern:
+            @"^(?:Item5\\.(100|350)\\.([0-9]+)|Collectible([0-9]+)|Trinket([0-9]+))$" options:0 error:nil];
+        cache = [NSCache new];
+        cache.countLimit = 128;
+    });
+    NSTextCheckingResult *match = [expression firstMatchInString:token options:0 range:NSMakeRange(0,token.length)];
+    if (!match) return nil;
+    NSInteger variant, subtype;
+    if ([match rangeAtIndex:1].location != NSNotFound) {
+        variant = [[token substringWithRange:[match rangeAtIndex:1]] integerValue];
+        subtype = [[token substringWithRange:[match rangeAtIndex:2]] integerValue];
+    } else {
+        BOOL collectible = [match rangeAtIndex:3].location != NSNotFound;
+        variant = collectible ? EIDPickupVariantCollectible : EIDPickupVariantTrinket;
+        subtype = [[token substringWithRange:[match rangeAtIndex:collectible ? 3 : 4]] integerValue];
+    }
+    EIDDescription *item = [store descriptionForPickupVariant:variant subtype:subtype];
+    if (!item.iconPath.length) return nil;
+    UIImage *image = [cache objectForKey:item.iconPath];
+    if (!image) {
+        image = [UIImage imageWithContentsOfFile:item.iconPath];
+        if (image) [cache setObject:image forKey:item.iconPath];
+    }
+    return image;
+}
+
+static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFont *font,
+                         CGFloat scale, EIDDescriptionStore *store) {
+    if (!text.length || [text isEqualToString:@"?"]) return;
+    text = [text stringByReplacingOccurrencesOfString:@"#" withString:@"\n• "];
+    if (![text hasPrefix:@"• "]) text = [@"• " stringByAppendingString:text];
+    text = [text stringByReplacingOccurrencesOfString:@"↑" withString:@"{{ArrowUp}}"];
+    text = [text stringByReplacingOccurrencesOfString:@"↓" withString:@"{{ArrowDown}}"];
+    NSRegularExpression *expression = [NSRegularExpression regularExpressionWithPattern:
+        @"\\{\\{([^}]+)\\}\\}" options:0 error:nil];
+    NSArray *matches = [expression matchesInString:text options:0 range:NSMakeRange(0,text.length)];
+    NSUInteger cursor = 0;
+    UIColor *color = UIColor.whiteColor;
+    for (NSTextCheckingResult *match in matches) {
+        if (match.range.location > cursor) {
+            [output appendAttributedString:[[NSAttributedString alloc] initWithString:
+                [text substringWithRange:NSMakeRange(cursor,match.range.location-cursor)]
+                attributes:Attrs(font,color,scale)]];
+        }
+        NSString *token = [text substringWithRange:[match rangeAtIndex:1]];
+        if ([token isEqualToString:@"ColorReset"] || [token isEqualToString:@"CR"]) color = UIColor.whiteColor;
+        else if ([token isEqualToString:@"ColorPastelBlue"]) color = [UIColor colorWithRed:.65 green:.8 blue:1 alpha:1];
+        else if ([token isEqualToString:@"ColorSilver"]) color = [UIColor colorWithWhite:.75 alpha:1];
+        else if (Colors()[token]) color = Colors()[token];
+        else if (![token hasPrefix:@"Color"]) {
+            UIImage *image = [[EIDInlineAtlas shared] imageForToken:token] ?: InlineItemImage(token,store);
+            NSAttributedString *attachment = Attachment(image,font.pointSize,scale,-1.5);
+            if (attachment) [output appendAttributedString:attachment];
+        }
+        cursor = NSMaxRange(match.range);
+    }
+    if (cursor < text.length) [output appendAttributedString:[[NSAttributedString alloc]
+        initWithString:[text substringFromIndex:cursor] attributes:Attrs(font,color,scale)]];
+}
 
 @interface NSObject(EIDParityMethods)
 -(void)eid_parity_renderPickups:(NSArray<EIDPickupIdentity*>*)pickups;-(void)eid_parity_attachOverlayIfNeeded;-(void)eid_parity_toggle:(UIButton*)sender;-(void)eid_parity_slider:(UISlider*)slider;-(void)eid_parity_refreshButtons;
+@end
+@interface NSObject(EIDBackgroundMethods)
+- (void)applyDescriptionBackground;
 @end
 @interface EIDParityPresentation:NSObject@end
 @implementation EIDParityPresentation
@@ -72,7 +163,110 @@ static void AppendMarkup(NSMutableAttributedString*out,NSString*text,UIFont*f,CG
 @end
 
 @implementation NSObject(EIDParityMethods)
--(void)eid_parity_renderPickups:(NSArray<EIDPickupIdentity*>*)pickups{UILabel*l=[self valueForKey:@"label"];UIView*panel=[self valueForKey:@"panel"];UIImageView*iv=[self valueForKey:@"itemIconView"];EIDDescriptionStore*store=[self valueForKey:@"store"];if(!l||!panel||!store||!pickups.count){[self eid_parity_renderPickups:pickups];return;}EIDPickupIdentity*p=pickups.firstObject;EIDDescription*item=[store descriptionForPickupVariant:p.variant subtype:p.subtype];if(!item){[self eid_parity_renderPickups:pickups];return;}NSUserDefaults*d=NSUserDefaults.standardUserDefaults;CGFloat scale=[d objectForKey:EIDScaleKey]?[d doubleForKey:EIDScaleKey]:1;scale=MIN(1.8,MAX(.5,scale));CGFloat alpha=[d objectForKey:EIDTransparencyKey]?[d doubleForKey:EIDTransparencyKey]:.75;BOOL sn=[d objectForKey:EIDShowNameKey]?[d boolForKey:EIDShowNameKey]:YES,si=[d objectForKey:EIDShowIconKey]?[d boolForKey:EIDShowIconKey]:YES,sq=[d objectForKey:EIDShowQualityKey]?[d boolForKey:EIDShowQualityKey]:YES,sd=[d objectForKey:EIDShowDescriptionKey]?[d boolForKey:EIDShowDescriptionKey]:YES;UIFont*bodyFont=[UIFont systemFontOfSize:10.5 weight:UIFontWeightSemibold];UIFont*titleFont=[UIFont systemFontOfSize:16.0 weight:UIFontWeightBold];UIFont*transformFont=[UIFont systemFontOfSize:10.0 weight:UIFontWeightMedium];UIImage*image=si&&item.iconPath.length?[UIImage imageWithContentsOfFile:item.iconPath]:nil;if(!image&&si){SEL sel=NSSelectorFromString(@"pocketIconForVariant:subtype:");if([self respondsToSelector:sel])image=((UIImage*(*)(id,SEL,NSInteger,NSInteger))objc_msgSend)(self,sel,p.variant,p.subtype);}NSMutableAttributedString*out=[NSMutableAttributedString new];NSUInteger headerEnd=0;if(sn){if(si&&image){NSAttributedString*ii=Attachment(image,22.0,scale,-4.0);if(ii){[out appendAttributedString:ii];[out appendAttributedString:[[NSAttributedString alloc]initWithString:@"    " attributes:Attrs(titleFont,EIDObjNameColor(),scale)]];}}AppendActiveCharge(out,item,titleFont,scale);[out appendAttributedString:[[NSAttributedString alloc]initWithString:item.name.length?item.name:[NSString stringWithFormat:@"%ld",(long)p.subtype] attributes:Attrs(titleFont,EIDObjNameColor(),scale)]];if(sq&&p.variant==EIDPickupVariantCollectible&&item.quality>=0&&item.quality<=4){[out appendAttributedString:[[NSAttributedString alloc]initWithString:@"  -  " attributes:Attrs(titleFont,EIDObjNameColor(),scale)]];NSString*token=[NSString stringWithFormat:@"Quality%ld",(long)item.quality];NSAttributedString*q=Attachment([[EIDInlineAtlas shared]imageForToken:token],16.0,scale,-2.5);[out appendAttributedString:q?:QualityFallback(item.quality,titleFont,scale)];}headerEnd=out.length;NSArray*trans=[[EIDTransformData shared]transformationsForVariant:p.variant subtype:p.subtype];for(NSNumber*n in trans){NSInteger tid=n.integerValue;[out appendAttributedString:[[NSAttributedString alloc]initWithString:@"\n" attributes:Attrs(transformFont,UIColor.whiteColor,scale)]];NSAttributedString*ti=Attachment([[EIDTransformData shared]iconForID:tid],14.0,scale,-2.2);if(ti){[out appendAttributedString:ti];[out appendAttributedString:[[NSAttributedString alloc]initWithString:@"  " attributes:Attrs(transformFont,EIDTransformationColor(),scale)]];}[out appendAttributedString:[[NSAttributedString alloc]initWithString:[NSString stringWithFormat:@"%@ (0/3)",[[EIDTransformData shared]nameForID:tid]] attributes:Attrs(transformFont,EIDTransformationColor(),scale)]];}if(sd)[out appendAttributedString:[[NSAttributedString alloc]initWithString:@"\n" attributes:Attrs(bodyFont,UIColor.whiteColor,scale)]];}if(sd)AppendMarkup(out,item.detail.length?item.detail:@"No description available",bodyFont,scale);NSMutableParagraphStyle*bodyPS=[NSMutableParagraphStyle new];bodyPS.minimumLineHeight=14*scale;bodyPS.maximumLineHeight=14*scale;[out addAttribute:NSParagraphStyleAttributeName value:bodyPS range:NSMakeRange(0,out.length)];if(headerEnd>0){NSMutableParagraphStyle*headerPS=[NSMutableParagraphStyle new];headerPS.minimumLineHeight=22*scale;headerPS.maximumLineHeight=22*scale;headerPS.paragraphSpacing=4.0*scale;NSUInteger headerRange=MIN(out.length,headerEnd+1);[out addAttribute:NSParagraphStyleAttributeName value:headerPS range:NSMakeRange(0,headerRange)];}iv.image=nil;iv.hidden=YES;l.attributedText=out;l.alpha=MIN(1,MAX(.15,alpha));iv.alpha=l.alpha;SEL size=NSSelectorFromString(@"sizePanelForText");if([self respondsToSelector:size])((void(*)(id,SEL))objc_msgSend)(self,size);[UIView animateWithDuration:.12 animations:^{panel.alpha=1;}];}
+- (void)eid_parity_renderPickups:(NSArray<EIDPickupIdentity *> *)pickups {
+    UILabel *label = [self valueForKey:@"label"];
+    UIView *panel = [self valueForKey:@"panel"];
+    UIImageView *iconView = [self valueForKey:@"itemIconView"];
+    EIDDescriptionStore *store = [self valueForKey:@"store"];
+    EIDNativeProbe *probe = [self valueForKey:@"probe"];
+    if (!label || !panel || !store || !pickups.count) {
+        [self eid_parity_renderPickups:pickups];
+        return;
+    }
+    EIDPickupIdentity *pickup = pickups.firstObject;
+    EIDDescription *item = [store descriptionForPickupVariant:pickup.variant subtype:pickup.subtype];
+    if (!item) { [self eid_parity_renderPickups:pickups]; return; }
+    NSInteger playerType = pickup.playerType >= 0 ? pickup.playerType : probe.primaryPlayerType;
+    NSMutableDictionary *context = store.contextData.mutableCopy;
+    context[@"live_state"] = probe.descriptionState;
+    context[@"player_type"] = @(playerType);
+    context[@"player_index"] = @(pickup.playerIndex >= 0 ? pickup.playerIndex : 0);
+    context[@"inside_item_reminder"] = @([self valueForKey:@"selectedInventoryItem"] != nil);
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    CGFloat scale = [defaults objectForKey:EIDScaleKey] ? [defaults doubleForKey:EIDScaleKey] : 1;
+    scale = MIN(1.8, MAX(.5, scale));
+    CGFloat alpha = [defaults objectForKey:EIDTransparencyKey] ? [defaults doubleForKey:EIDTransparencyKey] : .75;
+    BOOL showName = [defaults objectForKey:EIDShowNameKey] ? [defaults boolForKey:EIDShowNameKey] : YES;
+    BOOL showIcon = [defaults objectForKey:EIDShowIconKey] ? [defaults boolForKey:EIDShowIconKey] : YES;
+    BOOL showQuality = [defaults objectForKey:EIDShowQualityKey] ? [defaults boolForKey:EIDShowQualityKey] : YES;
+    BOOL showDetail = [defaults objectForKey:EIDShowDescriptionKey] ? [defaults boolForKey:EIDShowDescriptionKey] : YES;
+    UIFont *bodyFont = [UIFont systemFontOfSize:10.5 weight:UIFontWeightSemibold];
+    UIFont *titleFont = [UIFont systemFontOfSize:16.0 weight:UIFontWeightBold];
+    UIFont *transformFont = [UIFont systemFontOfSize:10.0 weight:UIFontWeightMedium];
+    UIImage *image = showIcon && item.iconPath.length ? [UIImage imageWithContentsOfFile:item.iconPath] : nil;
+    if (!image && showIcon) {
+        SEL selector = NSSelectorFromString(@"pocketIconForVariant:subtype:");
+        if ([self respondsToSelector:selector])
+            image = ((UIImage *(*)(id,SEL,NSInteger,NSInteger))objc_msgSend)(self,selector,pickup.variant,pickup.subtype);
+    }
+    NSMutableAttributedString *output = [NSMutableAttributedString new];
+    NSUInteger headerEnd = 0;
+    if (showName) {
+        if (showIcon && image) {
+            NSAttributedString *attachment = Attachment(image,22.0,scale,-4.0);
+            if (attachment) {
+                [output appendAttributedString:attachment];
+                [output appendAttributedString:[[NSAttributedString alloc] initWithString:@"    " attributes:Attrs(titleFont,EIDObjNameColor(),scale)]];
+            }
+        }
+        AppendActiveCharge(output,item,titleFont,scale);
+        NSString *name = item.name.length ? item.name : [NSString stringWithFormat:@"%ld",(long)pickup.subtype];
+        [output appendAttributedString:[[NSAttributedString alloc] initWithString:name attributes:Attrs(titleFont,EIDObjNameColor(),scale)]];
+        if (showQuality && pickup.variant == EIDPickupVariantCollectible && item.quality >= 0 && item.quality <= 4) {
+            [output appendAttributedString:[[NSAttributedString alloc] initWithString:@"  -  " attributes:Attrs(titleFont,EIDObjNameColor(),scale)]];
+            NSString *token = [NSString stringWithFormat:@"Quality%ld",(long)item.quality];
+            NSAttributedString *quality = Attachment([[EIDInlineAtlas shared] imageForToken:token],16.0,scale,-2.5);
+            [output appendAttributedString:quality ?: QualityFallback(item.quality,titleFont,scale)];
+        }
+        headerEnd = output.length;
+        EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
+        tracker.probe = probe;
+        NSArray *transformations = EIDUsesSalvageDescription(pickup.variant,pickup.subtype,playerType,context)
+            ? @[] : [tracker transformationsForVariant:pickup.variant subtype:pickup.subtype];
+        for (NSNumber *transformation in transformations) {
+            NSInteger identifier = transformation.integerValue;
+            [output appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:Attrs(transformFont,UIColor.whiteColor,scale)]];
+            NSAttributedString *icon = Attachment([[EIDTransformData shared] iconForID:identifier],14.0,scale,-2.2);
+            if (icon) {
+                [output appendAttributedString:icon];
+                [output appendAttributedString:[[NSAttributedString alloc] initWithString:@"  " attributes:Attrs(transformFont,EIDTransformationColor(),scale)]];
+            }
+            NSString *progress = [NSString stringWithFormat:@"%@ (%ld/%ld)",
+                [tracker localizedNameForTransformation:identifier],
+                (long)[tracker progressForTransformation:identifier],
+                (long)(tracker.required > 0 ? tracker.required : 3)];
+            [output appendAttributedString:[[NSAttributedString alloc] initWithString:progress attributes:Attrs(transformFont,EIDTransformationColor(),scale)]];
+        }
+        if (showDetail) [output appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:Attrs(bodyFont,UIColor.whiteColor,scale)]];
+    }
+    if (showDetail) {
+        NSSet *owned = [probe currentOwnedItemKeys];
+        NSString *detail = EIDContextDescriptionWithOwnedItems(item.detail, pickup.variant, pickup.subtype,
+            playerType, probe.gameDifficulty, owned, context);
+        detail = EIDDynamicDescription(detail,pickup.variant,pickup.subtype,probe.gameDifficulty,owned,context);
+        AppendMarkup(output, detail, bodyFont, scale, store);
+    }
+    NSMutableParagraphStyle *bodyStyle = [NSMutableParagraphStyle new];
+    bodyStyle.minimumLineHeight = 14 * scale;
+    bodyStyle.maximumLineHeight = 14 * scale;
+    [output addAttribute:NSParagraphStyleAttributeName value:bodyStyle range:NSMakeRange(0,output.length)];
+    if (headerEnd > 0) {
+        NSMutableParagraphStyle *headerStyle = [NSMutableParagraphStyle new];
+        headerStyle.minimumLineHeight = 22 * scale;
+        headerStyle.maximumLineHeight = 22 * scale;
+        headerStyle.paragraphSpacing = 4 * scale;
+        [output addAttribute:NSParagraphStyleAttributeName value:headerStyle range:NSMakeRange(0,MIN(output.length,headerEnd+1))];
+    }
+    iconView.image = nil;
+    iconView.hidden = YES;
+    label.attributedText = output;
+    label.alpha = MIN(1, MAX(.15, alpha));
+    iconView.alpha = label.alpha;
+    SEL size = NSSelectorFromString(@"sizePanelForText");
+    if ([self respondsToSelector:size]) ((void(*)(id,SEL))objc_msgSend)(self,size);
+    [self applyDescriptionBackground];
+    [UIView animateWithDuration:.12 animations:^{ panel.alpha = 1; }];
+}
 -(void)eid_parity_attachOverlayIfNeeded {
     [self eid_parity_attachOverlayIfNeeded];
     UIView *card = [self valueForKey:@"settingsCard"];
@@ -111,7 +305,7 @@ static void AppendMarkup(NSMutableAttributedString*out,NSString*text,UIFont*f,CG
     [card addSubview:scroll];
 
     UIView *section = [[UIView alloc] initWithFrame:
-        CGRectMake(18, 198, scroll.bounds.size.width - 36, 178)];
+        CGRectMake(18, 198, scroll.bounds.size.width - 36, 270)];
     section.tag = 0xE1D5;
     section.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     [scroll addSubview:section];
@@ -156,8 +350,33 @@ static void AppendMarkup(NSMutableAttributedString*out,NSString*text,UIFont*f,CG
         [section addSubview:slider];
     }
 
+    UIButton *backgroundButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    backgroundButton.frame = CGRectMake(0, 151, section.bounds.size.width, 28);
+    backgroundButton.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+    backgroundButton.backgroundColor = [UIColor colorWithWhite:1 alpha:.12];
+    backgroundButton.layer.cornerRadius = 6;
+    [backgroundButton setTitle:@"Description background" forState:UIControlStateNormal];
+    [backgroundButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    backgroundButton.accessibilityIdentifier = EIDBackgroundKey;
+    [backgroundButton addTarget:self action:@selector(eid_parity_toggle:) forControlEvents:UIControlEventTouchUpInside];
+    [section addSubview:backgroundButton];
+
+    UILabel *backgroundLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 187, section.bounds.size.width, 20)];
+    backgroundLabel.tag = 0xE1D8;
+    backgroundLabel.textColor = UIColor.whiteColor;
+    backgroundLabel.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightSemibold];
+    [section addSubview:backgroundLabel];
+    UISlider *backgroundSlider = [[UISlider alloc] initWithFrame:CGRectMake(0, 207, section.bounds.size.width, 32)];
+    backgroundSlider.minimumValue = 0;
+    backgroundSlider.maximumValue = 1;
+    backgroundSlider.value = [NSUserDefaults.standardUserDefaults objectForKey:EIDBackgroundOpacityKey]
+        ? [NSUserDefaults.standardUserDefaults doubleForKey:EIDBackgroundOpacityKey] : .28;
+    backgroundSlider.accessibilityIdentifier = EIDBackgroundOpacityKey;
+    [backgroundSlider addTarget:self action:@selector(eid_parity_slider:) forControlEvents:UIControlEventValueChanged];
+    [section addSubview:backgroundSlider];
+
     UILabel *hint = [[UILabel alloc] initWithFrame:
-        CGRectMake(0, 151, section.bounds.size.width, 20)];
+        CGRectMake(0, 246, section.bounds.size.width, 20)];
     hint.text = @"EID layout · quality · transformations · inline icons";
     hint.textColor = [UIColor colorWithWhite:.72 alpha:1];
     hint.font = [UIFont systemFontOfSize:9.5];
@@ -166,12 +385,58 @@ static void AppendMarkup(NSMutableAttributedString*out,NSString*text,UIFont*f,CG
 
     if (credits) {
         credits.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        credits.frame = CGRectMake(18, 389, scroll.bounds.size.width - 36, 54);
+        credits.frame = CGRectMake(18, 481, scroll.bounds.size.width - 36, 54);
     }
-    scroll.contentSize = CGSizeMake(scroll.bounds.size.width, 455);
+    scroll.contentSize = CGSizeMake(scroll.bounds.size.width, 547);
     [self eid_parity_refreshButtons];
 }
--(void)eid_parity_toggle:(UIButton*)b{NSString*k=b.accessibilityIdentifier;NSUserDefaults*d=NSUserDefaults.standardUserDefaults;BOOL on=[d objectForKey:k]?[d boolForKey:k]:YES;[d setBool:!on forKey:k];[self eid_parity_refreshButtons];NSArray*p=[self valueForKey:@"lastPickups"];if(p.count)[self eid_parity_renderPickups:p];}
--(void)eid_parity_slider:(UISlider*)s{[NSUserDefaults.standardUserDefaults setDouble:s.value forKey:s.accessibilityIdentifier];[self eid_parity_refreshButtons];NSArray*p=[self valueForKey:@"lastPickups"];if(p.count)[self eid_parity_renderPickups:p];}
--(void)eid_parity_refreshButtons{UIView*s=[[self valueForKey:@"settingsCard"]viewWithTag:0xE1D5];for(UIView*v in s.subviews)if([v isKindOfClass:UIButton.class]){UIButton*b=(UIButton*)v;NSString*k=b.accessibilityIdentifier;BOOL on=[NSUserDefaults.standardUserDefaults objectForKey:k]?[NSUserDefaults.standardUserDefaults boolForKey:k]:YES;NSString*base=[[b titleForState:UIControlStateNormal]stringByReplacingOccurrencesOfString:@"✓ " withString:@""];[b setTitle:on?[@"✓ " stringByAppendingString:base]:base forState:UIControlStateNormal];b.alpha=on?1:.5;}NSUserDefaults*d=NSUserDefaults.standardUserDefaults;CGFloat scale=[d objectForKey:EIDScaleKey]?[d doubleForKey:EIDScaleKey]:1.0,opacity=[d objectForKey:EIDTransparencyKey]?[d doubleForKey:EIDTransparencyKey]:.75;UILabel*scaleLabel=[s viewWithTag:0xE1D6],*opacityLabel=[s viewWithTag:0xE1D7];scaleLabel.text=[NSString stringWithFormat:@"Scale: %.0f%%",scale*100.0];opacityLabel.text=[NSString stringWithFormat:@"Opacity: %.0f%%",opacity*100.0];}
+- (void)eid_parity_toggle:(UIButton *)button {
+    NSString *key = button.accessibilityIdentifier;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    BOOL enabled = [defaults objectForKey:key] ? [defaults boolForKey:key] : ![key isEqualToString:EIDBackgroundKey];
+    [defaults setBool:!enabled forKey:key];
+    [self eid_parity_refreshButtons];
+    [self applyDescriptionBackground];
+    NSArray *pickups = [self valueForKey:@"lastPickups"];
+    EIDPickupIdentity *selected = [self valueForKey:@"selectedInventoryItem"];
+    if (selected) pickups = @[selected];
+    if (pickups.count) {
+        SEL render = NSSelectorFromString(@"renderPickups:");
+        ((void (*)(id,SEL,NSArray *))objc_msgSend)(self,render,pickups);
+    }
+}
+- (void)eid_parity_slider:(UISlider *)slider {
+    [NSUserDefaults.standardUserDefaults setDouble:slider.value forKey:slider.accessibilityIdentifier];
+    [self eid_parity_refreshButtons];
+    [self applyDescriptionBackground];
+    NSArray *pickups = [self valueForKey:@"lastPickups"];
+    EIDPickupIdentity *selected = [self valueForKey:@"selectedInventoryItem"];
+    if (selected) pickups = @[selected];
+    if (pickups.count) {
+        SEL render = NSSelectorFromString(@"renderPickups:");
+        ((void (*)(id,SEL,NSArray *))objc_msgSend)(self,render,pickups);
+    }
+}
+- (void)eid_parity_refreshButtons {
+    UIView *section = [[self valueForKey:@"settingsCard"] viewWithTag:0xE1D5];
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    for (UIView *view in section.subviews) {
+        if (![view isKindOfClass:UIButton.class]) continue;
+        UIButton *button = (UIButton *)view;
+        NSString *key = button.accessibilityIdentifier;
+        BOOL enabled = [defaults objectForKey:key] ? [defaults boolForKey:key] : ![key isEqualToString:EIDBackgroundKey];
+        NSString *base = [[button titleForState:UIControlStateNormal] stringByReplacingOccurrencesOfString:@"✓ " withString:@""];
+        [button setTitle:enabled ? [@"✓ " stringByAppendingString:base] : base forState:UIControlStateNormal];
+        button.alpha = enabled ? 1 : .5;
+    }
+    CGFloat scale = [defaults objectForKey:EIDScaleKey] ? [defaults doubleForKey:EIDScaleKey] : 1;
+    CGFloat opacity = [defaults objectForKey:EIDTransparencyKey] ? [defaults doubleForKey:EIDTransparencyKey] : .75;
+    CGFloat background = [defaults objectForKey:EIDBackgroundOpacityKey] ? [defaults doubleForKey:EIDBackgroundOpacityKey] : .28;
+    UILabel *scaleLabel = (UILabel *)[section viewWithTag:0xE1D6];
+    UILabel *opacityLabel = (UILabel *)[section viewWithTag:0xE1D7];
+    UILabel *backgroundLabel = (UILabel *)[section viewWithTag:0xE1D8];
+    scaleLabel.text = [NSString stringWithFormat:@"Scale: %.0f%%", scale * 100];
+    opacityLabel.text = [NSString stringWithFormat:@"Opacity: %.0f%%", opacity * 100];
+    backgroundLabel.text = [NSString stringWithFormat:@"Background opacity: %.0f%%", background * 100];
+}
 @end

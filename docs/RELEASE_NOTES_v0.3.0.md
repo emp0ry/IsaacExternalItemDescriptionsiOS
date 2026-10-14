@@ -3,8 +3,6 @@
 This release adds a native settings interface, all 20 upstream EID languages,
 and complete attributed description data in every packaged loading mode.
 
-![EID running in native iOS Repentance](https://raw.githubusercontent.com/emp0ry/IsaacExternalItemDescriptionsiOS/v0.3.0/docs/images/eid-gameplay.png)
-
 ## Downloads
 
 - **Jailbroken/rootless:** `IsaacExternalItemDescriptions-rootless.deb`

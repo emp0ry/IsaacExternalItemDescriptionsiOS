@@ -1,6 +1,6 @@
 # Original EID parity target
 
-The `dev` branch tracks the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions.
+The `main` branch contains the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions. The reference for v0.8.0 is the pinned standard-Repentance revision `ee7f463a00c11263272ee737a52961fb562d26b8`, not Repentance+.
 
 ## Reference defaults
 
@@ -24,7 +24,7 @@ The desktop mod currently defaults to:
 2. **Markup** — replace emoji approximations with EID inline sprite icons and honor color markup.
 3. **Metadata** — expose quality, item type/charge, transformations and pools where available.
 4. **Options** — mirror applicable EID display settings in the iOS settings card.
-5. **Modes** — retain the current fixed overlay and add local/near-item presentation where native coordinates are reliable.
+5. **Modes** — retain the fixed, nearest-object overlay; desktop local/near-item and simultaneous multi-object modes are outside this release's scope.
 
 The upstream EID repository remains the behavioral reference. Assets copied into distributable builds must retain upstream attribution and compatible licensing notices.
 
@@ -35,3 +35,148 @@ cards/runes, Soul Stones, and pills. It reads native shop price and
 `OptionsPickupIndex` fields, native pill-identification state, room grid paths,
 and player flight. `Pickup::Touched` is not used as a blanket identity rule.
 Unknown pills keep their real color icon but never reveal their effect.
+
+## Character and mode context
+
+The importer includes upstream `ConditionalDescs`, Repentance `repConditions`,
+`RedToX`, and Birthright tables for the supported languages. The presentation
+adapter applies static character rules from the reference source, translated
+health-type replacements, and static Greed/Greedier rules. Pickup descriptions
+use the closest native player's character type; the pause inventory uses the
+primary player. Invalid native context preserves the base description.
+
+Exported Birthright entries are keyed by the native `PlayerType` enum (`0...40`),
+not Lua's array index (`1...41`). The importer subtracts one specifically for
+this table; stat-name arrays retain their normal one-based Lua indices.
+Regression tests assert all 41 English names against fixed native IDs and
+exercise actual Lost Breakfast and Birthright descriptions in English/Russian.
+
+The importer also covers the miscellaneous character rules after the weapon
+block: Eye Drops, Tainted Samson/Uranus, Keeper/IV Bag, tainted Clicker, and
+Dead Cat's no-red-health condition. BFFS' separate Repentance localization patch
+is merged for Lilith and Tainted Lilith. Esau's regular-character equivalence
+does not incorrectly classify him as tainted.
+
+Player-wide conditions examine the validated native player list; closest-player
+rules retain that distinction and append localized "Different effect for ..."
+annotations for other character types. Personal inventory snapshots are indexed
+by native player, so same-character co-op players do not exchange ownership
+conditions. Pause descriptions use the primary player's personal owned-item set;
+the inventory list itself remains the existing aggregated view. This is not a
+complete reimplementation of every original co-op UI or twin/subplayer rule.
+
+Tainted Cain's salvage descriptions use the actual room pool mapping, personal
+Birthright, swallowed/equipped trinkets, and upstream localized pickup names.
+Quest tags come from the installed game's item metadata. Cantripped (43), Death
+Certificate dimension (2), and the native excluded room index (-12) preserve
+ordinary descriptions. Missing native context also preserves the description.
+Salvage pedestals do not show collectible transformation progress. No seeded
+prediction of the individual random salvage drops is claimed.
+
+Book of Virtues uses upstream's standard-Repentance XML wisp table, localized
+special effects and flags, the current absolute stage, and the original wisp/ring
+icons. No-wisp and single-room cases are included. A Book of Virtues pedestal
+previews owned active items (including the secondary/pocket active), rather than
+claiming they are all the currently selected primary active slot. Passive Book
+of Belial adds the imported active-item effects; ordinary Judas/Book of Belial
+(34) alone does not enable it. The native `HasCollectible(59)` branch reports
+virtual ownership for Judas/Black Judas with Birthright even when raw count 59
+is zero. The read-only adapter evaluates that verified branch per player, honors
+the native non-quest-item suppression flag, and does not insert a phantom item
+into the pause inventory. Missing flag/count context suppresses the synergy.
+Void-absorbed actives remain unavailable. All new adapters are read-only.
+
+Stat icon aliases such as `Damage` are resolved to their original `DamageREP`
+frames when importing assets. The renderer also resolves these aliases for older
+resource bundles, which previously omitted the sword before a wisp's DPS value.
+Font size and icon attachment scaling are unchanged.
+
+## Weapon overrides and synergies
+
+The importer expands upstream's complete **Overrides / Overridden By** block
+for standard Repentance, excluding its AB+-exclusive branch. Both directions
+of `AddSynergyConditional`, the shared priority name in
+`AddOneSidedSynergyConditional`, and normal/tainted Azazel conditions are
+preserved. Imported rules retain their layer, `checkLayers`, owned-item
+bulletpoint, variable text, and unique identifier. Unknown syntax aborts the
+import instead of silently guessing.
+
+The contextual renderer checks a read-only native inventory snapshot and
+applies higher-priority rules first, alongside character and mode conditions.
+Special combinations use their actual upstream text rather than a blanket
+"no effect" warning. Names use the active language with English fallback; item
+and trinket bullet icons use artwork from the installed game. The overlay's
+refresh signature includes inventory identities, so acquiring or losing an
+override item updates an unchanged floor pickup's description.
+
+This covers the original weapon-override block, not all EID item synergies.
+The current native inventory exposes owned collectibles, pocket actives,
+equipped trinkets, and smelted regular/golden trinkets. Void-absorbed actives are
+not separately tracked yet. Outside pause inventory, owned items are aggregated across native
+players; the existing pause inventory also remains an aggregated view.
+
+## Charge-item conditionals
+
+`carBattery`, its `repCarBattery` overrides, `tarotClothBuffs`, and the effective
+Repentance no-synergy/Car Battery pedestal lists are imported from upstream.
+AB+-only values and Repentance+ patches are not used. Numeric pairs replace a
+complete number once, including decimals; string pairs retain localized text.
+The iOS renderer recognizes the associated item bullets and effect colors.
+For legacy localized find strings that contain color tags missing from their
+updated base text, only those obsolete formatting tags are ignored for matching.
+
+Car Battery pedestal annotations are suppressed in the pause item reminder,
+as upstream does. Its own active-item buffs and Tarot Cloth card buffs remain
+visible there. Native active-item metadata limits charge modifications to
+actual actives; missing inventory/metadata never invents a synergy.
+
+## Native dynamic context
+
+The native reader validates the floor and each player's speed, fire delay,
+damage, range, consumable counts, and character-specific charge pool. Unknown
+or invalid snapshots suppress only the affected prediction. There are no
+gameplay hooks or game-state writes for these features.
+
+Consolation Prize uses upstream's four normalized-stat formulas, rounding to
+two decimals, consumable weighting, quantities, and localized stat/pickup
+names. Equal candidates are marked `?`, not asserted as an exact seeded RNG
+result. The prediction is displayed on Consolation Prize itself; the reference
+snapshot's callback registration would otherwise add it to unrelated item
+descriptions after owning the item. Character-specific charge candidates and
+co-op player summaries are supported.
+
+Pandora's Box uses the supported executable's native reward-stage fields, not
+an inferred HUD floor name. Exact floor segments are classified per language,
+including semicolon-separated entries and reviewed older translations missing
+Void, Dark Room, or Home. Greed/Greedier have their own payout map. Only the
+complete applicable segment turns green; an unavailable/missing entry is not
+guessed. Strange Key suppresses the floor highlight and highlights its own
+overriding six-item payout. This highlighting currently targets Pandora's Box,
+not every floor-dependent item in the game.
+For iOS presentation, semicolon-separated floor rewards become individual
+lines and the desktop `NoLB` marker is removed, even with unavailable floor
+context. Only the selected reward segment receives the green color.
+
+Smelted trinkets are decoded from a bounded native vector of regular/golden
+int16 count pairs. Invalid pointer ranges, strides, or counts fail closed.
+They have their own pause section, are included in owned-item checks, and are
+cleared with native run state. Counts are presence information for these
+descriptions, not a new implementation of every golden-trinket multiplier.
+
+Transformation counts are rendered directly from the tracker for collectibles,
+identified normal/horse pills, and assigned trinkets. This avoids an asynchronous
+text replacement that previously left pill transformation labels unchanged.
+Counts are not capped at the requirement: a valid native counter of four is
+displayed as `4/3`, matching EID's native-counter path.
+
+Some older base translations, including Russian Contract from Below, include
+a static Greed no-effect caveat as well as the original conditional notice.
+The importer classifies these exact legacy notes without changing the base
+description. The iOS adapter renders the canonical conditional once in
+Greed/Greedier and omits the legacy caveat in normal/hard runs. Unrelated Greed
+enemy references are preserved. Single-entry replacement tables and ordered
+first-occurrence replacement pairs retain the original conditional semantics.
+
+An optional description background is disabled by default and is rendered in
+the established non-interactive description panel. Its opacity is independent
+of text opacity and the settings stay within the existing scroll view.

@@ -1,5 +1,27 @@
 # Test matrix
 
+## v0.8.0 release validation (2026-10-14)
+
+| Area | Result |
+| --- | --- |
+| Strict ARM64 build (`-Wall -Wextra -Werror`) | Pass locally |
+| C++ pickup/native-context policy tests | Pass: flight/knowledge rules, smelted-vector validation, effective passive Belial ownership |
+| Objective-C contextual-description tests | Pass: character/mode/weapon rules, Car Battery/Tarot Cloth, predictions, wisp data, salvage conditions, personal co-op ownership, and uncapped pill transformations |
+| Importer tests | Pass: 24 description/context tests and 2 icon-import tests |
+| Bundled data tests | Pass: 6 tests; 20 languages, 335 weapon rules, 165 wisp records |
+| Overlay architecture / script syntax | Pass locally |
+| Rootless, LiveContainer, embedded, standalone packaging | Pass locally; LiveContainer archive/resources verified |
+| Standalone dylib public-library dependency and ad-hoc signature audits | Pass locally; LiveContainer/embedded apps still require host-side signing |
+| Native startup/resource/context reads on the development phone | Pass |
+| Latest Judas + Birthright / Guppy's Paw regression | User confirmed corrected tooltip after native virtual-ownership fix |
+| Tainted Cain and Tainted Lilith gameplay acceptance | Pending: characters are not unlocked on the test account; host coverage is not a gameplay result |
+| Every new combination across all loading modes / co-op variants | Not exhaustively gameplay-tested; see [character checks and remaining scope](CHARACTER_CONTEXT_TESTING.md) |
+
+## Established coverage and outstanding checks
+
+The following results record earlier validation. A pass here is not a claim that
+every scenario was repeated for v0.8.0 on every installation method.
+
 | Area | Result |
 | --- | --- |
 | ARM64 iOS dylib build | Pass |

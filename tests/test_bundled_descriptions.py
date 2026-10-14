@@ -60,6 +60,38 @@ class BundledDescriptionsTests(unittest.TestCase):
                 for entry in language[category].values():
                     self.assertFalse(entry["name"].startswith("["))
 
+    def test_extended_character_metadata_and_reference_tables_are_bundled(self) -> None:
+        english = self.payload["languages"]["en_us"]
+        metadata = self.payload["character_metadata"]
+        self.assertEqual(set(metadata["tainted_ids"]), set(range(21,41)))
+        self.assertGreaterEqual(len(metadata["wisps"]), 165)
+        self.assertEqual(metadata["wisps"]["35"][2], 4)
+        self.assertTrue(metadata["wisp_flags"]["NoWisp"]["636"])
+        self.assertNotIn("111",metadata["wisp_flags"]["SingleRoom"])  # Repentance+ only.
+        self.assertEqual(len(english["book_of_belial"]), 32)
+        self.assertIn("Tainted Lilith",english["BFFSSynergies"])
+        self.assertIn("NoWisps",english["wisp_texts"])
+        self.assertEqual(metadata["salvage_pools"]["3"],"5.10.6")
+
+    def test_birthright_names_match_native_character_ids_not_lua_array_indices(self) -> None:
+        names = ["Isaac", "Magdalene", "Cain", "Judas", "???", "Eve", "Samson", "Azazel",
+                 "Lazarus", "Eden", "The Lost", "Lazarus Risen", "Black Judas", "Lilith", "Keeper",
+                 "Apollyon", "The Forgotten", "The Forgotten Soul", "Bethany", "Jacob", "Esau",
+                 "Tainted Isaac", "Tainted Magdalene", "Tainted Cain", "Tainted Judas", "Tainted ???",
+                 "Tainted Eve", "Tainted Samson", "Tainted Azazel", "Tainted Lazarus", "Tainted Eden",
+                 "Tainted Lost", "Tainted Lilith", "Tainted Keeper", "Tainted Apollyon", "Tainted Forgotten",
+                 "Tainted Bethany", "Tainted Jacob", "Dead Tainted Lazarus", "Tainted Jacob's Soul",
+                 "Tainted Forgotten Soul"]
+        english = self.payload["languages"]["en_us"]["birthright"]
+        self.assertEqual(set(english), {str(index) for index in range(41)})
+        for identifier, name in enumerate(names):
+            self.assertEqual(english[str(identifier)][0], name)
+        russian = self.payload["languages"]["ru"]["birthright"]
+        self.assertEqual(russian["0"][0], "Исаак")
+        self.assertEqual(russian["9"][0], "Эдем")
+        self.assertEqual(russian["10"][0], "Потерянный")
+        self.assertEqual(russian["14"][0], "Хранитель")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -964,6 +964,15 @@ main section[id],
   height: auto;
 }
 
+.screenshot-link {
+  display: block;
+}
+
+.screenshot-link:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
 .screenshot-caption {
   display: grid;
   gap: 0.35rem;

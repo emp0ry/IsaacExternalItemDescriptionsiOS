@@ -1,4 +1,5 @@
 #include "EIDPickupPolicy.hpp"
+#include "EIDNativeContextPolicy.hpp"
 
 #include <array>
 #include <cassert>
@@ -6,6 +7,33 @@
 using namespace EIDPickupPolicy;
 
 int main() {
+    using namespace EIDNativeContextPolicy;
+    for (int32_t type = 0; type <= 40; ++type) {
+        assert(HasPassiveBelial(type,1,0,false) == (type == 3 || type == 12));
+        assert(!HasPassiveBelial(type,0,0,false));
+        assert(HasPassiveBelial(type,0,1,false));
+        assert(!HasPassiveBelial(type,1,1,true));
+    }
+    assert(!HasPassiveBelial(-1,1,0,false));
+    assert(!HasPassiveBelial(3,-1,0,false));
+    assert(ValidSmeltedSpan(0,0,0));
+    assert(ValidSmeltedSpan(0x1000,0x12f8,0x1400));
+    assert(!ValidSmeltedSpan(0,0x1000,0x1000));
+    assert(!ValidSmeltedSpan(0x1001,0x12f9,0x1400));
+    assert(!ValidSmeltedSpan(0x1000,0x0ffc,0x1400));
+    assert(!ValidSmeltedSpan(0x1000,0x1001,0x1400));
+    assert(!ValidSmeltedSpan(0x1000,0x12f8,0x1200));
+    assert(!ValidSmeltedSpan(0x1000,0x3000,0x3000));
+    std::vector<SmeltedCounts> counts(190);
+    counts[1].regular = 2;
+    counts[189].golden = 1;
+    std::vector<int32_t> smelted;
+    assert(DecodeSmeltedCounts(counts,smelted));
+    assert(smelted.size() == 2 && smelted[0] == 1 && smelted[1] == (189 | 0x8000));
+    counts[189].regular = -1;
+    assert(!DecodeSmeltedCounts(counts,smelted) && smelted.empty());
+    assert(DecodeSmeltedCounts({},smelted) && smelted.empty());
+    assert(!DecodeSmeltedCounts(std::vector<SmeltedCounts>(1025),smelted));
     bool canFly = false;
     assert(DecodeNativeCanFly(0, canFly) && !canFly);
     assert(DecodeNativeCanFly(1, canFly) && canFly);

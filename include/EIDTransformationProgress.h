@@ -10,6 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)shared;
 - (NSArray<NSNumber *> *)allTransformationIdentifiers;
 - (NSArray<NSNumber *> *)transformationsForCollectible:(NSInteger)collectible;
+- (NSArray<NSNumber *> *)transformationsForVariant:(NSInteger)variant subtype:(NSInteger)subtype;
 - (NSInteger)progressForTransformation:(NSInteger)transformation;
 - (NSString *)progressSignatureForPickups:(NSArray *)pickups;
 - (NSString *)localizedNameForTransformation:(NSInteger)transformation;

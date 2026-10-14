@@ -1,6 +1,7 @@
 #import "EIDNativeProbe.h"
 #import "EIDLogger.h"
 #include "EIDPickupPolicy.hpp"
+#include "EIDNativeContextPolicy.hpp"
 
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
@@ -211,12 +212,32 @@ constexpr size_t kPlayerPocketItemsOffset = 0x1c10;
 constexpr size_t kPlayerPocketItemCount = 4;
 constexpr size_t kPlayerTrinketSlotsOffset = 0x1ab0;
 constexpr size_t kPlayerTrinketSlotCount = 2;
+// Native smelted-trinket operations use a vector of pairs of signed int16
+// counts at +0x1b60: regular at id*4, golden at id*4+2 (0x100509680).
+constexpr size_t kPlayerSmeltedTrinketsOffset = 0x1b60;
+// Consolation Prize's native pickup branch (0x100502140, 0x1005035d8).
+constexpr size_t kPlayerMoveSpeedOffset = 0x194c;
+constexpr size_t kPlayerMaxFireDelayOffset = 0x1834;
+constexpr size_t kPlayerDamageOffset = 0x1844;
+constexpr size_t kPlayerTearRangeOffset = 0x1854;
+constexpr size_t kPlayerCoinsOffset = 0x16e0;
+constexpr size_t kPlayerBombsOffset = 0x16dc;
+constexpr size_t kPlayerKeysOffset = 0x16d4;
+constexpr size_t kPlayerSoulChargeOffset = 0x2478;
+constexpr size_t kPlayerBloodChargeOffset = 0x247c;
 constexpr size_t kPlayerCollectibleCountsOffset = 0x1ab8;
 constexpr size_t kPlayerTransformationCountersOffset = 0x1c54;
 // Live-verified Entity_Player flight boolean. The supported ARM64 executable
 // reads this exact byte with ldrb in its movement/collision paths. Reading a
 // four-byte scalar here is incorrect because the adjacent bytes are unrelated.
 constexpr size_t kPlayerCanFlyOffset = 0x1954;
+// Repentance ChangePlayerType and character-specific item branches use this
+// int32 field; Entity::SubType is not the authoritative character identifier.
+constexpr size_t kPlayerTypeOffset = 0x1738;
+// HasCollectible's non-quest suppression guard at 0x1004eebe0.
+constexpr size_t kPlayerNonQuestItemsDisabledOffset = 0x284c;
+// Game::IsGreedMode at 0x10088c994 reads (difficulty & ~1) == 2 here.
+constexpr size_t kGameDifficultyOffset = 0x24f9d8;
 constexpr size_t kNativeTransformationCount = 15;
 constexpr size_t kMaximumCollectibleID = 732;
 constexpr size_t kLayerStateSize = 0x90;
@@ -227,6 +248,13 @@ constexpr float kMaximumDescriptionDistance = 220.0f;
 constexpr uintptr_t kGameGlobalOffset = 0xac3b90;
 constexpr size_t kGameCursesOffset = 0xc;
 constexpr size_t kGameCurrentRoomOffset = 0x21550;
+// Entity_Pickup's Tainted Cain branch at 0x100720a64 reads these fields.
+constexpr size_t kGameChallengeOffset = 0x1cf438;
+constexpr size_t kGameRoomIndexOffset = 0x21558;
+constexpr size_t kGameDimensionOffset = 0x21560;
+// ItemPool::GetPoolForRoom (0x100877a3c) indexes these native tables.
+constexpr size_t kItemPoolRoomPoolsOffset = 0x920;
+constexpr size_t kItemPoolGreedRoomPoolsOffset = 0x998;
 constexpr size_t kRoomDescriptorOffset = 0x8;
 constexpr size_t kRoomDescriptorDataOffset = 0x10;
 constexpr size_t kRoomConfigTypeOffset = 0x8;
@@ -492,6 +520,70 @@ static bool ReadPlayerTrinkets(
         if (trinket < 0 || (trinket & 0x7fff) > 4096) return false;
     }
     return true;
+}
+
+static bool ReadSmeltedTrinkets(vm_address_t player, std::vector<int32_t>& identities) {
+    RemotePointerVector vector;
+    if (!ReadOwnTaskMemory(player + kPlayerSmeltedTrinketsOffset,&vector,sizeof(vector))) return false;
+    if (!EIDNativeContextPolicy::ValidSmeltedSpan(vector.begin,vector.end,vector.capacity)) return false;
+    using EIDNativeContextPolicy::SmeltedCounts;
+    std::vector<SmeltedCounts> counts((vector.end - vector.begin) / sizeof(SmeltedCounts));
+    if (!counts.empty() && !ReadOwnTaskMemory(vector.begin,counts.data(),counts.size()*sizeof(SmeltedCounts))) return false;
+    return EIDNativeContextPolicy::DecodeSmeltedCounts(counts,identities);
+}
+
+static NSDictionary *ReadDescriptionStats(vm_address_t player) {
+    int32_t type, coins, bombs, keys, soul = 0, blood = 0;
+    float speed, delay, damage, range;
+    if (!ReadOwnTaskMemory(player+kPlayerTypeOffset,&type,sizeof(type)) || type < 0 || type > 40 ||
+        !ReadOwnTaskMemory(player+kPlayerMoveSpeedOffset,&speed,sizeof(speed)) ||
+        !ReadOwnTaskMemory(player+kPlayerMaxFireDelayOffset,&delay,sizeof(delay)) ||
+        !ReadOwnTaskMemory(player+kPlayerDamageOffset,&damage,sizeof(damage)) ||
+        !ReadOwnTaskMemory(player+kPlayerTearRangeOffset,&range,sizeof(range)) ||
+        !ReadOwnTaskMemory(player+kPlayerCoinsOffset,&coins,sizeof(coins)) ||
+        !ReadOwnTaskMemory(player+kPlayerBombsOffset,&bombs,sizeof(bombs)) ||
+        !ReadOwnTaskMemory(player+kPlayerKeysOffset,&keys,sizeof(keys))) return nil;
+    if (!std::isfinite(speed) || !std::isfinite(delay) || !std::isfinite(damage) || !std::isfinite(range) ||
+        speed < 0 || speed > 20 || delay <= -1 || delay > 10000 || damage < 0 || damage > 100000 ||
+        range < 0 || range > 100000 || coins < 0 || coins > 9999 || bombs < 0 || bombs > 9999 ||
+        keys < 0 || keys > 9999) return nil;
+    if (type == 18 && (!ReadOwnTaskMemory(player+kPlayerSoulChargeOffset,&soul,sizeof(soul)) || soul < 0 || soul > 9999)) return nil;
+    if (type == 36 && (!ReadOwnTaskMemory(player+kPlayerBloodChargeOffset,&blood,sizeof(blood)) || blood < 0 || blood > 9999)) return nil;
+    return @{@"type":@(type), @"speed":@(speed), @"fire_delay":@(delay), @"damage":@(damage),
+             @"range":@(range), @"coins":@(coins), @"bombs":@(bombs), @"keys":@(keys),
+             @"soul_charge":@(soul), @"blood_charge":@(blood)};
+}
+
+static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
+    int32_t type = -1;
+    if (!ReadOwnTaskMemory(address+kPlayerTypeOffset,&type,sizeof(type)) || type < 0 || type > 40) return nil;
+    NSMutableDictionary *player = [ReadDescriptionStats(address) mutableCopy] ?: [NSMutableDictionary dictionary];
+    player[@"type"] = @(type);
+    std::array<int32_t,kMaximumCollectibleID+1> counts{};
+    std::array<int32_t,kPlayerTrinketSlotCount> trinkets{};
+    std::array<VMPlayerPocketItem,kPlayerPocketItemCount> pockets{};
+    std::vector<int32_t> swallowed;
+    BOOL countsReadable = ReadPlayerCollectibleCounts(address,counts);
+    uint8_t disabled = 0xff;
+    if (countsReadable && ReadOwnTaskMemory(address+kPlayerNonQuestItemsDisabledOffset,&disabled,sizeof(disabled)) && disabled <= 1) {
+        // Native HasCollectible(59), 0x1004eed80: virtual Belial ownership is
+        // Judas/Black Judas + HasCollectible(619), not a stored count of 59.
+        player[@"has_passive_belial"] = @(EIDNativeContextPolicy::HasPassiveBelial(type,counts[619],counts[59],disabled != 0));
+    }
+    if (countsReadable && ReadPlayerTrinkets(address,trinkets) &&
+        ReadPlayerPocketItems(address,pockets) && ReadSmeltedTrinkets(address,swallowed)) {
+        NSMutableSet *owned = [NSMutableSet set];
+        for (size_t item = 1; item < counts.size(); ++item) if (counts[item])
+            [owned addObject:[NSString stringWithFormat:@"5.100.%lu",(unsigned long)item]];
+        for (int32_t item : trinkets) if ((item & 0x7fff) > 0)
+            [owned addObject:[NSString stringWithFormat:@"5.350.%d",item & 0x7fff]];
+        for (int32_t item : swallowed) if ((item & 0x7fff) > 0)
+            [owned addObject:[NSString stringWithFormat:@"5.350.%d",item & 0x7fff]];
+        for (const auto& pocket : pockets) if (pocket.type == 2 && pocket.id > 0)
+            [owned addObject:[NSString stringWithFormat:@"5.100.%d",pocket.id]];
+        player[@"owned"] = [owned.allObjects sortedArrayUsingSelector:@selector(compare:)];
+    }
+    return player.copy;
 }
 
 static bool ReadPlayerTransformationCounters(
@@ -1129,10 +1221,22 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
 @implementation EIDPickupIdentity
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype {
+    return [self initWithVariant:variant subtype:subtype playerType:-1];
+}
+
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType {
+    return [self initWithVariant:variant subtype:subtype playerType:playerType playerIndex:-1];
+}
+
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex {
     self = [super init];
     if (self) {
         _variant = variant;
         _subtype = subtype;
+        _playerType = playerType;
+        _playerIndex = playerIndex;
     }
     return self;
 }
@@ -1141,7 +1245,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     if (object == self) return YES;
     if (![object isKindOfClass:EIDPickupIdentity.class]) return NO;
     EIDPickupIdentity *other = object;
-    return self.variant == other.variant && self.subtype == other.subtype;
+    return self.variant == other.variant && self.subtype == other.subtype &&
+        self.playerType == other.playerType && self.playerIndex == other.playerIndex;
 }
 
 - (NSUInteger)hash {
@@ -1162,6 +1267,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(atomic, getter=isPaused) BOOL paused;
 @property(atomic) uint32_t runSeed;
 @property(atomic) NSUInteger runCounter;
+@property(atomic) NSInteger primaryPlayerType;
+@property(atomic) NSInteger gameDifficulty;
+@property(atomic, copy) NSDictionary *descriptionState;
+@property(atomic, copy) NSArray<EIDPickupIdentity *> *smeltedTrinketItems;
 @property(atomic, getter=isOwnedCollectibleStateAvailable) BOOL ownedCollectibleStateAvailable;
 @property(atomic, getter=isInventoryStateAvailable) BOOL inventoryStateAvailable;
 @property(atomic, getter=isTransformationStateAvailable) BOOL transformationStateAvailable;
@@ -1214,10 +1323,14 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         _status = _supportedBuild ? @"Locating native pickup RTTI" : @"Unsupported Isaac executable";
         _lastPickups = @[];
         _inventoryItems = @[];
+        _smeltedTrinketItems = @[];
+        _descriptionState = @{};
         _ownedCollectibleCounts = @{};
         _nativeTransformationCounters = @[];
         _activeCollectibleIDs = [NSSet set];
         _activeCollectibleHistory = [NSMutableDictionary dictionary];
+        _primaryPlayerType = -1;
+        _gameDifficulty = -1;
         _playerVectorOffset = NSUIntegerMax;
         _lastLoggedRoomType = NSIntegerMin;
         _lastLoggedCurseMask = UINT32_MAX;
@@ -1274,6 +1387,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         self.runSeed = 0;
         self.lastPickups = @[];
         self.inventoryItems = @[];
+        self.descriptionState = @{};
+        self.smeltedTrinketItems = @[];
         self.ownedCollectibleCounts = @{};
         self.ownedCollectibleStateAvailable = NO;
         self.inventoryStateAvailable = NO;
@@ -1298,6 +1413,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         self.runSeed = hasSeed ? seed : 0;
         self.lastPickups = @[];
         self.inventoryItems = @[];
+        self.descriptionState = @{};
+        self.smeltedTrinketItems = @[];
         self.ownedCollectibleCounts = @{};
         self.ownedCollectibleStateAvailable = NO;
         self.inventoryStateAvailable = NO;
@@ -1420,12 +1537,16 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
 - (void)updateInventoryForPlayers:(const VMRegionResult&)players {
     if (!self.ownedCollectibleStateAvailable || !players.playerCount) {
+        self.smeltedTrinketItems = @[];
         self.inventoryItems = @[];
         self.inventoryStateAvailable = NO;
         return;
     }
 
     NSMutableArray<EIDPickupIdentity *> *items = [NSMutableArray array];
+    NSMutableArray<EIDPickupIdentity *> *smelted = [NSMutableArray array];
+    NSMutableSet *smeltedKeys = [NSMutableSet set];
+    BOOL smeltedReadable = YES;
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
     void (^addIdentity)(NSInteger, NSInteger) = ^(NSInteger variant, NSInteger subtype) {
         if (subtype <= 0) return;
@@ -1452,6 +1573,15 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         for (int32_t trinket : trinkets) {
             if ((trinket & 0x7fff) != 0) addIdentity(EIDPickupVariantTrinket, trinket);
         }
+        std::vector<int32_t> swallowed;
+        if (!ReadSmeltedTrinkets(playerAddress,swallowed)) smeltedReadable = NO;
+        for (int32_t trinket : swallowed) {
+            NSString *key = @(trinket).stringValue;
+            if (![smeltedKeys containsObject:key]) {
+                [smeltedKeys addObject:key];
+                [smelted addObject:[[EIDPickupIdentity alloc] initWithVariant:EIDPickupVariantTrinket subtype:trinket]];
+            }
+        }
 
         std::array<VMPlayerPocketItem, kPlayerPocketItemCount> pockets{};
         if (!ReadPlayerPocketItems(playerAddress, pockets)) {
@@ -1475,6 +1605,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     }
 
     if (!readable) {
+        self.smeltedTrinketItems = @[];
         self.inventoryItems = @[];
         self.inventoryStateAvailable = NO;
         if (!self.loggedUnreadableInventory) {
@@ -1485,13 +1616,66 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     }
     NSArray<EIDPickupIdentity *> *snapshot = items.copy;
     BOOL changed = ![self.inventoryItems isEqualToArray:snapshot];
+    BOOL swallowedChanged = ![self.smeltedTrinketItems isEqualToArray:smeltedReadable ? smelted : @[]];
     self.inventoryItems = snapshot;
+    self.smeltedTrinketItems = smeltedReadable ? smelted.copy : @[];
     self.inventoryStateAvailable = YES;
     self.loggedUnreadableInventory = NO;
-    if (changed) {
-        EIDLog(@"native pause inventory changed: %lu unique entries",
-               (unsigned long)snapshot.count);
+    if (changed || swallowedChanged) {
+        EIDLog(@"native pause inventory changed: %lu entries, %lu smelted trinkets %@",
+               (unsigned long)snapshot.count, (unsigned long)self.smeltedTrinketItems.count,
+               smeltedReadable ? self.smeltedTrinketItems : @"unavailable");
     }
+}
+
+- (void)updateDescriptionStateForPlayers:(const VMRegionResult&)players {
+    NSMutableDictionary *state = [NSMutableDictionary dictionary];
+    vm_address_t game = 0;
+    int32_t floor[2] = {};
+    // Pandora's native branch uses Game[0] for the reward stage and Game[1]
+    // to select Sheol/Cathedral or Dark Room/Chest (0x10058b438/0x100590928).
+    if (ReadGameObjectAddress(game) && ReadOwnTaskMemory(game,floor,sizeof(floor)) &&
+        floor[0] >= 1 && floor[0] <= 13 && floor[1] >= 0 && floor[1] <= 5) {
+        state[@"floor"] = @{@"stage":@(floor[0]), @"alternate":@(floor[1] != 0)};
+    }
+    int32_t challenge = -1, dimension = -1, roomIndex = -100, roomType = 0;
+    if (game && ReadOwnTaskMemory(game+kGameChallengeOffset,&challenge,sizeof(challenge)) && challenge >= 0 && challenge <= 256 &&
+        ReadOwnTaskMemory(game+kGameDimensionOffset,&dimension,sizeof(dimension)) && dimension >= 0 && dimension <= 2 &&
+        ReadOwnTaskMemory(game+kGameRoomIndexOffset,&roomIndex,sizeof(roomIndex)) && roomIndex >= -15 && roomIndex < 169 &&
+        ReadCurrentRoomType(roomType)) {
+        state[@"room_type"] = @(roomType);
+        state[@"dimension"] = @(dimension);
+        state[@"challenge"] = @(challenge);
+        state[@"salvage_allowed"] = @(challenge != 43 && dimension != 2 && roomIndex != -12);
+        if (roomType != 3 && self.gameDifficulty >= 0 && self.gameDifficulty <= 3) {
+            size_t table = self.gameDifficulty >= 2 ? kItemPoolGreedRoomPoolsOffset : kItemPoolRoomPoolsOffset;
+            int32_t pool = -1;
+            if (ReadOwnTaskMemory(game+kGameItemPoolOffset+table+roomType*sizeof(pool),&pool,sizeof(pool)) && pool >= 0 && pool <= 30)
+                state[@"room_pool"] = @(pool);
+        }
+    }
+    NSMutableArray *stats = [NSMutableArray array];
+    for (size_t index = 0; index < players.playerCount; ++index) {
+        NSMutableDictionary *player = [ReadDescriptionPlayer(players.players[index].address) mutableCopy];
+        if (player) {
+            player[@"index"] = @(index);
+            NSArray *previousPlayers = self.descriptionState[@"players"];
+            NSDictionary *previous = index < previousPlayers.count ? previousPlayers[index] : nil;
+            if (player[@"has_passive_belial"] && ![player[@"has_passive_belial"] isEqual:previous[@"has_passive_belial"]])
+                EIDLog(@"native passive Belial: player %lu type %@ enabled %@",(unsigned long)index,
+                    player[@"type"],player[@"has_passive_belial"]);
+            [stats addObject:player.copy];
+        }
+    }
+    state[@"players"] = stats.copy;
+    if (![self.descriptionState[@"players"] count] && stats.count)
+        EIDLog(@"native description context validated: %lu players; room %@ dimension %@ challenge %@",
+            (unsigned long)stats.count,state[@"room_type"],state[@"dimension"],state[@"challenge"]);
+    state[@"active_ids"] = self.activeCollectibleIDs.allObjects ?: @[];
+    NSDictionary *previousFloor = self.descriptionState[@"floor"];
+    if (previousFloor != state[@"floor"] && ![previousFloor isEqual:state[@"floor"]])
+        EIDLog(@"native description floor: %@",state[@"floor"] ?: @"unavailable");
+    self.descriptionState = state.copy;
 }
 
 - (void)updatePauseStateForGameplay:(BOOL)gameplayActive {
@@ -1652,12 +1836,34 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     self.gameplayActive = playerVectorResolved
         ? managedPlayers.playerCount > 0
         : playerRegionValid && playerResult.playerCount > 0;
+    NSInteger playerType = -1;
+    NSInteger difficulty = -1;
+    if (self.gameplayActive && playerResult.playerCount) {
+        int32_t nativeType = -1;
+        int32_t nativeDifficulty = -1;
+        vm_address_t game = 0;
+        if (ReadOwnTaskMemory(playerResult.players[0].address + kPlayerTypeOffset,
+                              &nativeType, sizeof(nativeType)) &&
+            nativeType >= 0 && nativeType <= 40) playerType = nativeType;
+        if (ReadGameObjectAddress(game) &&
+            ReadOwnTaskMemory(game + kGameDifficultyOffset, &nativeDifficulty,
+                              sizeof(nativeDifficulty)) &&
+            nativeDifficulty >= 0 && nativeDifficulty <= 3) difficulty = nativeDifficulty;
+    }
+    if (self.primaryPlayerType != playerType || self.gameDifficulty != difficulty) {
+        EIDLog(@"description context: player %ld difficulty %ld", (long)playerType, (long)difficulty);
+    }
+    self.primaryPlayerType = playerType;
+    self.gameDifficulty = difficulty;
     if (self.gameplayActive && playerResult.playerCount) {
         [self updateOwnedCollectibleCountsForPlayers:playerResult];
         [self updateNativeTransformationCountersForPlayers:playerResult];
         [self updateInventoryForPlayers:playerResult];
+        [self updateDescriptionStateForPlayers:playerResult];
         self.superBumActive = familiarRegionValid && familiarResult.superBumActive;
     } else if (playerVectorResolved) {
+        self.descriptionState = @{};
+        self.smeltedTrinketItems = @[];
         self.inventoryItems = @[];
         self.inventoryStateAvailable = NO;
         self.ownedCollectibleCounts = @{};
@@ -1741,6 +1947,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         (pickupResult.pickupCount || slotResult.pickupCount || effectResult.pickupCount ||
          gridSpikesResult.pickupCount)) {
         const VMPickup *closest = nullptr;
+        vm_address_t closestPlayer = 0;
+        NSInteger closestPlayerIndex = -1;
         float closestDistance = INFINITY;
         const VMRegionResult *sources[] = {
             &pickupResult, &slotResult, &effectResult, &gridSpikesResult
@@ -1757,13 +1965,21 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
                     if (distance < closestDistance) {
                         closestDistance = distance;
                         closest = &pickup;
+                        closestPlayer = player.address;
+                        closestPlayerIndex = (NSInteger)playerIndex;
                     }
                 }
             }
         }
         if (closest && closestDistance <= kMaximumDescriptionDistance * kMaximumDescriptionDistance) {
+            int32_t contextType = -1;
+            if (!ReadOwnTaskMemory(closestPlayer + kPlayerTypeOffset, &contextType,
+                                   sizeof(contextType)) || contextType < 0 || contextType > 40) {
+                contextType = -1;
+            }
             [pickups addObject:[[EIDPickupIdentity alloc] initWithVariant:closest->variant
-                                                                  subtype:closest->subtype]];
+                                                                  subtype:closest->subtype
+                                                               playerType:contextType playerIndex:closestPlayerIndex]];
         }
     }
     if (!pickups.count && !playerResult.playerCount) {
@@ -1792,6 +2008,21 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
 - (NSArray<EIDPickupIdentity *> *)currentInventoryItems {
     return self.inventoryStateAvailable ? self.inventoryItems.copy : @[];
+}
+
+- (NSArray<EIDPickupIdentity *> *)currentSmeltedTrinkets {
+    return self.inventoryStateAvailable ? self.smeltedTrinketItems : @[];
+}
+
+- (NSSet<NSString *> *)currentOwnedItemKeys {
+    NSMutableSet<NSString *> *keys = [NSMutableSet set];
+    NSArray *items = [[self currentInventoryItems] arrayByAddingObjectsFromArray:[self currentSmeltedTrinkets]];
+    for (EIDPickupIdentity *item in items) {
+        if (item.variant != EIDPickupVariantCollectible && item.variant != EIDPickupVariantTrinket) continue;
+        NSInteger subtype = item.variant == EIDPickupVariantTrinket ? item.subtype & 0x7fff : item.subtype;
+        if (subtype > 0) [keys addObject:[NSString stringWithFormat:@"5.%ld.%ld", (long)item.variant, (long)subtype]];
+    }
+    return keys.copy;
 }
 
 - (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID {

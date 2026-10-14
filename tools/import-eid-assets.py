@@ -13,6 +13,10 @@ TRANSFORM = re.compile(r'^\s*\["5\.(\d+)\.(\d+)"\]\s*=\s*"([0-9,]+)"')
 LANGUAGE_CODE = re.compile(r'^\s*local\s+languageCode\s*=\s*"([^"]+)"')
 TRANSFORM_BLOCK = re.compile(r'EID\.descriptions\[languageCode\]\.transformations\s*=\s*\{')
 QUOTED_VALUE = re.compile(r'^\s*"((?:\\.|[^"\\])*)"\s*,?')
+REPENTANCE_STAT_TOKENS = (
+    "Damage", "Speed", "Tears", "Range", "Shotspeed", "Luck",
+    "AngelChance", "DevilChance", "Tearsize",
+)
 
 TRANSFORM_NAMES = {
     1: "Guppy", 2: "Fun Guy", 3: "Lord of the Flies", 4: "Conjoined",
@@ -20,6 +24,23 @@ TRANSFORM_NAMES = {
     10: "Seraphim", 11: "Super Bum", 12: "Bookworm", 13: "Spider Baby",
     14: "Adult", 15: "Stompy",
 }
+
+
+def parse_inline_icons(source: str) -> dict[str, dict[str, object]]:
+    mapping = {}
+    for line in source.splitlines():
+        match = ICON.match(line)
+        if match:
+            token, animation, frame = match.groups()
+            mapping[token] = {"animation": animation, "frame": int(frame)}
+    # Upstream assigns these aliases after the literal table using an
+    # EID.isRepentance expression. Our static importer must resolve that branch.
+    for token in REPENTANCE_STAT_TOKENS:
+        if token + "REP" in mapping:
+            mapping[token] = dict(mapping[token + "REP"])
+    for quality in range(5):
+        mapping[f"Quality{quality}"] = {"animation": "Quality", "frame": quality}
+    return mapping
 
 
 def parse_transformations(path: Path, result: dict[str, list[int]]) -> None:
@@ -125,14 +146,7 @@ def main() -> int:
     for path in visual_resources:
         shutil.copy2(path, output / path.name)
 
-    mapping: dict[str, dict[str, object]] = {}
-    for line in data.read_text(encoding="utf-8-sig").splitlines():
-        match = ICON.match(line)
-        if match:
-            token, animation, frame = match.groups()
-            mapping[token] = {"animation": animation, "frame": int(frame)}
-    for quality in range(5):
-        mapping[f"Quality{quality}"] = {"animation": "Quality", "frame": quality}
+    mapping = parse_inline_icons(data.read_text(encoding="utf-8-sig"))
     (output / "eid_inline_icons.json").write_text(
         json.dumps(mapping, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )

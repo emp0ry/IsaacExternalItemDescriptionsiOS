@@ -20,7 +20,14 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 @interface EIDPickupIdentity : NSObject
 @property(nonatomic, readonly) NSInteger variant;
 @property(nonatomic, readonly) NSInteger subtype;
+// Native character closest to this pickup, or -1 when unavailable.
+@property(nonatomic, readonly) NSInteger playerType;
+@property(nonatomic, readonly) NSInteger playerIndex;
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype;
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType;
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex;
 @end
 
 @interface EIDNativeProbe : NSObject
@@ -32,6 +39,10 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 @property(atomic, readonly, getter=isPaused) BOOL paused;
 @property(atomic, readonly) uint32_t runSeed;
 @property(atomic, readonly) NSUInteger runCounter;
+@property(atomic, readonly) NSInteger primaryPlayerType;
+// 0 normal, 1 hard, 2 Greed, 3 Greedier; -1 when unavailable.
+@property(atomic, readonly) NSInteger gameDifficulty;
+@property(atomic, copy, readonly) NSDictionary *descriptionState;
 @property(atomic, readonly, getter=isOwnedCollectibleStateAvailable) BOOL ownedCollectibleStateAvailable;
 @property(atomic, readonly, getter=isInventoryStateAvailable) BOOL inventoryStateAvailable;
 @property(atomic, readonly, getter=isTransformationStateAvailable) BOOL transformationStateAvailable;
@@ -39,6 +50,9 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 - (void)start;
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups;
 - (NSArray<EIDPickupIdentity *> *)currentInventoryItems;
+- (NSArray<EIDPickupIdentity *> *)currentSmeltedTrinkets;
+// Normalized collectible/trinket identities for conditional descriptions.
+- (NSSet<NSString *> *)currentOwnedItemKeys;
 - (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID;
 - (NSInteger)transformationCollectibleCountForID:(NSInteger)collectibleID;
 - (NSInteger)nativeTransformationCounterForFormID:(NSInteger)formID;
