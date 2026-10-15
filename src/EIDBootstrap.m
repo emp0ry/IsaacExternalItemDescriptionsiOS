@@ -2,10 +2,12 @@
 #import "EIDLogger.h"
 #import "EIDNativeProbe.h"
 #import "EIDOverlayController.h"
+#import "EIDGameHost.h"
 #import <UIKit/UIKit.h>
 
 static EIDOverlayController *gEIDOverlay;
 static dispatch_once_t gEIDStartOnce;
+static NSTimer *gEIDStartTimer;
 
 static void EIDStart(void) {
     dispatch_once(&gEIDStartOnce, ^{
@@ -24,21 +26,32 @@ static void EIDStart(void) {
         [gEIDOverlay start];
     });
 }
+
+static void EIDTryStartWhenReady(void) {
+    if (gEIDOverlay) { [gEIDStartTimer invalidate]; gEIDStartTimer = nil; return; }
+    if (!EIDReadyGameWindow()) return;
+    EIDStart();
+    [gEIDStartTimer invalidate];
+    gEIDStartTimer = nil;
+}
+
+static void EIDScheduleStart(void) {
+    if (gEIDOverlay || gEIDStartTimer) return;
+    // Do not allocate the description database or attach views during the
+    // host's active notification, which may precede LiveContainer guest launch.
+    gEIDStartTimer = [NSTimer scheduledTimerWithTimeInterval:.1 repeats:YES block:^(__unused NSTimer *timer) {
+        EIDTryStartWhenReady();
+    }];
+}
 __attribute__((constructor)) static void EIDConstructor(void) {
     @autoreleasepool {
         dispatch_async(dispatch_get_main_queue(), ^{
             NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
             [center addObserverForName:UIApplicationDidBecomeActiveNotification
                                 object:nil queue:NSOperationQueue.mainQueue
-                            usingBlock:^(__unused NSNotification *note) { EIDStart(); }];
-            // Do not install UIKit overlays from the launch notification. Isaac creates
-            // and positions its virtual controls during that phase; inserting another
-            // top-level view there can leave the movement stick at its uninitialised
-            // origin until the first gameplay touch. Waiting for the active state keeps
-            // bootstrap independent of observer ordering during application launch.
-            if (UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
-                EIDStart();
-            }
+                            usingBlock:^(__unused NSNotification *note) { EIDScheduleStart(); }];
+            // Scheduling only polls readiness; it never creates UIKit overlays.
+            EIDScheduleStart();
         });
     }
 }

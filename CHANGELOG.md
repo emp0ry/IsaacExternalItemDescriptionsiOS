@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.9.0 - 2026-10-16
+
+### Added
+
+- Three-use Spindown Dice previews with native unlock/run eligibility, Car Battery,
+  Dad's Note stopping, disappearance text, and one arrow-connected result chain.
+- Separate Void and Black Rune stat predictions from copied native RNG, including
+  room, purchased-item, and single-item cases without consuming game RNG.
+- Current-Luck proc chances using standard-Repentance formulas.
+- Golden-trinket and Mom's Box effect multipliers and localized special cases.
+- Blank Card, Clear Rune, and Placebo mimic charge costs from native item metadata.
+- Flip alternate-pedestal descriptions with blind-item protection retained.
+- Active-slot collection-page reminders, independent of run inventory and unlocks.
+- Distinctive-model shop card/rune/Soul Stone descriptions while protecting shared
+  unknown models and Options? choices.
+- Player-specific PHD/False PHD effects, rewards, horse pills, Experimental Pill,
+  and combined-item behavior.
+
+### Fixed
+
+- Removed PHD/False PHD continuing to affect tooltip rewards through stale ownership.
+- Spindown now skips unavailable IDs completely instead of showing crossed-out
+  candidates; result arrows no longer insert a new line for each use.
+- Transparent sprite padding shrinking inline collectible/trinket icons, including
+  Spindown results and Pandora's Box's Bible and Red Key, without shrinking the font.
+- LiveContainer cold-launch joystick artifact: wait for Isaac's native render view
+  and advancing frames before loading EID, retaining the single-window overlay.
+
+### Documentation and validation
+
+- Four new full-resolution screenshots with explanatory captions in README and on
+  the website: absorption, Spindown, collection reminders, and current Luck.
+- Updated the attributed resource pin to `8b59d00c6828e333294639ad2b2b6875eae821cb`;
+  standard Repentance rules only, not Repentance+ patches.
+- User confirmed the inline icon sizes and LiveContainer joystick correction.
+  Screenshots document the new rendering; they do not prove every prediction.
+- Flip and exhaustive combination/device checks remain pending. See the
+  [complete notes](docs/RELEASE_NOTES_v0.9.0.md) and [test matrix](docs/TEST_MATRIX.md).
+
 ## 0.8.0 - 2026-10-14
 
 ### Added

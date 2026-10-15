@@ -3,6 +3,7 @@
 #import "EIDNativeProbe.h"
 #import "EIDLogger.h"
 #import "EIDTransformationProgress.h"
+#import "EIDGameHost.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -177,16 +178,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 
 - (UIWindow *)gameWindow {
-    UIWindow *fallback = nil;
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class]) continue;
-        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-            if (window.hidden || window.alpha <= 0 || window.windowLevel != UIWindowLevelNormal) continue;
-            if (window.isKeyWindow) return window;
-            if (!fallback) fallback = window;
-        }
-    }
-    return fallback;
+    return EIDReadyGameWindow();
 }
 
 - (void)attachOverlayIfNeeded {
@@ -460,7 +452,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         dispatch_async(dispatch_get_main_queue(), ^{
             NSMutableArray<EIDPickupIdentity *> *pickups = [NSMutableArray array];
             for (EIDPickupIdentity *identity in rawPickups)
-                [pickups addObject:[self.probe resolvedPillIdentity:identity]];
+                [pickups addObject:[self.probe resolvedSpindownIdentity:[self.probe resolvedPillIdentity:identity]]];
             self.scanInProgress = NO;
             [self updateMenuModeForGameplay:self.probe.gameplayActive];
             BOOL paused = self.probe.gameplayActive && self.probe.pauseStateAvailable &&

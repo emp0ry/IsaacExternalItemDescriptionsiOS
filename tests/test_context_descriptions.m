@@ -5,6 +5,7 @@
 #import "EIDTransformationProgress.h"
 #import "EIDNativeProbe.h"
 #include "EIDPillPolicy.h"
+void TestAdvancedDescriptions(NSDictionary *database);
 
 // A read-only native snapshot, sufficient to exercise the production tracker.
 @interface TestPlayerSnapshot : NSObject
@@ -159,6 +160,7 @@ int main(int argc, const char *argv[]) {
         NSDictionary *database = [NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil];
         NSCAssert(database[@"context_rules"], @"Context data is bundled");
         TestPillsAndCollection(database);
+        TestAdvancedDescriptions(database);
         for (NSString *token in @[@"Damage",@"Speed",@"Tears",@"Range",@"Shotspeed",@"Luck",
                                    @"AngelChance",@"DevilChance",@"Tearsize"]) {
             NSCAssert([EIDRepentanceStatIconAlias(token) isEqualToString:[token stringByAppendingString:@"REP"]],

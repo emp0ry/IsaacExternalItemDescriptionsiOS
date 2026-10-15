@@ -3,6 +3,8 @@
 #include "EIDPickupPolicy.hpp"
 #include "EIDNativeContextPolicy.hpp"
 #include "EIDPillPolicy.h"
+#include "EIDPredictionPolicy.hpp"
+#include "EIDSpindownPolicy.hpp"
 
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
@@ -218,6 +220,8 @@ constexpr size_t kPlayerTrinketSlotCount = 2;
 constexpr size_t kPlayerSmeltedTrinketsOffset = 0x1b60;
 // Consolation Prize's native pickup branch (0x100502140, 0x1005035d8).
 constexpr size_t kPlayerMoveSpeedOffset = 0x194c;
+// Lodestone's native proc path at 0x100513fa4 reads this float.
+constexpr size_t kPlayerLuckOffset = 0x1950;
 constexpr size_t kPlayerMaxFireDelayOffset = 0x1834;
 constexpr size_t kPlayerDamageOffset = 0x1844;
 constexpr size_t kPlayerTearRangeOffset = 0x1854;
@@ -254,6 +258,9 @@ constexpr size_t kManagerPersistentDataOffset = 0x204d0;
 constexpr size_t kPersistentCollectionOffset = 0xa68;
 constexpr uintptr_t kItemPoolGetPillEffectOffset = 0x879bf0;
 constexpr uintptr_t kPlayerHasCollectibleOffset = 0x4eeb74;
+constexpr uintptr_t kItemConfigIsAvailableOffset = 0x73fab0;
+constexpr uintptr_t kPersistentIsAchievementUnlockedOffset = 0x7027f8;
+constexpr size_t kManagerCollectibleConfigsOffset = 0x55f30;
 constexpr size_t kGameCursesOffset = 0xc;
 constexpr size_t kGameCurrentRoomOffset = 0x21550;
 // Entity_Pickup's Tainted Cain branch at 0x100720a64 reads these fields.
@@ -296,6 +303,7 @@ struct VMPickup {
     bool isShopItem = false;
     int32_t optionsPickupIndex = 0;
     int32_t rawPillSubtype = 0;
+    int32_t flipID = 0;
 };
 
 struct VMPlayer {
@@ -558,9 +566,67 @@ static NSDictionary *ReadDescriptionStats(vm_address_t player) {
         keys < 0 || keys > 9999) return nil;
     if (type == 18 && (!ReadOwnTaskMemory(player+kPlayerSoulChargeOffset,&soul,sizeof(soul)) || soul < 0 || soul > 9999)) return nil;
     if (type == 36 && (!ReadOwnTaskMemory(player+kPlayerBloodChargeOffset,&blood,sizeof(blood)) || blood < 0 || blood > 9999)) return nil;
-    return @{@"type":@(type), @"speed":@(speed), @"fire_delay":@(delay), @"damage":@(damage),
+    NSMutableDictionary *stats = [@{@"type":@(type), @"speed":@(speed), @"fire_delay":@(delay), @"damage":@(damage),
              @"range":@(range), @"coins":@(coins), @"bombs":@(bombs), @"keys":@(keys),
-             @"soul_charge":@(soul), @"blood_charge":@(blood)};
+             @"soul_charge":@(soul), @"blood_charge":@(blood)} mutableCopy];
+    float luck = 0;
+    if (ReadOwnTaskMemory(player+kPlayerLuckOffset,&luck,sizeof(luck)) && std::isfinite(luck) && fabsf(luck) < 100000)
+        stats[@"luck"] = @(luck);
+    return stats.copy;
+}
+
+static NSArray *ReadRoomPedestals(vm_address_t game, const ScanContext& context) {
+    // Native Black Rune iterates Room[0x19c8], count Room[0x19d4]. This is
+    // authoritative room order, not the heap scanner's limited visible list.
+    uintptr_t room = 0, list = 0; uint32_t count = 0;
+    if (!ReadOwnTaskMemory(game+kGameCurrentRoomOffset,&room,sizeof(room)) || !room ||
+        !ReadOwnTaskMemory(room+0x19c8,&list,sizeof(list)) ||
+        !ReadOwnTaskMemory(room+0x19d4,&count,sizeof(count)) || count > 4096 || (count && !list)) return nil;
+    std::vector<uintptr_t> entities(count);
+    if (count && !ReadOwnTaskMemory(list,entities.data(),count*sizeof(uintptr_t))) return nil;
+    NSMutableArray *pedestals = [NSMutableArray array];
+    for (uintptr_t address : entities) {
+        if (!address) continue;
+        uintptr_t vtable = 0;
+        if (!ReadOwnTaskMemory(address,&vtable,sizeof(vtable))) return nil;
+        if (!IsCandidateVTable(context.pickupVTables,context.pickupVTableCount,vtable)) continue;
+        std::array<uint8_t,0x578> object{};
+        if (!ReadOwnTaskMemory(address,object.data(),object.size())) return nil;
+        int32_t identity[3], price, options, crane;
+        memcpy(identity,object.data()+0x38,sizeof(identity));
+        memcpy(&price,object.data()+0x564,sizeof(price));
+        memcpy(&options,object.data()+0x56c,sizeof(options));
+        memcpy(&crane,object.data()+0x570,sizeof(crane));
+        if (identity[0] != 5 || identity[1] != 100 || identity[2] <= 0 || identity[2] > 732 ||
+            object[0x1c3] || !object[0x1c2] || price || crane > 0) continue;
+        if (options < 0 || options > 4096) return nil;
+        [pedestals addObject:@{@"id":@(identity[2]),@"options":@(options)}];
+    }
+    uintptr_t latestList = 0; uint32_t latestCount = 0;
+    if (!ReadOwnTaskMemory(room+0x19c8,&latestList,sizeof(latestList)) || latestList != list ||
+        !ReadOwnTaskMemory(room+0x19d4,&latestCount,sizeof(latestCount)) || latestCount != count) return nil;
+    return pedestals.copy;
+}
+
+static NSDictionary *ReadAbsorptionPrediction(vm_address_t player, unsigned count, bool rune) {
+    RemotePointerVector vector;
+    size_t offset = rune ? 0x1bf8 : 0x1bb0, identifier = rune ? 41 : 477;
+    if (!ReadOwnTaskMemory(player+offset,&vector,sizeof(vector)) || !vector.begin || vector.end < vector.begin ||
+        vector.capacity < vector.end || (vector.end-vector.begin)%16 ||
+        (vector.capacity-vector.begin)/16 > 4096 || (vector.end-vector.begin)/16 <= identifier) return nil;
+    EIDPredictionPolicy::RNG rng{}, confirmation{};
+    uintptr_t address = vector.begin+identifier*sizeof(rng);
+    if (!ReadOwnTaskMemory(address,&rng,sizeof(rng)) || !EIDPredictionPolicy::Valid(rng) ||
+        !ReadOwnTaskMemory(address,&confirmation,sizeof(confirmation)) || memcmp(&rng,&confirmation,sizeof(rng))) return nil;
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    for (NSString *mode in @[@"room",@"single",@"purchased"]) {
+        unsigned total = [mode isEqual:@"single"] ? 1 : [mode isEqual:@"purchased"] ? count+1 : count;
+        auto increases = EIDPredictionPolicy::Absorption(rng.seed,total,rune);
+        NSMutableArray *stats = [NSMutableArray arrayWithCapacity:6];
+        for (unsigned increase : increases) [stats addObject:@(increase)];
+        result[mode] = stats.copy;
+    }
+    return result.copy;
 }
 
 static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
@@ -590,6 +656,10 @@ static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
             [owned addObject:[NSString stringWithFormat:@"5.350.%d",item & 0x7fff]];
         for (const auto& pocket : pockets) if (pocket.type == 2 && pocket.id > 0)
             [owned addObject:[NSString stringWithFormat:@"5.100.%d",pocket.id]];
+        NSMutableArray *cards = [NSMutableArray array];
+        for (const auto& pocket : pockets) if (pocket.type == 1 && pocket.id > 0 && pocket.id <= 97)
+            [cards addObject:@(pocket.id)];
+        player[@"pocket_cards"] = cards.copy;
         player[@"owned"] = [owned.allObjects sortedArrayUsingSelector:@selector(compare:)];
     }
     return player.copy;
@@ -909,7 +979,7 @@ static bool IsDescribableVariant(int32_t variant) {
 static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype,
                         float x, float y, bool hasPosition,
                         bool isShopItem = false, int32_t optionsPickupIndex = 0,
-                        int32_t rawPillSubtype = 0) {
+                        int32_t rawPillSubtype = 0, int32_t flipID = 0) {
     if (!IsDescribableVariant(variant) || subtype <= 0 || subtype > 65535) return;
     // Subtype zero and out-of-range tarot IDs are unknown/hidden card identities.
     if (variant == EIDPickupVariantCard && subtype > 97) return;
@@ -917,7 +987,7 @@ static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype
     // and proximity must choose the actual nearest entity rather than the first copy.
     if (result.pickupCount < result.pickups.size()) {
         result.pickups[result.pickupCount++] = {
-            variant, subtype, x, y, hasPosition, isShopItem, optionsPickupIndex, rawPillSubtype
+            variant, subtype, x, y, hasPosition, isShopItem, optionsPickupIndex, rawPillSubtype, flipID
         };
     }
 }
@@ -1051,9 +1121,22 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
                     ? PickupVisibilityState(bytes + offset, size - offset)
                     : PickupVisibility::Visible;
                 if (visibility == PickupVisibility::Visible) {
+                    // Flip restores this native saved pickup record (0x1007188f8).
+                    // Read it only after blind/protection checks have succeeded.
+                    int32_t flipID = 0;
+                    uintptr_t alternate = 0;
+                    int32_t alternateIdentity[3]{};
+                    if (identity[1] == 100 && ReadOwnTaskMemory(referenceAddress+0x610,&alternate,sizeof(alternate)) && alternate &&
+                        ReadOwnTaskMemory(alternate,alternateIdentity,sizeof(alternateIdentity)) &&
+                        alternateIdentity[0] == 5 && alternateIdentity[1] == 100 && alternateIdentity[2] > 0 && alternateIdentity[2] <= 732) {
+                        uint8_t hidden = 1;
+                        // Serialization at 0x10059d890 stores ForceBlind at +0x23.
+                        if (ReadOwnTaskMemory(alternate+0x23,&hidden,sizeof(hidden)) && !hidden) flipID = alternateIdentity[2];
+                    }
+                    if (displayVariant == 100 && !displaySubtype && flipID) { displaySubtype = flipID; flipID = 0; }
                     AddVMPickup(result, displayVariant, displaySubtype, x, y,
                                 positionAvailable, price != 0, optionsPickupIndex,
-                                identity[1] == EIDPickupVariantPill ? identity[2] : 0);
+                                identity[1] == EIDPickupVariantPill ? identity[2] : 0,flipID);
                 } else if (visibility == PickupVisibility::Blind) {
                     result.blindPickupCount++;
                 } else {
@@ -1281,6 +1364,13 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
                       playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex
                   rawPillSubtype:(NSInteger)rawPillSubtype pillModifiers:(NSInteger)pillModifiers {
+    return [self initWithVariant:variant subtype:subtype playerType:playerType playerIndex:playerIndex
+        rawPillSubtype:rawPillSubtype pillModifiers:pillModifiers pickupContext:@{}];
+}
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex
+                  rawPillSubtype:(NSInteger)rawPillSubtype pillModifiers:(NSInteger)pillModifiers
+                   pickupContext:(NSDictionary *)pickupContext {
     self = [super init];
     if (self) {
         _variant = variant;
@@ -1289,6 +1379,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         _playerIndex = playerIndex;
         _rawPillSubtype = rawPillSubtype;
         _pillModifiers = pillModifiers;
+        _pickupContext = [pickupContext copy];
     }
     return self;
 }
@@ -1299,7 +1390,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     EIDPickupIdentity *other = object;
     return self.variant == other.variant && self.subtype == other.subtype &&
         self.playerType == other.playerType && self.playerIndex == other.playerIndex &&
-        self.rawPillSubtype == other.rawPillSubtype && self.pillModifiers == other.pillModifiers;
+        self.rawPillSubtype == other.rawPillSubtype && self.pillModifiers == other.pillModifiers &&
+        [self.pickupContext isEqual:other.pickupContext];
 }
 
 - (NSUInteger)hash {
@@ -1337,6 +1429,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic) ScanContext scanContext;
 @property(nonatomic) BOOL started;
 @property(nonatomic) BOOL wroteDevelopmentProbe;
+@property(nonatomic, copy) NSDictionary *lastSpindownLogSnapshot;
 @property(nonatomic) vm_address_t pickupRegionAddress;
 @property(nonatomic) vm_size_t pickupRegionSize;
 @property(nonatomic) vm_address_t playerRegionAddress;
@@ -1719,15 +1812,39 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         }
     }
     NSMutableArray *stats = [NSMutableArray array];
+    BOOL needsAbsorption = [self ownedCollectibleCountForID:477] > 0;
+    for (EIDPickupIdentity *identity in self.inventoryItems)
+        if (identity.variant == 300 && identity.subtype == 41) needsAbsorption = YES;
+    NSArray *pedestals = game && needsAbsorption ? ReadRoomPedestals(game,self.scanContext) : nil;
+    unsigned voidCount = 0, runeCount = 0;
+    NSMutableSet *options = [NSMutableSet set];
+    for (NSDictionary *pedestal in pedestals) {
+        NSNumber *option = pedestal[@"options"], *item = pedestal[@"id"];
+        if (option.intValue && [options containsObject:option]) continue;
+        if (option.intValue) [options addObject:option];
+        ++runeCount;
+        if (![self.activeCollectibleIDs containsObject:item] || item.intValue == 523) ++voidCount;
+    }
+    if (pedestals) state[@"room_pedestals"] = pedestals;
     for (size_t index = 0; index < players.playerCount; ++index) {
         NSMutableDictionary *player = [ReadDescriptionPlayer(players.players[index].address) mutableCopy];
         if (player) {
             player[@"index"] = @(index);
+            if (pedestals && self.activeCollectibleIDs.count) {
+                NSDictionary *voidPrediction = ReadAbsorptionPrediction(players.players[index].address,voidCount,false);
+                NSDictionary *runePrediction = ReadAbsorptionPrediction(players.players[index].address,runeCount,true);
+                if (voidPrediction) player[@"void_prediction"] = voidPrediction;
+                if (runePrediction) player[@"black_rune_prediction"] = runePrediction;
+            }
             NSArray *previousPlayers = self.descriptionState[@"players"];
             NSDictionary *previous = index < previousPlayers.count ? previousPlayers[index] : nil;
             if (player[@"has_passive_belial"] && ![player[@"has_passive_belial"] isEqual:previous[@"has_passive_belial"]])
                 EIDLog(@"native passive Belial: player %lu type %@ enabled %@",(unsigned long)index,
                     player[@"type"],player[@"has_passive_belial"]);
+            if (player[@"void_prediction"] && !previous[@"void_prediction"])
+                EIDLog(@"copied Void RNG validated: player %lu, %u absorbable passives",(unsigned long)index,voidCount);
+            if (player[@"black_rune_prediction"] && !previous[@"black_rune_prediction"])
+                EIDLog(@"copied Black Rune RNG validated: player %lu, %u absorbable pedestals",(unsigned long)index,runeCount);
             [stats addObject:player.copy];
         }
     }
@@ -2044,7 +2161,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
             [pickups addObject:[[EIDPickupIdentity alloc] initWithVariant:closest->variant
                                                                   subtype:closest->subtype
                                                                playerType:contextType playerIndex:closestPlayerIndex
-                                                           rawPillSubtype:closest->rawPillSubtype]];
+                                                           rawPillSubtype:closest->rawPillSubtype pillModifiers:-1
+                                                            pickupContext:@{@"pedestal":@(closest->variant == 100),
+                                                                @"shop":@(closest->isShopItem),@"options":@(closest->optionsPickupIndex),
+                                                                @"flip_id":@(closest->flipID)}]];
         }
     }
     if (!pickups.count && !playerResult.playerCount) {
@@ -2076,6 +2196,89 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     NSMutableArray *items = [NSMutableArray array];
     for (EIDPickupIdentity *item in self.inventoryItems) [items addObject:[self resolvedPillIdentity:item]];
     return items.copy;
+}
+
+- (EIDPickupIdentity *)resolvedSpindownIdentity:(EIDPickupIdentity *)identity {
+    if (identity.variant != EIDPickupVariantCollectible) return identity;
+    NSMutableDictionary *context = identity.pickupContext.mutableCopy;
+    context[@"spindown"] = @{@"validated":@NO};
+    auto finish = [&]() -> EIDPickupIdentity * {
+        return [[EIDPickupIdentity alloc] initWithVariant:identity.variant subtype:identity.subtype
+            playerType:identity.playerType playerIndex:identity.playerIndex
+            rawPillSubtype:identity.rawPillSubtype pillModifiers:identity.pillModifiers pickupContext:context];
+    };
+    if (!self.supportedBuild || !NSThread.isMainThread) return finish();
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
+    vm_address_t game = 0;
+    VMRegionResult players;
+    if (!header || !ReadGameObjectAddress(game) || !self.playerVectorOffset ||
+        !ReadPlayerVector(self.scanContext,game+self.playerVectorOffset,false,players) ||
+        identity.playerIndex < 0 || (size_t)identity.playerIndex >= players.playerCount) return finish();
+    uintptr_t image = reinterpret_cast<uintptr_t>(header);
+    uintptr_t player = players.players[(size_t)identity.playerIndex].address;
+    using HasCollectible = bool (*)(uintptr_t,uint32_t,bool);
+    HasCollectible has = reinterpret_cast<HasCollectible>(image+kPlayerHasCollectibleOffset);
+    if (!has(player,723,false)) { context[@"spindown"] = @{@"owned":@NO}; return finish(); }
+    BOOL battery = has(player,356,false);
+    uint32_t availablePrologue = 0, unlockedPrologue = 0;
+    uintptr_t manager = 0;
+    if (!ReadOwnTaskMemory(image+kItemConfigIsAvailableOffset,&availablePrologue,sizeof(availablePrologue)) ||
+        availablePrologue != 0xd10143ff ||
+        !ReadOwnTaskMemory(image+kPersistentIsAchievementUnlockedOffset,&unlockedPrologue,sizeof(unlockedPrologue)) ||
+        unlockedPrologue != 0x3100083f ||
+        !ReadOwnTaskMemory(image+kManagerGlobalOffset,&manager,sizeof(manager)) || !manager ||
+        !ReadCollectionSnapshot()) return finish(); // Validate the selected Repentance slot, not its collection flags.
+    RemotePointerVector vector;
+    if (!ReadOwnTaskMemory(manager+kManagerCollectibleConfigsOffset,&vector,sizeof(vector)) ||
+        !vector.begin || vector.end < vector.begin || vector.capacity < vector.end ||
+        (vector.end-vector.begin)%sizeof(uintptr_t) || (vector.capacity-vector.begin)%sizeof(uintptr_t) ||
+        (vector.capacity-vector.begin)/sizeof(uintptr_t) > 4096 ||
+        (vector.end-vector.begin)/sizeof(uintptr_t) != kMaximumCollectibleID+1) return finish();
+    std::array<uintptr_t,kMaximumCollectibleID+1> configs{};
+    if (!ReadOwnTaskMemory(vector.begin,configs.data(),sizeof(configs))) return finish();
+    using IsAvailable = bool (*)(uintptr_t,uint32_t);
+    using IsUnlocked = bool (*)(uintptr_t,int32_t);
+    IsAvailable available = reinterpret_cast<IsAvailable>(image+kItemConfigIsAvailableOffset);
+    IsUnlocked unlocked = reinterpret_cast<IsUnlocked>(image+kPersistentIsAchievementUnlockedOffset);
+    std::vector<EIDSpindownPolicy::Step> steps;
+    using EIDSpindownPolicy::Availability;
+    bool valid = EIDSpindownPolicy::Build((int32_t)identity.subtype,battery,[&](int32_t id) {
+        uintptr_t config = configs[(size_t)id];
+        if (!config) return Availability::Missing;
+        int32_t nativeID = -1, achievement = -3;
+        uint8_t hidden = 0xff;
+        if (!ReadOwnTaskMemory(config+4,&nativeID,sizeof(nativeID)) || nativeID != id ||
+            !ReadOwnTaskMemory(config+0xb7,&hidden,sizeof(hidden)) || hidden > 1 ||
+            !ReadOwnTaskMemory(config+0x50,&achievement,sizeof(achievement)) || achievement < -2 || achievement > 637)
+            return Availability::Unknown;
+        if (hidden) return Availability::Hidden;
+        // Native Spindown calls IsAvailable(config, 3) at 0x100585474.
+        // Flags 1|2 apply run restrictions + achievement unlocks. Callback bit
+        // 8 is deliberately absent; this does not reroll, consume RNG or write saves.
+        if (available(config,3)) return Availability::Available;
+        return unlocked(manager+kManagerPersistentDataOffset,achievement) ? Availability::Restricted : Availability::Locked;
+    },steps);
+    if (!valid) return finish();
+    NSMutableArray *rows = [NSMutableArray array];
+    NSUInteger lockedCount = 0, restrictedCount = 0;
+    for (const auto& step : steps) {
+        NSMutableArray *excluded = [NSMutableArray array];
+        for (const auto& item : step.excluded) {
+            BOOL locked = item.reason == Availability::Locked;
+            lockedCount += locked; restrictedCount += !locked;
+            [excluded addObject:@{@"id":@(item.id),@"locked":@(locked)}];
+        }
+        [rows addObject:@{@"result":@(step.result),@"excluded":excluded.copy}];
+    }
+    NSDictionary *snapshot = @{@"owned":@YES,@"validated":@YES,@"battery":@(battery),@"steps":rows.copy};
+    context[@"spindown"] = snapshot;
+    NSDictionary *logSnapshot = @{@"run":@(self.runCounter),@"item":@(identity.subtype),@"snapshot":snapshot};
+    if (![logSnapshot isEqual:self.lastSpindownLogSnapshot]) {
+        self.lastSpindownLogSnapshot = logSnapshot;
+        EIDLog(@"native Spindown verified: item %ld, %lu locked and %lu run-restricted candidates skipped",
+            (long)identity.subtype,(unsigned long)lockedCount,(unsigned long)restrictedCount);
+    }
+    return finish();
 }
 
 - (EIDPickupIdentity *)resolvedPillIdentity:(EIDPickupIdentity *)identity {

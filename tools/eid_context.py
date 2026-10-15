@@ -2,7 +2,47 @@
 from __future__ import annotations
 
 import re
+import ast
 from pathlib import Path
+
+
+def luck_formulas(source: Path) -> dict:
+    """Export arithmetic trees, not executable Lua, for standard Repentance."""
+    text = (source / "features/eid_data.lua").read_text(encoding="utf-8-sig")
+    text = text.split("-- Luck formulas", 1)[1].split("-- Number of Health Ups", 1)[0]
+    operations = {ast.Add: "add", ast.Sub: "sub", ast.Mult: "mul", ast.Div: "div"}
+
+    def tree(node):
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            return node.value
+        if isinstance(node, ast.Name) and node.id == "luck":
+            return {"op": "luck"}
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            return {"op": "neg", "args": [tree(node.operand)]}
+        if isinstance(node, ast.BinOp) and type(node.op) in operations:
+            return {"op": operations[type(node.op)], "args": [tree(node.left), tree(node.right)]}
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and not node.keywords and \
+                node.func.id in {"min", "max", "floor", "ceil"}:
+            return {"op": node.func.id, "args": [tree(arg) for arg in node.args]}
+        raise ValueError(f"unsupported luck expression: {ast.dump(node)}")
+
+    formulas, enabled, branches = {}, True, []
+    for line in text.splitlines():
+        line = re.sub(r"--.*", "", line).strip()
+        if line in {"if EID.isRepentance then", "if EID.isRepentancePlus then"}:
+            branches.append(enabled)
+            enabled = enabled and line == "if EID.isRepentance then"
+        elif line == "end":
+            enabled = branches.pop()
+        elif enabled:
+            match = re.fullmatch(r'EID\.LuckFormulas\["([^"]+)"\] = function\(luck\) return (.+) end', line)
+            if match:
+                formulas[match[1]] = tree(ast.parse(match[2].replace("math.", ""), mode="eval").body)
+            elif line and line != "EID.LuckFormulas = {}":
+                raise ValueError(f"unsupported luck formula declaration: {line}")
+    if branches:
+        raise ValueError("unclosed luck formula branch")
+    return formulas
 
 
 # Reviewed legacy base-description lines in upstream's AB+ translations. The

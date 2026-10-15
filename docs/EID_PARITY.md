@@ -1,6 +1,6 @@
 # Original EID parity target
 
-The `main` branch contains the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions. The reference for v0.8.0 is the pinned standard-Repentance revision `ee7f463a00c11263272ee737a52961fb562d26b8`, not Repentance+.
+The `main` branch contains the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions. The reference for v0.9.0 is revision `8b59d00c6828e333294639ad2b2b6875eae821cb`, importing only standard-Repentance rules and excluding Repentance+ patches.
 
 ## Reference defaults
 
@@ -91,6 +91,26 @@ frames when importing assets. The renderer also resolves these aliases for older
 resource bundles, which previously omitted the sword before a wisp's DPS value.
 Font size and icon attachment scaling are unchanged.
 
+Native inline collectible/trinket sprites are now cropped to their nontransparent
+bounds before caching and scaling. Their original 32-pixel canvases contain very
+different padding: the visible Red Key is only 14 pixels tall, while Spindown is
+19. Cropping prevents the canvas padding from reducing these icons relative to
+other inline symbols, without enlarging the description font or battery.
+
+## Guest startup readiness
+
+The bootstrap waits for the supported game's `AAPLOpenGLView`, its native
+controller and `_displayLink`, landscape render bounds, and two distinct observed
+frame timestamps. Application activity alone is insufficient when LiveContainer's
+host is already active before its guest has finished initialization. Window
+selection uses only already-loaded game views; it neither forces view loading nor
+selects an unrelated host window just because that window is key. The overlay
+retains the existing single-window hit-testing architecture.
+
+The user confirmed that the startup-order correction resolves the stuck joystick
+on the affected LiveContainer device, and separately confirmed the inline artwork
+size correction. This is not a claim of testing every iOS/LiveContainer combination.
+
 ## Weapon overrides and synergies
 
 The importer expands upstream's complete **Overrides / Overridden By** block
@@ -160,8 +180,58 @@ context. Only the selected reward segment receives the green color.
 Smelted trinkets are decoded from a bounded native vector of regular/golden
 int16 count pairs. Invalid pointer ranges, strides, or counts fail closed.
 They have their own pause section, are included in owned-item checks, and are
-cleared with native run state. Counts are presence information for these
-descriptions, not a new implementation of every golden-trinket multiplier.
+cleared with native run state. Golden trinkets and Mom's Box additionally use
+the original standard-Repentance per-trinket multiplier/replacement tables.
+
+## Advanced contextual previews
+
+Luck formulas are exported as restricted arithmetic trees, not executable Lua.
+Repentance overrides are applied; Repentance+ overrides are excluded. The
+native Luck float is Player + `0x1950` (independently used by Lodestone's proc).
+
+Spindown previews three uses and consumes two valid steps per use with Car
+Battery, except that Dad's Note stops the chain. On the main thread, the native
+adapter revalidates the player vector and live Spindown/Car Battery ownership,
+then reads bounded collectible config pointers from Manager + `0x55f30`.
+It calls `ItemConfig::IsAvailable(config, 3)` at image + `0x73fab0`, the same
+flags and routine used by native Spindown at `0x100585474`. This includes
+achievement locks and current-run restrictions; hidden/missing config IDs are
+skipped. No reroll or RNG API is invoked. Both queried routine prologues and
+the executable UUID are validated before calls. The callback flag (8) is off.
+
+The achievement getter at image + `0x7027f8` distinguishes achievement locks
+from other restrictions. It reads PersistentGameData's achievement bytes at
+`+0x28` (638 entries) and respects the game's trial/daily override state. The
+loader independently confirms the array. Collection-page flags at `+0xa68`
+are unrelated and never determine availability. Locked and other unavailable
+candidates are skipped completely, without crossed-out icons, names or warning
+rows. Results form one arrow-connected paragraph, without a forced line break or
+repeated Spindown prefix per use. Each use shows only the real eligible result. Missing native data
+suppresses the chain; it does not assume everything is unlocked. Disappearance
+is shown even after preceding successful uses. Absorbed Spindown inside Void
+is not tracked yet.
+
+Mimic charges are parsed from installed `pocketitems.xml`, including rune/Soul
+Stone type distinctions and zero-based pill-effect IDs. Unknown/random pills
+never reveal an effect through their charge cost. Flip's alternate identity is
+read from Pickup + `0x610`, saved record subtype + `8`; ForceBlind is saved at
+record + `0x23`. Existing curse, sprite and native blind checks remain in force.
+Flip remains included in the build, but live device verification is pending.
+
+Absorption previews copy RNG records; they never invoke native RNG functions.
+Void uses Player's collectible RNG vector + `0x1bb0`, entry 477; Black Rune
+uses the card RNG vector + `0x1bf8`, entry 41. Sixteen-byte records contain
+seed and shifts. Only nonzero seeds with verified shifts `(5,9,7)` are accepted.
+Void advances the private copy once before the Fisher-Yates stat selections;
+Black Rune does not. Both produce two increments per absorbed pedestal.
+
+Room entities come from Room + `0x19c8`, count + `0x19d4`, with bounded spans,
+RTTI, removal, shop and crane checks. Shared Options? groups count only their
+first eligible pedestal. Void ignores actives except Moving Box; Black Rune
+includes them. Preview refreshes with immutable native context, off the main
+thread. Co-op chooses the nearest player's inventory and RNG. Missing data
+suppresses the affected feature. Live device testing is required in addition
+to host arithmetic/translation tests; see `testing-advanced-previews.md`.
 
 Transformation counts are rendered directly from the tracker for collectibles,
 identified normal/horse pills, and assigned trinkets. This avoids an asynchronous

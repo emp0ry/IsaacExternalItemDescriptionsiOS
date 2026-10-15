@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: wofsauge/External-Item-Descriptions
-          ref: ee7f463a00c11263272ee737a52961fb562d26b8
+          ref: 8b59d00c6828e333294639ad2b2b6875eae821cb
           path: upstream-eid
 
       - name: Install packaging tools

@@ -34,6 +34,15 @@ class BundledDescriptionsTests(unittest.TestCase):
     def test_all_upstream_languages_are_present(self) -> None:
         self.assertEqual(set(self.payload["languages"]), LANGUAGES)
 
+    def test_advanced_standard_repentance_tables_are_bundled(self) -> None:
+        self.assertGreaterEqual(len(self.payload["luck_formulas"]), 40)
+        self.assertGreaterEqual(len(self.payload["golden_trinket_data"]), 70)
+        self.assertEqual(self.payload["golden_trinket_data"]["35"], 2)
+        english = self.payload["languages"]["en_us"]
+        self.assertTrue(english["golden_trinket_effects"]["53"])
+        self.assertIn("{1}", english["context_strings"]["LuckModifier"])
+        self.assertIn("{1}", english["context_strings"]["VariableCharge"])
+
     def test_english_reference_tables_are_complete(self) -> None:
         english = self.payload["languages"]["en_us"]
         self.assertEqual(len(english["collectibles"]), 732)

@@ -38,8 +38,25 @@ require("if (self.descriptionNeedsRefresh && !self.menuMode &&")
 require("self.descriptionNeedsRefresh = NO;")
 NATIVE = (ROOT / "src" / "EIDNativeProbe.mm").read_text(encoding="utf-8")
 PRESENTATION = (ROOT / "src" / "EIDParityPresentation.m").read_text(encoding="utf-8")
+BOOTSTRAP = (ROOT / "src" / "EIDBootstrap.m").read_text(encoding="utf-8")
+HOST = (ROOT / "src" / "EIDGameHost.mm").read_text(encoding="utf-8")
 assert "!NSThread.isMainThread" in NATIVE
 assert "self.pillModifiers == other.pillModifiers" in NATIVE
 assert 'context[@"pill_modifiers"] = @(pickup.pillModifiers)' in PRESENTATION
+assert "resolvedSpindownIdentity:" in SOURCE
+assert "available(config,3)" in NATIVE
+assert "availablePrologue != 0xd10143ff" in NATIVE
+assert "unlockedPrologue != 0x3100083f" in NATIVE
+assert "UnavailableItemIcon" not in PRESENTATION
+assert "NSStrikethroughStyleAttributeName" not in PRESENTATION
+assert "image = EIDTrimVisiblePixels(image);" in PRESENTATION
+assert "return EIDReadyGameWindow();" in SOURCE
+assert "if (!EIDReadyGameWindow()) return;" in BOOTSTRAP
+assert "viewIfLoaded" in HOST
+assert "AAPLOpenGLView" in HOST and "_displayLink" in HOST
+assert "link.timestamp" in HOST
+assert "makeKeyAndVisible" not in HOST + BOOTSTRAP + SOURCE
+assert "touchesBegan:" not in HOST + BOOTSTRAP + SOURCE
+assert "isKeyWindow" not in HOST
 
 print("Overlay architecture test passed")

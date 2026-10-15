@@ -21,6 +21,28 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class ImportEIDTests(unittest.TestCase):
+    def test_luck_formula_import_uses_repentance_not_plus(self) -> None:
+        from eid_context import luck_formulas
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+            (source / "features").mkdir()
+            target = source / "features/eid_data.lua"
+            target.write_text('-- Luck formulas\nEID.LuckFormulas = {}\n'
+                'EID.LuckFormulas["5.100.1"] = function(luck) return 50 + luck * 10 end\n'
+                'if EID.isRepentance then\n'
+                'EID.LuckFormulas["5.100.1"] = function(luck) return 100 / math.max(1, 6 - math.floor(luck)) end\n'
+                'end\nif EID.isRepentancePlus then\n'
+                'EID.LuckFormulas["5.100.1"] = function(luck) return 999 end\nend\n'
+                '-- Number of Health Ups\n', encoding="utf-8")
+            expression = luck_formulas(source)["5.100.1"]
+            self.assertEqual(expression["op"], "div")
+            self.assertEqual(expression["args"][0], 100)
+            target.write_text('-- Luck formulas\nEID.LuckFormulas = {}\n'
+                'EID.LuckFormulas["5.100.1"] = function(luck) return dangerous(luck) end\n'
+                '-- Number of Health Ups\n', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                luck_formulas(source)
+
     def parse(
         self, body: str, names: set[str], *, pill_effect_ids: bool = False
     ) -> dict[int, dict[str, str]]:

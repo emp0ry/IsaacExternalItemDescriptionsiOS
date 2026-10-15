@@ -19,25 +19,26 @@ Download the current files from [GitHub Releases](https://github.com/emp0ry/Isaa
 
 A standalone `IsaacExternalItemDescriptions.dylib`, `descriptions.json`, and `SHA256SUMS` are also provided. No Isaac IPA or copyrighted game bundle is distributed.
 
-### What's new in v0.8.0
+### What's new in v0.9.0
 
-Character-aware descriptions, weapon override warnings, Car Battery and Tarot Cloth
-synergies, Book of Virtues wisp previews, Judas' Birthright bonuses, Tainted Cain
-salvage information, smelted trinkets, Consolation Prize predictions, and current-floor
-highlighting for Pandora's Box. This release also fixes pill transformation counters,
-Greed notices, character names, and missing stat icons, and adds an optional description
-background and a new screenshot gallery.
+- Spindown Dice previews three eligible results in an arrow-connected chain,
+  respecting native unlocks, run restrictions, and Car Battery.
+- Void and Black Rune preview absorption stat gains without advancing game RNG.
+- Luck-sensitive effects show their chance at your current Luck. Golden trinkets
+  and Mom's Box show their adjusted effects.
+- Collection-page reminders flag collectibles not yet picked up on the active
+  save slot. This does not unlock achievements or change saves.
+- Blank Card, Clear Rune, and Placebo show context-specific charge costs.
+  Flip previews native alternate pedestals; its gameplay verification is pending.
+- PHD/False PHD use player-specific pill effects and rewards, including horse
+  pills and item removal. Distinctive card, rune, and Soul Stone models can be
+  described in shops without revealing shared-model unknown pickups.
+- Fixed undersized inline item artwork and the stuck joystick on LiveContainer
+  cold launch. Four new gameplay screenshots illustrate the new previews.
 
-### In development
-
-- A final collection-page reminder for collectibles not yet picked up on the active save slot. This assists collection completion; it does not unlock achievements or alter saves.
-- Shop descriptions for unmistakable pickup models, including Credit Card, Black Rune, Dice Shard, and Soul Stones. Shared card/rune models remain protected.
-- Player-specific PHD/False PHD pill effects, False PHD damage/black-heart rewards, and Experimental Pill modifiers, with original EID translations and the correct native pill color.
-
-See [the test checklist](docs/testing-collection-and-pills.md) before reporting these additions as device-verified.
-
-Read the [complete v0.8.0 release notes](docs/RELEASE_NOTES_v0.8.0.md) for every
-addition, fix, and remaining testing limitation.
+Read the [complete v0.9.0 release notes](docs/RELEASE_NOTES_v0.9.0.md) for all
+changes and verification limits. The previous character, weapon, wisp, floor,
+and inventory additions remain documented in the [v0.8.0 notes](docs/RELEASE_NOTES_v0.8.0.md).
 
 ## Features
 
@@ -73,6 +74,12 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Greed and Greedier use upstream mode-specific descriptions and room-to-wave wording where supported.
 - Weapon descriptions warn when an owned item overrides a pickup's effect, and in the reverse direction when the pickup would override an owned item. Repentance weapon priorities and special synergies follow original EID, including Dr. Fetus/Trisagion, Epic Fetus, Brimstone, Mom's Knife, Tech X, C Section, Spirit Sword, and Azazel's native weapon.
 - Car Battery and Tarot Cloth apply original Repentance conditional descriptions, including numeric effect changes, special behavior, and no-synergy active items.
+- Golden trinkets and Mom's Box use upstream's per-trinket multipliers, custom replacements, and translated bonus text; changed values are highlighted in gold.
+- Luck-sensitive effects show the current player's actual proc chance using the original standard-Repentance formulas and native Luck value.
+- Spindown Dice previews three uses using the same native availability check as the iOS effect. Locked, run-restricted, missing and hidden IDs are skipped completely; only actual eligible results are displayed. The chain accounts for Car Battery, stops at Dad's Note, and shows item disappearance. Unlocks are checked separately from collection-page ownership.
+- Blank Card, Clear Rune, and Placebo show the displayed card/rune/identified pill's mimic charge cost from the installed game's XML. Unknown pills do not reveal costs; Blank Card + Tarot Cloth has its additional upstream notes.
+- Flip reads the native alternate-pedestal record and previews its item and description, without bypassing blind-item protection. It remains included in the build; live device verification is pending.
+- Void and Black Rune preview stat gains from copied native RNG and the authoritative room entity list. Room, purchased-item, and single-item cases use separate predictions; a missing/invalid native snapshot suppresses the forecast instead of guessing.
 - Swallowed/smelted normal and golden trinkets appear in a separate pause-inventory section and participate in owned-item conditional checks.
 - Consolation Prize previews the lowest normalized stat and lowest weighted consumable pool. Tied candidates have a `?`; Bethany's soul charges and Tainted Bethany's blood charges are included.
 - Pandora's Box highlights the current native floor payout in green, including Greed/Greedier, the late-game route, Void, and Home. Strange Key highlights its overriding reward instead. Missing floor entries in older translations remain unhighlighted.
@@ -85,6 +92,7 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Runes use the correct subtype frame from the attributed original EID card/rune atlas.
 - Identified and unidentified pills use their actual native pill color mapped to the corresponding original EID `Pills` frame.
 - Original EID inline symbols, Q0-Q4 quality icons, transformation icons, colors, and description markup are rendered through UIKit.
+- Inline collectible and trinket artwork is cropped to its visible pixels before scaling, so transparent sprite padding does not shrink items in predictions and conditional descriptions.
 - Active collectibles show the original EID battery and maximum-charge indicator. Normal, timed, and special/dynamic charge types use their matching upstream symbols.
 - Compact outlined text is shown without a background by default. An optional rounded black backdrop has its own opacity setting.
 - Item title, icon, and description disappear together after an item is collected.
@@ -104,6 +112,11 @@ The **EID ⚙** button appears in the bottom-right corner while Isaac is in a me
 
 The default overlay position is 140 px from the left and 50 px from the top.
 
+EID waits for the native Isaac render view and advancing frame timestamps before
+loading its database or attaching the overlay. It uses the game's existing window;
+it does not create a second window or synthesize joystick touches. The user confirmed
+that this fixes the stuck joystick on the affected LiveContainer device.
+
 ### Pause inventory
 
 While a run is paused, an **EID Items** button appears in the top-left corner and
@@ -118,6 +131,14 @@ EID description. The button and browser disappear as soon as gameplay resumes.
 Actual gameplay from the native iOS version. Click a screenshot to view it at full resolution.
 
 <table>
+  <tr>
+    <td width="50%"><a href="docs/images/eid-absorption-preview.png"><img src="docs/images/eid-absorption-preview.png" alt="Breakfast showing separate Void and Black Rune absorption stat predictions" width="100%"></a><br><strong>Void and Black Rune previews</strong><br>See the separate stat gains before absorbing a pedestal.</td>
+    <td width="50%"><a href="docs/images/eid-spindown-preview.png"><img src="docs/images/eid-spindown-preview.png" alt="Blood Bag with a Spindown chain leading to Brimstone, Dead Bird, and 9 Volt" width="100%"></a><br><strong>Spindown Dice results</strong><br>Three eligible results connected by arrows; unavailable items are skipped.</td>
+  </tr>
+  <tr>
+    <td><a href="docs/images/eid-collection-reminder.png"><img src="docs/images/eid-collection-reminder.png" alt="Twisted Pair with a reminder that it has not yet been picked up for the current save's collection page" width="100%"></a><br><strong>Collection completion reminder</strong><br>Flags an item still missing from the active save slot's collection page.</td>
+    <td><a href="docs/images/eid-current-luck.png"><img src="docs/images/eid-current-luck.png" alt="Lodestone showing a 33.3 percent proc chance at the player's current 3 Luck" width="100%"></a><br><strong>Your current Luck chance</strong><br>Lodestone shows 33.3% at 3 Luck, alongside its base description.</td>
+  </tr>
   <tr>
     <td width="50%"><a href="docs/images/eid-weapon-overrides.png"><img src="docs/images/eid-weapon-overrides.png" alt="Dr. Fetus description warning that it overrides Brimstone" width="100%"></a><br>Weapon override warnings</td>
     <td width="50%"><a href="docs/images/eid-pandoras-box.png"><img src="docs/images/eid-pandoras-box.png" alt="Pandora's Box with the current Basement I reward highlighted in green" width="100%"></a><br>Current-floor reward highlighting</td>

@@ -22,10 +22,12 @@ STAGED_DESCRIPTION_DB := $(PARITY_BUNDLE)/descriptions.json
 
 SOURCES := \
 	$(PROJECT_ROOT)/src/EIDBootstrap.m \
+	$(PROJECT_ROOT)/src/EIDGameHost.mm \
 	$(PROJECT_ROOT)/src/EIDLogger.m \
 	$(PROJECT_ROOT)/src/EIDDescriptionStore.m \
 	$(PROJECT_ROOT)/src/EIDContextDescriptions.m \
 	$(PROJECT_ROOT)/src/EIDDynamicDescriptions.m \
+	$(PROJECT_ROOT)/src/EIDAdvancedDescriptions.m \
 	$(PROJECT_ROOT)/src/EIDCharacterSynergies.m \
 	$(PROJECT_ROOT)/src/EIDQualityFix.m \
 	$(PROJECT_ROOT)/src/EIDNativeProbe.mm \
@@ -110,7 +112,9 @@ test:
 	"$(PROJECT_ROOT)/build/test_pickup_policy"
 	"$(HOST_CLANGXX)" -isysroot "$(HOST_SDK)" -fobjc-arc -Wall -Wextra -Werror -I"$(PROJECT_ROOT)/include" \
 		"$(PROJECT_ROOT)/tests/test_context_descriptions.m" "$(PROJECT_ROOT)/src/EIDContextDescriptions.m" \
+		"$(PROJECT_ROOT)/tests/test_advanced_descriptions.m" \
 		"$(PROJECT_ROOT)/src/EIDDynamicDescriptions.m" \
+		"$(PROJECT_ROOT)/src/EIDAdvancedDescriptions.m" \
 		"$(PROJECT_ROOT)/src/EIDCharacterSynergies.m" \
 		"$(PROJECT_ROOT)/src/EIDTransformationProgress.m" "$(PROJECT_ROOT)/src/EIDLogger.m" \
 		-framework Foundation -o "$(PROJECT_ROOT)/build/test_context_descriptions"
@@ -119,6 +123,7 @@ test:
 	python3 "$(PROJECT_ROOT)/tests/test_import_eid.py"
 	python3 "$(PROJECT_ROOT)/tests/test_import_eid_assets.py"
 	python3 "$(PROJECT_ROOT)/tests/test_bundled_descriptions.py"
+	python3 "$(PROJECT_ROOT)/tests/test_documentation.py"
 	python3 -m py_compile "$(PROJECT_ROOT)/tools/import-eid.py" "$(PROJECT_ROOT)/tools/eid_context.py" "$(PROJECT_ROOT)/tools/import-eid-assets.py" "$(PROJECT_ROOT)/tools/macho-add-dylib.py"
 	zsh -n "$(PROJECT_ROOT)/tools/patch-ipa.sh"
 

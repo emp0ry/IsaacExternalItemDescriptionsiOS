@@ -1,6 +1,7 @@
 #import "EIDNativeProbe.h"
 #import "EIDLogger.h"
 #import <UIKit/UIKit.h>
+#import "EIDCardArtwork.h"
 #import <objc/runtime.h>
 
 static NSArray<NSString *> *EIDCardBundleRoots(void) {
@@ -140,6 +141,10 @@ static NSString *EIDCardBundledResource(NSString *name) {
 }
 @end
 
+UIImage *EIDCardImageForSubtype(NSInteger subtype) {
+    return subtype > 0 && subtype <= 97 ? [[EIDOriginalCardArtwork shared] imageForCardSubtype:subtype] : nil;
+}
+
 @interface NSObject (EIDCardFrameFix)
 - (UIImage *)eid_correct_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype;
 @end
@@ -149,7 +154,7 @@ static NSString *EIDCardBundledResource(NSString *name) {
     if (variant == EIDPickupVariantCard && subtype > 0 && subtype <= 97) {
         // Returning nil is safer than displaying a random card if an incomplete
         // raw-dylib installation omitted the attributed EID artwork bundle.
-        return [[EIDOriginalCardArtwork shared] imageForCardSubtype:subtype];
+        return EIDCardImageForSubtype(subtype);
     }
     if (variant == EIDPickupVariantCard && subtype > 0) {
         // Isaac's native CardFronts animation contains an invisible frame zero.

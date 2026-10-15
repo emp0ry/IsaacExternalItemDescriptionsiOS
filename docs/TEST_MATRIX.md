@@ -1,5 +1,20 @@
 # Test matrix
 
+## v0.9.0 release validation (2026-10-16)
+
+| Area | Result |
+| --- | --- |
+| Strict ARM64 build and public-library audit | Pass locally; no jailbreak runtime dependency |
+| Host regression suite | Pass: 20-language advanced/contextual descriptions, pickup/native policies, importer, artwork bounds, startup readiness, and scripts |
+| Spindown availability and presentation | Native availability adapter verified; user screenshot confirms the restored arrow-connected chain; unavailable candidates stay hidden |
+| Inline item artwork | User confirmed corrected size after transparent-padding crop |
+| LiveContainer cold-launch joystick | User confirmed fixed on the affected device after native-frame readiness gating |
+| Collection reminder and current-Luck presentation | User screenshots show Twisted Pair's collection reminder and Lodestone's 33.3% line at 3 Luck |
+| Void / Black Rune presentation | User screenshot shows separate predictions; exhaustive predicted-versus-actual absorption checks remain pending |
+| Flip | Included and host-tested; gameplay verification pending |
+| Four new README/website screenshots | Full-resolution supplied PNGs, explanatory captions, and local reference checks |
+| Tainted characters, co-op, all loading modes | Previous outstanding checks below still apply; no claim of exhaustive device coverage |
+
 ## v0.8.0 release validation (2026-10-14)
 
 | Area | Result |

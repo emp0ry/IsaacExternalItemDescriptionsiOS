@@ -4,8 +4,11 @@
 #import "EIDTransformationProgress.h"
 #import "EIDContextDescriptions.h"
 #import "EIDDynamicDescriptions.h"
+#import "EIDAdvancedDescriptions.h"
+#import "EIDCardArtwork.h"
 #import "EIDCharacterSynergies.h"
 #import "EIDInlineIconPolicy.h"
+#include "EIDArtworkBounds.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -82,7 +85,31 @@ static UIImage*EIDCrispRaster(UIImage*image,CGSize pointSize){
 static NSAttributedString*EIDAttachment(UIImage*i,CGFloat size,CGFloat s,CGFloat baseline,BOOL preserveOriginalSize){if(!i)return nil;CGFloat h=MAX(9,size*s),r=i.size.height?i.size.width/i.size.height:1;CGSize renderedSize=CGSizeMake(h*r,h);NSTextAttachment*a=[NSTextAttachment new];a.image=EIDCrispRaster(i,renderedSize);a.bounds=CGRectMake(0,baseline*s,renderedSize.width,renderedSize.height);if(preserveOriginalSize)objc_setAssociatedObject(a,NSSelectorFromString(@"eid_preserveOriginalAttachmentSize"),@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);return[NSAttributedString attributedStringWithAttachment:a];}
 static NSAttributedString*Attachment(UIImage*i,CGFloat size,CGFloat s,CGFloat baseline){return EIDAttachment(i,size,s,baseline,NO);}
 static NSAttributedString*QualityFallback(NSInteger q,UIFont*f,CGFloat s){return[[NSAttributedString alloc]initWithString:[NSString stringWithFormat:@"Q%ld",(long)q] attributes:Attrs(f,UIColor.whiteColor,s)];}
-static UIImage*EIDTrimVisiblePixels(UIImage*image){CGImageRef cg=image.CGImage;if(!cg)return image;size_t w=CGImageGetWidth(cg),h=CGImageGetHeight(cg),row=w*4;if(!w||!h)return image;unsigned char*pixels=calloc(h,row);if(!pixels)return image;CGColorSpaceRef cs=CGColorSpaceCreateDeviceRGB();CGContextRef c=CGBitmapContextCreate(pixels,w,h,8,row,cs,kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big);CGColorSpaceRelease(cs);if(!c){free(pixels);return image;}CGContextDrawImage(c,CGRectMake(0,0,w,h),cg);CGContextRelease(c);size_t minX=w,minY=h,maxX=0,maxY=0;BOOL found=NO;for(size_t y=0;y<h;y++)for(size_t x=0;x<w;x++)if(pixels[y*row+x*4+3]>8){found=YES;minX=MIN(minX,x);minY=MIN(minY,y);maxX=MAX(maxX,x);maxY=MAX(maxY,y);}free(pixels);if(!found)return image;CGRect r=CGRectMake(minX,minY,maxX-minX+1,maxY-minY+1);CGImageRef cropped=CGImageCreateWithImageInRect(cg,r);if(!cropped)return image;UIImage*out=[UIImage imageWithCGImage:cropped scale:1 orientation:UIImageOrientationUp];CGImageRelease(cropped);return out;}
+static UIImage *EIDTrimVisiblePixels(UIImage *image) {
+    CGImageRef cg = image.CGImage;
+    if (!cg) return image;
+    size_t width = CGImageGetWidth(cg), height = CGImageGetHeight(cg);
+    if (!width || !height || width > 4096 || height > 4096) return image;
+    size_t row = width*4;
+    unsigned char *pixels = calloc(height,row);
+    if (!pixels) return image;
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef bitmap = CGBitmapContextCreate(pixels,width,height,8,row,space,
+        kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(space);
+    if (!bitmap) { free(pixels); return image; }
+    CGContextDrawImage(bitmap,CGRectMake(0,0,width,height),cg);
+    CGContextRelease(bitmap);
+    EIDArtworkBounds bounds = EIDVisibleArtworkBounds(pixels,height*row,width,height,row);
+    free(pixels);
+    if (!bounds.found) return image;
+    CGImageRef cropped = CGImageCreateWithImageInRect(cg,
+        CGRectMake(bounds.x,bounds.y,bounds.width,bounds.height));
+    if (!cropped) return image;
+    UIImage *result = [UIImage imageWithCGImage:cropped scale:1 orientation:UIImageOrientationUp];
+    CGImageRelease(cropped);
+    return result;
+}
 static UIImage*EIDActiveChargeImage(EIDDescription*item){UIImage*battery=[[EIDTransformData shared]iconForAnimation:@"active" frame:0];if(!battery)return nil;UIImage*charge=nil;if(item.chargeType==EIDActiveChargeTypeTimed)charge=[[EIDInlineAtlas shared]imageForAnimation:@"Misc" frame:6];else if(item.chargeType==EIDActiveChargeTypeSpecial)charge=[[EIDInlineAtlas shared]imageForAnimation:@"numbers" frame:13];else if(item.maxCharges>=0&&item.maxCharges<=12)charge=[[EIDInlineAtlas shared]imageForAnimation:@"numbers" frame:item.maxCharges];CGSize canvas=CGSizeMake(MAX(16,9+charge.size.width),MAX(16,8+charge.size.height));UIGraphicsBeginImageContextWithOptions(canvas,NO,1);CGContextRef c=UIGraphicsGetCurrentContext();CGContextSetInterpolationQuality(c,kCGInterpolationNone);[battery drawInRect:CGRectMake(0,0,16,16)];if(charge)[charge drawAtPoint:CGPointMake(9,8)];UIImage*out=UIGraphicsGetImageFromCurrentImageContext();UIGraphicsEndImageContext();return EIDTrimVisiblePixels(out);}
 static void AppendActiveCharge(NSMutableAttributedString*out,EIDDescription*item,UIFont*font,CGFloat scale){if(item.itemType!=EIDCollectibleItemTypeActive)return;NSDictionary*attrs=Attrs(font,UIColor.whiteColor,scale);UIImage*composite=EIDActiveChargeImage(item);NSAttributedString*indicator=EIDAttachment(composite,12.0,scale,-1.8,YES);if(indicator)[out appendAttributedString:indicator];else [out appendAttributedString:[[NSAttributedString alloc]initWithString:[NSString stringWithFormat:@"[A:%ld]",(long)item.maxCharges] attributes:attrs]];[out appendAttributedString:[[NSAttributedString alloc]initWithString:@" " attributes:attrs]];}
 static NSDictionary*Colors(void){static id c;static dispatch_once_t once;dispatch_once(&once,^{c=@{@"ColorEIDText":UIColor.whiteColor,@"ColorText":UIColor.whiteColor,@"ColorEIDObjName":EIDObjNameColor(),@"ColorObjName":EIDObjNameColor(),@"ColorRed":UIColor.redColor,@"ColorBlue":UIColor.blueColor,@"ColorYellow":UIColor.yellowColor,@"ColorCyan":UIColor.cyanColor,@"ColorPink":UIColor.magentaColor,@"ColorOrange":[UIColor orangeColor],@"ColorBagComplete":UIColor.greenColor,@"ColorGreen":UIColor.greenColor,@"ColorGray":UIColor.grayColor,@"ColorShinyPurple":[UIColor colorWithRed:.8 green:.4 blue:1 alpha:1],@"BlinkYellowGreen":[UIColor colorWithRed:.7 green:1 blue:.2 alpha:1]};});return c;}
@@ -112,6 +139,9 @@ static UIImage *InlineItemImage(NSString *token, EIDDescriptionStore *store) {
     UIImage *image = [cache objectForKey:item.iconPath];
     if (!image) {
         image = [UIImage imageWithContentsOfFile:item.iconPath];
+        // Native item textures are padded 32x32 canvases. Match the visible
+        // artwork to the inline glyph height, not the transparent canvas.
+        image = EIDTrimVisiblePixels(image);
         if (image) [cache setObject:image forKey:item.iconPath];
     }
     return image;
@@ -139,9 +169,16 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
         if ([token isEqualToString:@"ColorReset"] || [token isEqualToString:@"CR"]) color = UIColor.whiteColor;
         else if ([token isEqualToString:@"ColorPastelBlue"]) color = [UIColor colorWithRed:.65 green:.8 blue:1 alpha:1];
         else if ([token isEqualToString:@"ColorSilver"]) color = [UIColor colorWithWhite:.75 alpha:1];
+        else if ([token isEqualToString:@"ColorGold"]) color = [UIColor colorWithRed:1 green:.78 blue:.2 alpha:1];
         else if (Colors()[token]) color = Colors()[token];
         else if (![token hasPrefix:@"Color"]) {
             UIImage *image = [[EIDInlineAtlas shared] imageForToken:token] ?: InlineItemImage(token,store);
+            if (!image && [token hasPrefix:@"Card"]) {
+                NSString *identifier = [token substringFromIndex:4];
+                if (identifier.length && [identifier rangeOfCharacterFromSet:
+                    NSCharacterSet.decimalDigitCharacterSet.invertedSet].location == NSNotFound)
+                    image = EIDCardImageForSubtype(identifier.integerValue);
+            }
             NSAttributedString *attachment = Attachment(image,font.pointSize,scale,-1.5);
             if (attachment) [output appendAttributedString:attachment];
         }
@@ -179,6 +216,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     NSInteger playerType = pickup.playerType >= 0 ? pickup.playerType : probe.primaryPlayerType;
     NSMutableDictionary *context = store.contextData.mutableCopy;
     context[@"live_state"] = probe.descriptionState;
+    context[@"pickup_context"] = pickup.pickupContext;
     context[@"player_type"] = @(playerType);
     context[@"player_index"] = @(pickup.playerIndex >= 0 ? pickup.playerIndex : 0);
     if (pickup.rawPillSubtype) context[@"pill_modifiers"] = @(pickup.pillModifiers);
@@ -247,6 +285,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
         NSString *detail = EIDContextDescriptionWithOwnedItems(item.detail, pickup.variant, pickup.subtype,
             playerType, probe.gameDifficulty, owned, context);
         detail = EIDDynamicDescription(detail,pickup.variant,pickup.subtype,probe.gameDifficulty,owned,context);
+        detail = EIDAdvancedDescription(detail,pickup.variant,pickup.subtype,probe.gameDifficulty,owned,context);
         detail = EIDCollectionDescription(detail,pickup.variant,pickup.subtype,context);
         AppendMarkup(output, detail, bodyFont, scale, store);
     }

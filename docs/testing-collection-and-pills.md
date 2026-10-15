@@ -1,6 +1,6 @@
 # Collection and pill test checklist
 
-These additions are under development, not a new published release. Use a disposable run: console commands change gameplay. EID itself only reads game state.
+Acceptance checklist for the v0.9.0 collection and pill additions. Use a disposable run: console commands change gameplay. EID itself only reads game state. Host coverage and a screenshot do not imply that every combination has been gameplay-tested.
 
 ## Collection page
 

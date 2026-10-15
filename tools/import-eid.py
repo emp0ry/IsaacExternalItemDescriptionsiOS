@@ -11,6 +11,7 @@ from pathlib import Path
 from eid_context import rules as context_rules, table as context_table, weapon_rules, battery_metadata, pandora_floor_lines
 from eid_context import greed_no_effect_notes
 from eid_context import character_metadata
+from eid_context import luck_formulas
 
 
 ENTRY = re.compile(r"^\s*(?:\[(\d+)\]\s*=\s*)?\{")
@@ -218,6 +219,13 @@ def main() -> int:
                 merged = {str(int(key) - 1): entry for key, entry in merged.items()
                           if key.isdigit() and 1 <= int(key) <= 41}
             categories[output_name] = merged
+        for output_name, table_name in (("golden_trinket_effects", "goldenTrinketEffects"),
+                                        ("golden_trinket_overrides", "goldenTrinketData"),
+                                        ("tarot_cloth_blank_card", "tarotClothBlankCardBuffs")):
+            merged = {}
+            for path in files:
+                merged.update(context_table(path.read_text(encoding="utf-8-sig"), table_name))
+            categories[output_name] = merged
         categories["pandora_floor_lines"] = pandora_floor_lines(categories)
         categories["context_strings"] = {}
         for path in files:
@@ -229,7 +237,9 @@ def main() -> int:
                         "TaintedCainPedestalLuckyToe", "TaintedCainPedestalLuckyToeBirthright",
                         "TaintedCainPedestalDaemonsTail", "CollectionPageInfo", "FalsePHDHeart",
                         "FalsePHDDamage", "FalsePHDHorseDamage", "ExperimentalPillPHD",
-                        "ExperimentalPillFalsePHD"):
+                        "ExperimentalPillFalsePHD", "LuckModifier", "goldenTrinket", "tripledTrinket",
+                        "quadrupledTrinket", "VariableCharge", "BlankCardEffect", "spindownError",
+                        "ResultsWithX", "VoidText", "VoidShopText", "VoidOptionText"):
                 text = parse_string_assignment(path, key)
                 if text:
                     categories["context_strings"][key] = text
@@ -249,6 +259,9 @@ def main() -> int:
         payload["weapon_rules"] = weapon_rules(source)
         payload["character_metadata"] = character_metadata(source)
         payload["car_battery_metadata"] = battery_metadata(source)
+        payload["luck_formulas"] = luck_formulas(source)
+        native_rules = (source / "features/eid_data.lua").read_text(encoding="utf-8-sig")
+        payload["golden_trinket_data"] = context_table(native_rules,"GoldenTrinketData")
         xml_data = source / "features/eid_xmldata.lua"
         if xml_data.is_file():
             payload["pill_metadata"] = context_table(xml_data.read_text(encoding="utf-8-sig"), "pillMetadata")

@@ -28,6 +28,7 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 // Fresh native HasCollectible flags used for this exact effect query. -1 when
 // unavailable, zero when none are owned; see EIDPillPolicy.h.
 @property(nonatomic, readonly) NSInteger pillModifiers;
+@property(nonatomic, copy, readonly) NSDictionary *pickupContext;
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype;
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
                       playerType:(NSInteger)playerType;
@@ -39,6 +40,10 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
                       playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex
                   rawPillSubtype:(NSInteger)rawPillSubtype pillModifiers:(NSInteger)pillModifiers;
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex
+                  rawPillSubtype:(NSInteger)rawPillSubtype pillModifiers:(NSInteger)pillModifiers
+                   pickupContext:(NSDictionary *)pickupContext;
 @end
 
 @interface EIDNativeProbe : NSObject
@@ -65,6 +70,9 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 // Main-thread-only, read-only native GetPillEffect adapter. Revalidates the live
 // player vector; never invokes game code from the background memory scanner.
 - (EIDPickupIdentity *)resolvedPillIdentity:(EIDPickupIdentity *)identity;
+// Main-thread-only native Spindown availability query. It uses the same flags
+// as the real iOS item effect; collection-page flags are not unlock state.
+- (EIDPickupIdentity *)resolvedSpindownIdentity:(EIDPickupIdentity *)identity;
 // Normalized collectible/trinket identities for conditional descriptions.
 - (NSSet<NSString *> *)currentOwnedItemKeys;
 - (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID;
