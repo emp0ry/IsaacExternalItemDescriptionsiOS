@@ -1,6 +1,6 @@
 # Original EID parity target
 
-The `main` branch contains the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions. The reference for v0.9.0 is revision `8b59d00c6828e333294639ad2b2b6875eae821cb`, importing only standard-Repentance rules and excluding Repentance+ patches.
+The `main` branch contains the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions. The reference for v0.10.0 remains revision `8b59d00c6828e333294639ad2b2b6875eae821cb`, importing only standard-Repentance rules and excluding Repentance+ patches.
 
 ## Reference defaults
 
@@ -185,6 +185,25 @@ the original standard-Repentance per-trinket multiplier/replacement tables.
 
 ## Advanced contextual previews
 
+Abyss information is pre-rendered from the pinned upstream `XMLLocusts`,
+`AbyssTexts`, `AbyssLocustEffects`, and `TearFlagNames` tables. All 17 records
+match the development iPhone's native `repentance-resources/data/locusts.xml`,
+which is used only for private verification and is not distributed. Missing
+special entries use the original one-locust, normal-size/speed, 1x-damage default.
+Translated `abyssSynergies` override generated text before pluralization, as in
+the original callback. Runtime ownership is scoped to the selected player's
+native inventory, including pocket actives, with no gameplay writes or new
+native calls. The information is also available in inventory descriptions.
+
+For standard Repentance, only the first flag in EACH of the three locust-effect
+and three tear-effect arrays is described, even if that first flag is -1. This
+retains the native bug and upstream handling: Ipecac shows poison, not a second
+explosive flag. Chance2/3 replace chance1 only when below 1; zero remains valid.
+No Repentance+ quality damage multipliers or Repentance+ locust definitions are
+imported. Host tests cover all languages, native data identity, special/default
+records, removal, inventory use, and personal co-op isolation. Gameplay checks
+after deployment remain separate; see `testing-abyss.md`.
+
 Luck formulas are exported as restricted arithmetic trees, not executable Lua.
 Repentance overrides are applied; Repentance+ overrides are excluded. The
 native Luck float is Player + `0x1950` (independently used by Lodestone's proc).
@@ -250,3 +269,77 @@ first-occurrence replacement pairs retain the original conditional semantics.
 An optional description background is disabled by default and is rendered in
 the established non-interactive description panel. Its opacity is independent
 of text opacity and the settings stay within the existing scroll view.
+
+## Native repetition previews
+
+Wild Card appends the game's recorded active item, card, or concrete pill effect.
+Vurp! appends the pill its saved non-golden color will produce. Both use localized
+names and existing item/card/pill artwork. PlayerData saves these fields, so the
+mod needs neither persistent event history nor a use-item hook. Fresh main-thread
+resolution is bounded to validated current players; the raw state participates
+in background refresh equality. Empty/invalid history fails closed, and unknown
+pills never reveal Vurp! data. Normal/horse propagation and repeated Vurp! follow
+the native implementation where upstream's Lua event-history approximation differs.
+See [the implementation notes and device checklist](testing-repeat-previews.md).
+
+## Pickup-order and inventory-count previews
+
+The Stars? reads Player's native `ItemHistory` vector at `+0x24d0`, using its
+28-byte records in native order. As in the game's `UseCard(73)` branch, frame-zero
+starters, trinkets, active items, missing ownership, quest/protected items and
+challenge starters are excluded. The native read-only removability predicate
+at image `+0x505a54` supplies quest/challenge restrictions. A private copy of
+counts simulates up to two removals for Tarot Cloth, including duplicate IDs;
+no history entry, inventory count, RNG or save is modified. Unknown/unsupported
+records suppress the prediction instead of substituting ID-sorted inventory.
+
+Black Feather's qualifying ID lists and text are imported from original EID's
+standard Repentance data. Main-thread native `GetCollectibleNum(id, false)`
+(`+0x4ff70c`) and `GetTrinketMultiplier(id)` (`+0x506238`) retain stacked copies,
+swallowed/golden trinkets and native effects. The renderer applies the original
+callback's `0.5 * count * (Mom's Box ? 2 : 1) * (golden ? 2 : 1)` formula to the
+displayed Feather. This is upstream EID preview semantics, not a claim to have
+reproduced every final damage multiplier displayed by Isaac's HUD.
+
+Both adapters validate the executable UUID, current player vector, native getter
+prologues, array spans, IDs and ranges before querying. Pickup history, duplicate
+collectible counts and swallowed count changes participate in refresh signatures.
+Native queries run only when the corresponding description is displayed. No
+gameplay hook, extra window, simulated touch or game-state mutation is added.
+See [the device scenarios, including Flip](testing-inventory-previews.md).
+
+## Glitched Crown native cycle
+
+The supported `AddCollectibleCycle` routine at `0x10071812c` stores up to eight
+additional collectible IDs at Pickup `+0x5e4`, with count `+0x604`. Its Glitched
+Crown caller supplies four, producing five items including current SubType.
+The update branch at `0x10071a520` shifts the queue and appends the old current
+item before morphing to the next. No mutating routine is called by EID.
+
+The main-thread reader validates the live pickup RTTI, type, active flags, seed,
+native run/room context, curse mask and question-mark/forced-blind visibility.
+Only bounded known IDs are accepted. The complete circular sequence is rotated
+to a canonical representation before deduplication, so duplicate IDs cannot
+make a changing cycle reset the UI. At least five unique IDs are required, as in
+original EID's summary callback. Small Soul of Isaac cycles are not expanded.
+The seed at `+0x3e8`, preserved by cycle Morph's keepSeed flag, identifies the
+pedestal; `+0x3d8` is mutable RNG state and is not used as an identity key.
+
+A tap on the description replaces desktop Tab. A noninteractive `0/5 ›` label
+inside the header's top-right corner shows the current selection; its width is
+reserved independently of the title and does not shrink body text. The overview
+lists each native icon/name; subsequent taps display each full description and then return to
+the overview. Bounded per-room selection records are scoped to native run,
+room/dimension, entity address, seed and cycle contents. Changed reroll results
+reset the selection; menu/modal/inventory/hidden/absent pickup states hide the
+indicator and disable description hit-testing. Only a valid cycle enables the
+description's existing panel as a control; all ordinary descriptions remain
+touch-transparent. The existing single-window passthrough view and readiness gate remain.
+
+Selected-item Spindown is freshly queried for the selected ID, not copied from
+the currently flashing native subtype. Existing hypothetical Abyss, character,
+transformation and Flip text remains applicable. The synthetic overview gets no
+Glitched Crown collection-page reminder or Spindown chain. Native room-based
+Void/Black Rune absorption predictions are suppressed for cycle previews rather
+than attributed to a hypothetical item that is not currently on the pedestal.
+Device acceptance is tracked in [the Crown checklist](testing-glitched-crown.md).

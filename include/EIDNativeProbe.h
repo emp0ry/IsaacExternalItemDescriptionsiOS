@@ -73,6 +73,16 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 // Main-thread-only native Spindown availability query. It uses the same flags
 // as the real iOS item effect; collection-page flags are not unlock state.
 - (EIDPickupIdentity *)resolvedSpindownIdentity:(EIDPickupIdentity *)identity;
+// Main-thread-only, read-only native Wild Card / Vurp history. Does not run
+// either effect, consume RNG, or infer use from pocket inventory changes.
+- (EIDPickupIdentity *)resolvedRepeatIdentity:(EIDPickupIdentity *)identity;
+// Main-thread snapshot of a validated visible pedestal's native collectible
+// cycle. No effect call, RNG advance or temporal sampling is involved.
+- (EIDPickupIdentity *)resolvedCollectibleCycleIdentity:(EIDPickupIdentity *)identity;
+// Read-only main-thread inventory/history adapters for The Stars? and Black
+// Feather. Metadata contains only the bounded upstream Black Feather ID lists.
+- (EIDPickupIdentity *)resolvedInventoryPreviewIdentity:(EIDPickupIdentity *)identity
+                                blackFeatherMetadata:(NSDictionary *)metadata;
 // Normalized collectible/trinket identities for conditional descriptions.
 - (NSSet<NSString *> *)currentOwnedItemKeys;
 - (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID;

@@ -6,6 +6,8 @@
 #import "EIDDynamicDescriptions.h"
 #import "EIDAdvancedDescriptions.h"
 #import "EIDCardArtwork.h"
+#import "EIDPillArtwork.h"
+#import "EIDOverlayController.h"
 #import "EIDCharacterSynergies.h"
 #import "EIDInlineIconPolicy.h"
 #include "EIDArtworkBounds.h"
@@ -170,6 +172,9 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
         else if ([token isEqualToString:@"ColorPastelBlue"]) color = [UIColor colorWithRed:.65 green:.8 blue:1 alpha:1];
         else if ([token isEqualToString:@"ColorSilver"]) color = [UIColor colorWithWhite:.75 alpha:1];
         else if ([token isEqualToString:@"ColorGold"]) color = [UIColor colorWithRed:1 green:.78 blue:.2 alpha:1];
+        else if ([token isEqualToString:@"ColorPill"]) color = [UIColor colorWithRed:.306 green:.651 blue:.851 alpha:1];
+        else if ([token isEqualToString:@"ColorCard"]) color = [UIColor colorWithRed:.815 green:.651 blue:.494 alpha:1];
+        else if ([token isEqualToString:@"ColorLime"]) color = UIColor.greenColor;
         else if (Colors()[token]) color = Colors()[token];
         else if (![token hasPrefix:@"Color"]) {
             UIImage *image = [[EIDInlineAtlas shared] imageForToken:token] ?: InlineItemImage(token,store);
@@ -178,6 +183,12 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
                 if (identifier.length && [identifier rangeOfCharacterFromSet:
                     NSCharacterSet.decimalDigitCharacterSet.invertedSet].location == NSNotFound)
                     image = EIDCardImageForSubtype(identifier.integerValue);
+            }
+            if (!image && [token hasPrefix:@"Pill"]) {
+                NSString *identifier = [token substringFromIndex:4];
+                if (identifier.length && [identifier rangeOfCharacterFromSet:
+                    NSCharacterSet.decimalDigitCharacterSet.invertedSet].location == NSNotFound)
+                    image = EIDPillImageForColor(identifier.integerValue);
             }
             NSAttributedString *attachment = Attachment(image,font.pointSize,scale,-1.5);
             if (attachment) [output appendAttributedString:attachment];
@@ -207,10 +218,14 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     EIDDescriptionStore *store = [self valueForKey:@"store"];
     EIDNativeProbe *probe = [self valueForKey:@"probe"];
     if (!label || !panel || !store || !pickups.count) {
+        [(EIDOverlayController *)self prepareCollectibleCycleIdentity:nil];
         [self eid_parity_renderPickups:pickups];
         return;
     }
-    EIDPickupIdentity *pickup = [probe resolvedPillIdentity:pickups.firstObject];
+    EIDPickupIdentity *pickup = [probe resolvedRepeatIdentity:[probe resolvedPillIdentity:pickups.firstObject]];
+    pickup = [probe resolvedInventoryPreviewIdentity:pickup blackFeatherMetadata:store.contextData[@"black_feather_metadata"] ?: @{}];
+    pickup = [(EIDOverlayController *)self prepareCollectibleCycleIdentity:pickup];
+    if (!pickup) { [self eid_parity_renderPickups:@[]]; return; }
     EIDDescription *item = [store descriptionForPickupVariant:pickup.variant subtype:pickup.subtype];
     if (!item) { [self eid_parity_renderPickups:pickups]; return; }
     NSInteger playerType = pickup.playerType >= 0 ? pickup.playerType : probe.primaryPlayerType;
@@ -262,7 +277,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
         headerEnd = output.length;
         EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
         tracker.probe = probe;
-        NSArray *transformations = EIDUsesSalvageDescription(pickup.variant,pickup.subtype,playerType,context)
+        NSArray *transformations = [pickup.pickupContext[@"crown_overview"] boolValue] || EIDUsesSalvageDescription(pickup.variant,pickup.subtype,playerType,context)
             ? @[] : [tracker transformationsForVariant:pickup.variant subtype:pickup.subtype];
         for (NSNumber *transformation in transformations) {
             NSInteger identifier = transformation.integerValue;
@@ -309,6 +324,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     if ([self respondsToSelector:size]) ((void(*)(id,SEL))objc_msgSend)(self,size);
     [self applyDescriptionBackground];
     [UIView animateWithDuration:.12 animations:^{ panel.alpha = 1; }];
+    [(EIDOverlayController *)self updateCollectibleCycleControls];
 }
 -(void)eid_parity_attachOverlayIfNeeded {
     [self eid_parity_attachOverlayIfNeeded];

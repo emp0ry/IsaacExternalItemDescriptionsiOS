@@ -101,7 +101,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, strong) EIDDescriptionStore *store;
 @property(nonatomic, strong) EIDNativeProbe *probe;
 @property(nonatomic, strong) EIDPassthroughView *rootView;
-@property(nonatomic, strong) UIView *panel;
+@property(nonatomic, strong) UIControl *panel;
 @property(nonatomic, strong) UIView *descriptionBackground;
 @property(nonatomic, strong) UIImageView *itemIconView;
 @property(nonatomic, strong) UILabel *label;
@@ -134,6 +134,12 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, copy) NSString *transformationProgressSignature;
 @property(nonatomic) BOOL pauseUIActive;
 @property(nonatomic) BOOL descriptionNeedsRefresh;
+@property(nonatomic, strong) UILabel *collectibleCycleIndicator;
+@property(nonatomic, strong) EIDPickupIdentity *collectibleCycleSource;
+@property(nonatomic, strong) NSMutableDictionary<NSString *,NSDictionary *> *collectibleCycleSelections;
+@property(nonatomic, copy) NSString *collectibleCycleScope;
+@property(nonatomic) NSUInteger collectibleCycleSelection;
+@property(nonatomic) NSUInteger collectibleCycleCount;
 @end
 
 @implementation EIDOverlayController
@@ -145,6 +151,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         [EIDTransformationProgress shared].probe = probe;
         _lastPickups = @[];
         _pocketIconCache = [NSMutableDictionary dictionary];
+        _collectibleCycleSelections = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -186,6 +193,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     if (!window) return;
     if (CGRectIsEmpty(window.bounds)) return;
     if (self.rootView.superview == window) return;
+    self.collectibleCycleIndicator = nil;
+    self.collectibleCycleSource = nil;
     [self.rootView removeFromSuperview];
 
     EIDPassthroughView *root = [[EIDPassthroughView alloc] initWithFrame:window.bounds];
@@ -196,14 +205,18 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     root.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 
     CGFloat leftMargin = [self overlayLeftMargin];
-    UIView *panel = [[UIView alloc] initWithFrame:CGRectZero];
+    UIControl *panel = [[UIControl alloc] initWithFrame:CGRectZero];
     panel.frame = CGRectMake(leftMargin, [self overlayTopMargin],
                              MIN(340, window.bounds.size.width - leftMargin - EIDOverlayRightMargin),
                              80);
     panel.backgroundColor = UIColor.clearColor;
     panel.clipsToBounds = NO;
     panel.alpha = 0;
-    panel.userInteractionEnabled = YES;
+    // Only a validated cycling pickup enables description taps. Ordinary
+    // descriptions remain transparent to Isaac's controls.
+    panel.userInteractionEnabled = NO;
+    [panel addTarget:self action:@selector(advanceCollectibleCycle:)
+        forControlEvents:UIControlEventTouchUpInside];
     panel.autoresizingMask = UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin;
 
     UILabel *label = [[UILabel alloc] initWithFrame:panel.bounds];
@@ -493,6 +506,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                 [self renderPickups:display];
                 self.descriptionNeedsRefresh = NO;
             }
+            [self updateCollectibleCycleControls];
         });
     });
 }
@@ -744,6 +758,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.inventoryCard.hidden = !self.inventoryCard.hidden;
     self.settingsCard.hidden = YES;
     if (!self.inventoryCard.hidden) {
+        self.collectibleCycleIndicator.hidden = YES;
+        self.panel.userInteractionEnabled = NO;
         [self rebuildInventoryContentsIfNeeded:YES];
         [self.rootView bringSubviewToFront:self.inventoryCard];
         self.panel.alpha = 0;
@@ -776,6 +792,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     (void)sender;
     self.settingsCard.hidden = !self.settingsCard.hidden;
     if (!self.settingsCard.hidden) {
+        self.collectibleCycleIndicator.hidden = YES;
+        self.panel.userInteractionEnabled = NO;
         self.inventoryCard.hidden = YES;
         [self updateSettingsControls];
         [self.rootView bringSubviewToFront:self.settingsCard];
@@ -906,6 +924,113 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     }
     self.pocketIconCache[key] = image ?: NSNull.null;
     return image;
+}
+
+- (void)clearCollectibleCycleControls {
+    self.collectibleCycleSource = nil;
+    self.collectibleCycleIndicator.hidden = YES;
+    self.panel.userInteractionEnabled = NO;
+    self.panel.isAccessibilityElement = NO;
+}
+
+- (EIDPickupIdentity *)prepareCollectibleCycleIdentity:(EIDPickupIdentity *)identity {
+    if (!identity) { [self clearCollectibleCycleControls]; return nil; }
+    EIDPickupIdentity *native = [self.probe resolvedCollectibleCycleIdentity:identity];
+    if ([native.pickupContext[@"collectible_hidden"] boolValue]) {
+        [self clearCollectibleCycleControls];
+        return nil;
+    }
+    NSDictionary *cycle = native.pickupContext[@"collectible_cycle"];
+    NSArray *items = cycle[@"items"];
+    NSString *key = cycle[@"key"], *scope = cycle[@"scope"];
+    if (![items isKindOfClass:NSArray.class] || items.count < 5 || items.count > 9 ||
+        ![key isKindOfClass:NSString.class] || !key.length || ![scope isKindOfClass:NSString.class]) {
+        [self clearCollectibleCycleControls];
+        return native;
+    }
+    // Do not disable/re-enable the control on every valid scan: UIKit would
+    // cancel a tap still being tracked when the refresh happens mid-gesture.
+    if (![scope isEqual:self.collectibleCycleScope]) {
+        [self.collectibleCycleSelections removeAllObjects];
+        self.collectibleCycleScope = scope;
+    }
+    NSDictionary *previous = self.collectibleCycleSelections[key];
+    NSUInteger selection = [previous[@"items"] isEqual:items] ? [previous[@"selection"] unsignedIntegerValue] : 0;
+    if (selection > items.count) selection = 0;
+    if (!previous && self.collectibleCycleSelections.count >= 64) [self.collectibleCycleSelections removeAllObjects];
+    self.collectibleCycleSelections[key] = @{@"items":items,@"selection":@(selection)};
+    self.collectibleCycleSelection = selection;
+    self.collectibleCycleCount = items.count;
+    self.collectibleCycleSource = native;
+    NSMutableDictionary *context = native.pickupContext.mutableCopy;
+    context[@"crown_overview"] = @(selection == 0);
+    context[@"crown_selection"] = @(selection);
+    [context removeObjectForKey:@"spindown"]; // Never reuse the live rotating item's chain for a different preview.
+    NSInteger displayID = selection ? [items[selection-1] integerValue] : 689;
+    EIDPickupIdentity *display = [[EIDPickupIdentity alloc] initWithVariant:100 subtype:displayID
+        playerType:native.playerType playerIndex:native.playerIndex rawPillSubtype:0
+        pillModifiers:native.pillModifiers pickupContext:context];
+    return selection ? [self.probe resolvedSpindownIdentity:display] : display;
+}
+
+- (void)advanceCollectibleCycle:(UIControl *)sender {
+    (void)sender;
+    if (!self.collectibleCycleSource || self.menuMode || self.selectedInventoryItem ||
+        !self.settingsCard.hidden || !self.inventoryCard.hidden) return;
+    EIDPickupIdentity *fresh = [self.probe resolvedCollectibleCycleIdentity:self.collectibleCycleSource];
+    NSDictionary *cycle = fresh.pickupContext[@"collectible_cycle"];
+    NSString *key = cycle[@"key"];
+    NSDictionary *previous = key ? self.collectibleCycleSelections[key] : nil;
+    if (!previous || ![previous[@"items"] isEqual:cycle[@"items"]]) {
+        [self clearCollectibleCycleControls];
+        self.descriptionNeedsRefresh = YES;
+        return;
+    }
+    NSUInteger selection = [previous[@"selection"] unsignedIntegerValue]+1;
+    if (selection > [cycle[@"items"] count]) selection = 0;
+    self.collectibleCycleSelections[key] = @{@"items":cycle[@"items"],@"selection":@(selection)};
+    [self renderPickups:@[fresh]];
+    self.descriptionNeedsRefresh = YES;
+}
+
+- (CGFloat)collectibleCycleHeaderInset {
+    if (!self.collectibleCycleSource || self.menuMode || self.selectedInventoryItem ||
+        !self.settingsCard.hidden || !self.inventoryCard.hidden) return 0;
+    CGFloat scale = [NSUserDefaults.standardUserDefaults objectForKey:@"IsaacEIDScale"]
+        ? [NSUserDefaults.standardUserDefaults doubleForKey:@"IsaacEIDScale"] : 1;
+    return 58 * MIN(1.8,MAX(.5,scale));
+}
+
+- (void)updateCollectibleCycleControls {
+    BOOL visible = self.collectibleCycleSource && !self.menuMode && !self.selectedInventoryItem &&
+        self.probe.gameplayActive && self.panel.alpha > .01 && self.collectibleCycleCount >= 5 &&
+        self.settingsCard.hidden && self.inventoryCard.hidden && self.rootView.superview;
+    self.panel.userInteractionEnabled = visible;
+    self.panel.isAccessibilityElement = visible;
+    if (!visible) { self.collectibleCycleIndicator.hidden = YES; return; }
+    if (!self.collectibleCycleIndicator) {
+        UILabel *indicator = [[UILabel alloc] initWithFrame:CGRectZero];
+        indicator.backgroundColor = UIColor.clearColor;
+        indicator.textColor = UIColor.whiteColor;
+        indicator.textAlignment = NSTextAlignmentRight;
+        indicator.shadowColor = [UIColor colorWithWhite:0 alpha:.95];
+        indicator.shadowOffset = CGSizeMake(1,1);
+        indicator.userInteractionEnabled = NO;
+        [self.panel addSubview:indicator];
+        self.collectibleCycleIndicator = indicator;
+    }
+    CGFloat inset = [self collectibleCycleHeaderInset], scale = inset / 58;
+    NSString *title = [NSString stringWithFormat:@"%lu/%lu ›",
+        (unsigned long)self.collectibleCycleSelection,(unsigned long)self.collectibleCycleCount];
+    self.collectibleCycleIndicator.text = title;
+    self.collectibleCycleIndicator.font = [UIFont monospacedDigitSystemFontOfSize:10.5 * scale weight:UIFontWeightSemibold];
+    self.collectibleCycleIndicator.alpha = self.label.alpha;
+    self.collectibleCycleIndicator.frame = CGRectMake(MAX(0,self.panel.bounds.size.width-inset),0,inset,22*scale);
+    self.collectibleCycleIndicator.hidden = NO;
+    self.panel.accessibilityTraits = UIAccessibilityTraitButton;
+    self.panel.accessibilityLabel = [NSString stringWithFormat:@"%@, %@",self.label.attributedText.string,title];
+    self.panel.accessibilityHint = @"Tap the description to inspect the next item";
+    [self.panel bringSubviewToFront:self.collectibleCycleIndicator];
 }
 
 - (void)renderPickups:(NSArray<EIDPickupIdentity *> *)pickups {

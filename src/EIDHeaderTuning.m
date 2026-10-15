@@ -2,6 +2,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <stdlib.h>
+#import "EIDOverlayController.h"
 
 static const void *EIDHeaderLabelKey = &EIDHeaderLabelKey;
 static const void *EIDHeaderLogoKey = &EIDHeaderLogoKey;
@@ -201,15 +202,17 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
                                                     options:NSStringDrawingUsesLineFragmentOrigin |
                                                             NSStringDrawingUsesFontLeading
                                                     context:nil];
-    CGFloat desiredWidth = ceil(measuredHeader.size.width) + textInset + 2.0 * scale;
+    CGFloat cycleInset = [(EIDOverlayController *)self collectibleCycleHeaderInset];
+    CGFloat desiredWidth = ceil(measuredHeader.size.width) + textInset + 2.0 * scale + cycleInset;
     if (desiredWidth > panel.bounds.size.width) {
         CGRect widened = panel.frame;
         widened.size.width = MIN(availableWidth, desiredWidth);
         panel.frame = widened;
     }
     CGFloat textWidth = MAX(1, panel.bounds.size.width - textInset);
+    CGFloat headerWidth = MAX(1,textWidth-cycleInset);
     CGFloat headerHeight = 22.0 * scale;
-    headerLabel.frame = CGRectMake(textInset, 0, textWidth, headerHeight);
+    headerLabel.frame = CGRectMake(textInset, 0, headerWidth, headerHeight);
 
     if (newline.location != NSNotFound && NSMaxRange(newline) < rendered.length) {
         NSAttributedString *body = [rendered attributedSubstringFromRange:NSMakeRange(NSMaxRange(newline), rendered.length - NSMaxRange(newline))];
@@ -226,9 +229,12 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
     panel.frame = panelFrame;
 
     logo.frame = CGRectMake(0, logoYOffset, logoSize, logoSize);
-    headerLabel.frame = CGRectMake(textInset, 0, textWidth, headerHeight);
+    headerLabel.frame = CGRectMake(textInset, 0, headerWidth, headerHeight);
     bodyLabel.frame = CGRectMake(textInset, headerHeight + (hasBody ? gap : 0),
                                  textWidth, hasBody ? ceil(bodySize.height) : 0);
+    // The final header layout may widen the panel. Keep the counter inside its
+    // actual trailing edge, not at the parity renderer's intermediate frame.
+    [(EIDOverlayController *)self updateCollectibleCycleControls];
 }
 @end
 

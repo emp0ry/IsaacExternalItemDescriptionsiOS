@@ -12,6 +12,8 @@ from eid_context import rules as context_rules, table as context_table, weapon_r
 from eid_context import greed_no_effect_notes
 from eid_context import character_metadata
 from eid_context import luck_formulas
+from eid_context import abyss_locusts, abyss_descriptions
+from eid_context import black_feather_metadata
 
 
 ENTRY = re.compile(r"^\s*(?:\[(\d+)\]\s*=\s*)?\{")
@@ -201,6 +203,9 @@ def main() -> int:
                                         ("wisp_texts", "BookOfVirtuesWispTexts"),
                                         ("wisp_extras", "bookOfVirtuesWisps"),
                                         ("tear_flags", "TearFlagNames"),
+                                        ("abyss_texts", "AbyssTexts"),
+                                        ("abyss_effects", "AbyssLocustEffects"),
+                                        ("abyss_synergies", "abyssSynergies"),
                                         ("stat_names", "VoidNames"),
                                         ("pickup_names", "PickupNames")):
             merged = {}
@@ -239,12 +244,16 @@ def main() -> int:
                         "FalsePHDDamage", "FalsePHDHorseDamage", "ExperimentalPillPHD",
                         "ExperimentalPillFalsePHD", "LuckModifier", "goldenTrinket", "tripledTrinket",
                         "quadrupledTrinket", "VariableCharge", "BlankCardEffect", "spindownError",
-                        "ResultsWithX", "VoidText", "VoidShopText", "VoidOptionText"):
+                        "ResultsWithX", "VoidText", "VoidShopText", "VoidOptionText", "BlackFeatherInformation",
+                        "GlitchedCrownToggleInfo"):
                 text = parse_string_assignment(path, key)
                 if text:
                     categories["context_strings"][key] = text
         languages[code] = categories
         counts.append(f"{code}({', '.join(category_counts)})")
+    locusts = abyss_locusts(source)
+    for code, categories in languages.items():
+        categories["abyss_descriptions"] = abyss_descriptions(locusts, categories, languages["en_us"], code)
     payload = {
         "format": 1,
         "source": "https://github.com/wofsauge/External-Item-Descriptions",
@@ -253,6 +262,8 @@ def main() -> int:
         "game_version_name": "Repentance",
         "compatible_isaac_version": "1.7.9b",
         "languages": languages,
+        "abyss_locusts": locusts,
+        "black_feather_metadata": black_feather_metadata(source),
     }
     if (source / "features/eid_conditionals.lua").is_file():
         payload["context_rules"], payload["health_amounts"], payload["healing_items"] = context_rules(source)

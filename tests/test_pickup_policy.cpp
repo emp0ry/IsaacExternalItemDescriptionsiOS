@@ -3,6 +3,9 @@
 #include "EIDPillPolicy.h"
 #include "EIDPredictionPolicy.hpp"
 #include "EIDSpindownPolicy.hpp"
+#include "EIDRepeatPolicy.hpp"
+#include "EIDInventoryPreviewPolicy.hpp"
+#include "EIDCollectibleCyclePolicy.hpp"
 #include "EIDHostReadinessPolicy.hpp"
 #include "EIDArtworkBounds.h"
 
@@ -12,6 +15,102 @@
 using namespace EIDPickupPolicy;
 
 int main() {
+    {
+        using namespace EIDCollectibleCyclePolicy;
+        std::vector<int32_t> original{25,2,118,689,1}, normalized;
+        std::array<int32_t,MaximumAlternates> queue{};
+        std::copy(original.begin()+1,original.end(),queue.begin());
+        assert(Normalize(original[0],queue,4,normalized));
+        const auto expected = normalized;
+        assert(expected == std::vector<int32_t>({1,25,2,118,689})); // Cyclic, not ID-sorted order.
+        for (size_t i = 0; i < original.size(); ++i) {
+            std::rotate(original.begin(),original.begin()+1,original.end());
+            std::copy(original.begin()+1,original.end(),queue.begin());
+            assert(Normalize(original[0],queue,4,normalized) && normalized == expected);
+        }
+        original = {25,2,25,118,689,1};
+        for (size_t i = 0; i < original.size(); ++i) {
+            std::rotate(original.begin(),original.begin()+1,original.end());
+            std::copy(original.begin()+1,original.end(),queue.begin());
+            assert(Normalize(original[0],queue,5,normalized) && normalized == expected);
+        }
+        queue = {2,3,4,5,6,7,8,9};
+        assert(Normalize(1,queue,8,normalized) && normalized.size() == 9);
+        assert(!Normalize(1,queue,9,normalized) && normalized.empty());
+        assert(!Normalize(1,queue,3,normalized) && normalized.empty());
+        assert(!Normalize(0,queue,4,normalized) && normalized.empty());
+        assert(!Normalize(733,queue,4,normalized) && normalized.empty());
+        queue = {2,3,4,733,0,0,0,0};
+        assert(!Normalize(1,queue,4,normalized) && normalized.empty());
+        queue = {2,3,4,1,0,0,0,0};
+        assert(!Normalize(1,queue,4,normalized) && normalized.empty()); // Only four unique items.
+        queue = {2,3,4,5,-1,-1,-1,-1};
+        assert(Normalize(1,queue,4,normalized)); // Unused queue storage is not a cycle member.
+    }
+    {
+        using namespace EIDInventoryPreviewPolicy;
+        assert(HistorySpan(0,0,0));
+        assert(HistorySpan(0x1000,0x1000+56,0x1000+112));
+        assert(!HistorySpan(0,28,56));
+        assert(!HistorySpan(0x1001,0x1001+28,0x1001+28));
+        assert(!HistorySpan(0x1000,0x1000+29,0x1000+56));
+        assert(!HistorySpan(0x1000,0x1000+56,0x1000+28));
+        assert(!HistorySpan(0x1000,0x1000,0x1000+(MaximumHistory+1)*28));
+        std::array<int32_t,733> counts{};
+        counts[25] = 1; counts[34] = 1; counts[327] = 1; counts[2] = 2; counts[3] = 1;
+        std::vector<HistoryEntry> history = {
+            {0,0,{},25,{}}, {10,1,{},17,{}}, {11,0,{},34,{}},
+            {12,0,{},327,{}}, {13,0,{},26,{}}, {14,0,{},2,{}}, {15,0,{},2,{}}, {16,0,{},3,{}}};
+        auto query = [](int32_t id) { return id == 34 || id == 327 ? Eligibility::Excluded : Eligibility::Eligible; };
+        std::vector<int32_t> result;
+        assert(Stars(history,counts,false,query,result) && result == std::vector<int32_t>({2}));
+        assert(Stars(history,counts,true,query,result) && result == std::vector<int32_t>({2,2}));
+        assert(counts[2] == 2); // The live input is never modified.
+        counts[2] = 1;
+        assert(Stars(history,counts,true,query,result) && result == std::vector<int32_t>({2,3}));
+        counts[2] = 0;
+        assert(Stars(history,counts,true,query,result) && result == std::vector<int32_t>({3}));
+        counts[3] = 0;
+        assert(Stars(history,counts,false,query,result) && result.empty());
+        counts[2] = 1;
+        assert(!Stars(history,counts,false,[](int32_t){return Eligibility::Unknown;},result) && result.empty());
+        auto changed = history; changed[5].id = 3;
+        assert(HistorySignature(history) != HistorySignature(changed));
+        changed = history; changed[5].padding[0] = 99; changed[5].extra[0] = 100;
+        assert(HistorySignature(history) == HistorySignature(changed));
+        changed = history; changed[0].trinket = 2;
+        assert(!Stars(changed,counts,false,query,result) && result.empty());
+        assert(BlackFeatherDamage(0,false,false) == 0);
+        assert(BlackFeatherDamage(2,false,false) == 1);
+        assert(BlackFeatherDamage(2,true,false) == 2);
+        assert(BlackFeatherDamage(2,false,true) == 2);
+        assert(BlackFeatherDamage(2,true,true) == 4);
+        assert(BlackFeatherDamage(-1,false,false) < 0);
+    }
+    {
+        using namespace EIDRepeatPolicy;
+        assert(WildCard(0,0,1)); // Bad Gas uses native effect zero.
+        assert(WildCard(0,46,Horse|13));
+        assert(WildCard(0,49,14)); // Golden pill's remembered concrete effect.
+        assert(WildCard(1,48,0)); // ? Card is a native effect, not guessed from a pocket.
+        assert(WildCard(1,97,0));
+        assert(WildCard(2,34,0));
+        assert(!WildCard(0,-1,1) && !WildCard(0,50,1));
+        assert(!WildCard(0,1,0) && !WildCard(0,1,0x1001));
+        assert(!WildCard(1,80,0)); // Never recursively preview Wild Card itself.
+        assert(!WildCard(1,0,0) && !WildCard(1,98,0));
+        assert(!WildCard(2,0,0) && !WildCard(2,733,0));
+        assert(!WildCard(0xff,34,0) && !WildCard(3,34,0));
+        assert(VurpColor(0,3) == 3); // No history: Vurp produces itself.
+        assert(VurpColor(0,Horse|3) == (Horse|3));
+        assert(VurpColor(5,3) == 5);
+        assert(VurpColor(5,Horse|3) == (Horse|5));
+        assert(VurpColor(Horse|5,3) == (Horse|5)); // Never lose a remembered horse bit.
+        assert(VurpColor(Horse|5,Horse|3) == (Horse|5));
+        assert(VurpColor(14,3) == 0 && VurpColor(Horse|14,3) == 0);
+        assert(VurpColor(-1,3) == 0 && VurpColor(5,0x1003) == 0);
+        assert(VurpColor(5,14) == 0 && VurpColor(5,0) == 0);
+    }
     {
         std::array<uint8_t,32*32*4> rgba{};
         auto empty = EIDVisibleArtworkBounds(rgba.data(),rgba.size(),32,32,128);

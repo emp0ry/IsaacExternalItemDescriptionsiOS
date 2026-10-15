@@ -448,7 +448,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
                             @"car_battery", @"tarot_cloth", @"stat_names", @"pickup_names",
                             @"pandora_floor_lines", @"context_strings", @"BFFSSynergies", @"book_of_belial",
                             @"wisp_texts", @"wisp_extras", @"tear_flags", @"golden_trinket_effects",
-                            @"golden_trinket_overrides", @"tarot_cloth_blank_card"]) {
+                            @"golden_trinket_overrides", @"tarot_cloth_blank_card", @"abyss_descriptions"]) {
         NSMutableDictionary *entries = [NSMutableDictionary dictionary];
         if ([english[key] isKindOfClass:NSDictionary.class]) [entries addEntriesFromDictionary:english[key]];
         if ([language[key] isKindOfClass:NSDictionary.class]) [entries addEntriesFromDictionary:language[key]];
@@ -460,13 +460,15 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
         context[@"car_battery_metadata"] = root[@"car_battery_metadata"];
     if ([root[@"pill_metadata"] isKindOfClass:NSDictionary.class])
         context[@"pill_metadata"] = root[@"pill_metadata"];
-    for (NSString *key in @[@"luck_formulas",@"golden_trinket_data"])
+    for (NSString *key in @[@"luck_formulas",@"golden_trinket_data",@"black_feather_metadata"])
         if ([root[key] isKindOfClass:NSDictionary.class]) context[key] = root[key];
     context[@"golden_full_replace_ids"] = [language[@"golden_trinket_effects"] allKeys] ?: @[];
     NSMutableDictionary *itemNames = [NSMutableDictionary dictionary];
     NSMutableDictionary *itemDetails = [NSMutableDictionary dictionary];
-    for (NSString *category in @[@"collectibles", @"trinkets"]) {
-        NSString *prefix = [category isEqualToString:@"collectibles"] ? @"5.100." : @"5.350.";
+    NSDictionary *namePrefixes = @{@"collectibles":@"5.100.",@"trinkets":@"5.350.",
+        @"cards":@"5.300.",@"pills":@"5.70.",@"horsepills":@"5.1070."};
+    for (NSString *category in namePrefixes) {
+        NSString *prefix = namePrefixes[category];
         for (NSDictionary *localization in @[english ?: @{}, language ?: @{}]) {
             [localization[category] enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSDictionary *entry, __unused BOOL *stop) {
                 NSString *name = [entry isKindOfClass:NSDictionary.class] ? entry[@"name"] : nil;
@@ -484,8 +486,9 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
     if ([root[@"health_amounts"] isKindOfClass:NSDictionary.class]) context[@"health_amounts"] = root[@"health_amounts"];
     if ([root[@"healing_items"] isKindOfClass:NSArray.class]) context[@"healing_items"] = root[@"healing_items"];
     self.contextData = context.copy;
-    EIDLog(@"imported context: %lu weapon rules, language %@; read-only native inventory",
-        (unsigned long)[context[@"weapon_rules"] count], self.languageCode);
+    EIDLog(@"imported context: %lu weapon rules, language %@; read-only native inventory; %lu Abyss previews",
+        (unsigned long)[context[@"weapon_rules"] count], self.languageCode,
+        (unsigned long)[context[@"abyss_descriptions"] count]);
     NSDictionary *languageStrings = [language[@"strings"] isKindOfClass:NSDictionary.class]
         ? language[@"strings"] : nil;
     NSDictionary *englishStrings = [english[@"strings"] isKindOfClass:NSDictionary.class]

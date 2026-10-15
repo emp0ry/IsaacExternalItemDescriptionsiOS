@@ -1,4 +1,5 @@
 #import "EIDNativeProbe.h"
+#import "EIDPillArtwork.h"
 #import "EIDLogger.h"
 #import <UIKit/UIKit.h>
 #import <mach-o/dyld.h>
@@ -209,6 +210,13 @@ static UIImage *EIDPillCropImage(UIImage *atlas, id frameValue) {
 @interface NSObject (EIDPillFrameFix)
 - (UIImage *)eid_original_pill_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype;
 @end
+
+UIImage *EIDPillImageForColor(NSInteger rawColor) {
+    if (rawColor <= 0 || ((NSUInteger)rawColor & ~(kEIDPillColorMask | kEIDHorsePillFlag))) return nil;
+    NSInteger color = rawColor & kEIDPillColorMask;
+    if (color < 1 || color > kEIDGoldenPillColor) return nil;
+    return [[EIDOriginalPillArtwork shared] imageForColor:color horse:(rawColor & kEIDHorsePillFlag) != 0];
+}
 
 @implementation NSObject (EIDPillFrameFix)
 - (UIImage *)eid_original_pill_pocketIconForVariant:(NSInteger)variant subtype:(NSInteger)subtype {

@@ -42,6 +42,41 @@ class BundledDescriptionsTests(unittest.TestCase):
         self.assertTrue(english["golden_trinket_effects"]["53"])
         self.assertIn("{1}", english["context_strings"]["LuckModifier"])
         self.assertIn("{1}", english["context_strings"]["VariableCharge"])
+        self.assertIn("{1}", english["context_strings"]["GlitchedCrownToggleInfo"])
+
+    def test_black_feather_metadata_and_language_fallback(self) -> None:
+        self.assertEqual(self.payload["black_feather_metadata"], {
+            "collectibles":[215,216,230,260,262,339,344,654], "trinkets":[17,22]})
+        english = self.payload["languages"]["en_us"]["context_strings"]["BlackFeatherInformation"]
+        self.assertIn("{1}", english)
+        self.assertIn("{2}", english)
+        for code, language in self.payload["languages"].items():
+            text = language["context_strings"].get("BlackFeatherInformation",english)
+            self.assertIn("{1}", text, code)
+            self.assertIn("{2}", text, code)
+
+    def test_abyss_standard_records_and_localized_previews(self) -> None:
+        locusts = self.payload["abyss_locusts"]
+        self.assertEqual(len(locusts), 17)
+        self.assertEqual(locusts["149"][6], [4, 12])
+        self.assertEqual(locusts["4"][12], 3)
+        self.assertEqual(locusts["10"][0], 2)
+        self.assertEqual(locusts["153"][0], 4)
+        english = self.payload["languages"]["en_us"]["abyss_descriptions"]
+        self.assertEqual(english["default"], "1 locust (1x Isaac's damage)")
+        self.assertEqual(english["2"], "3 locusts (1x Isaac's damage)")
+        self.assertEqual(english["4"], "1 big locust (3x Isaac's damage)")
+        self.assertEqual(english["149"], "1 big slow locust (1.5x Isaac's damage)#poison")
+        self.assertEqual(english["494"], "1 locust (1x Isaac's damage)#electricity on hit")
+        self.assertEqual(self.payload["languages"]["ru"]["abyss_descriptions"]["153"], "4 саранчи (1x урона персонажа)")
+        self.assertIn("gafanhotos", self.payload["languages"]["pt_br"]["abyss_descriptions"]["2"])
+        for code, language in self.payload["languages"].items():
+            entries = language["abyss_descriptions"]
+            self.assertEqual(set(entries), {"default", *locusts}, code)
+            for text in entries.values():
+                self.assertIsInstance(text, str)
+                self.assertTrue(text, code)
+                self.assertNotRegex(text, r"(?<!\{)\{(?:amount|size|speed|dmg|plural[^}]*|1)\}(?!\})")
 
     def test_english_reference_tables_are_complete(self) -> None:
         english = self.payload["languages"]["en_us"]

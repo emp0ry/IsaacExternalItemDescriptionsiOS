@@ -204,6 +204,18 @@ static NSString *Mimic(NSString *detail, NSInteger variant, NSInteger subtype, N
     return detail;
 }
 
+static NSString *Abyss(NSString *detail, NSInteger item, NSSet *owned, NSDictionary *context) {
+    if (item < 1 || item > 732 || ![owned containsObject:@"5.100.706"]) return detail;
+    NSDictionary *descriptions = context[@"abyss_descriptions"];
+    if (![descriptions isKindOfClass:NSDictionary.class]) return detail;
+    NSString *preview = Text(descriptions[@(item).stringValue] ?: descriptions[@"default"]);
+    if (!preview.length) return detail;
+    // Like the upstream callback this is hypothetical locust information, not
+    // an absorption action or a forecast of damage after unrelated synergies.
+    preview = [preview stringByReplacingOccurrencesOfString:@"#" withString:@"#{{ColorRed}}"];
+    return Append(detail,[NSString stringWithFormat:@"{{Collectible706}} {{ColorRed}}%@{{CR}}",preview]);
+}
+
 static NSString *PredictionFor(NSString *detail, BOOL rune, NSDictionary *prediction, NSString *mode, NSDictionary *context) {
     NSArray *counts = prediction[mode];
     if (![counts isKindOfClass:NSArray.class] || counts.count != 6) return detail;
@@ -225,8 +237,78 @@ static NSString *PredictionFor(NSString *detail, BOOL rune, NSDictionary *predic
         [stats componentsJoinedByString:@" | "]]);
 }
 
+static NSString *RepeatPreview(NSString *detail, NSInteger variant, NSInteger subtype, NSDictionary *context) {
+    BOOL wild = variant == 300 && subtype == 80;
+    BOOL vurp = (variant == 70 || variant == 1070) && subtype == 47;
+    if (!wild && !vurp) return detail;
+    NSArray *previews = context[@"pickup_context"][@"repeat_previews"];
+    if (![previews isKindOfClass:NSArray.class] || previews.count > 8) return detail;
+    for (NSDictionary *effect in previews) {
+        if (![effect isKindOfClass:NSDictionary.class] || ![effect[@"variant"] isKindOfClass:NSNumber.class] ||
+            ![effect[@"id"] isKindOfClass:NSNumber.class] || ![effect[@"index"] isKindOfClass:NSNumber.class]) continue;
+        NSInteger target = [effect[@"variant"] integerValue], id = [effect[@"id"] integerValue];
+        NSInteger index = [effect[@"index"] integerValue], color = [effect[@"color"] integerValue];
+        BOOL pill = target == 70 || target == 1070;
+        if (index < 0 || index >= 8 || id < 1 || (vurp && !pill)) continue;
+        NSString *icon = nil, *tint = nil;
+        if (pill) {
+            if (id > 50 || color <= 0 || (color & ~0xfff) || !(color & 0x7ff) ||
+                (color & 0x7ff) > 14 || ((color & 0x800) != 0) != (target == 1070)) continue;
+            icon = [NSString stringWithFormat:@"Pill%ld",(long)color]; tint = @"ColorPill";
+        } else if (target == 300 && id <= 97 && id != 80) {
+            icon = [NSString stringWithFormat:@"Card%ld",(long)id]; tint = @"ColorCard";
+        } else if (target == 100 && id <= 732) {
+            icon = [NSString stringWithFormat:@"Collectible%ld",(long)id]; tint = @"ColorYellow";
+        }
+        NSString *name = Text(context[@"item_names"][Key(target,id)]);
+        if (pill && !name.length) name = Text(context[@"item_names"][Key(70,id)]);
+        if (!icon || !name.length) continue;
+        NSString *prefix = [context[@"live_state"][@"players"] count] > 1
+            ? [NSString stringWithFormat:@"P%ld: ",(long)index+1] : @"";
+        detail = Append(detail,[NSString stringWithFormat:@"%@{{%@}} {{%@}}%@{{CR}}",prefix,icon,tint,name]);
+    }
+    return detail;
+}
+
+static NSString *InventoryPreview(NSString *detail, NSInteger variant, NSInteger subtype, NSDictionary *context) {
+    BOOL stars = variant == 300 && subtype == 73;
+    BOOL feather = variant == 350 && (subtype & 0x7fff) == 80;
+    if (!stars && !feather) return detail;
+    NSArray *previews = context[@"pickup_context"][stars ? @"stars_previews" : @"black_feather"];
+    if (![previews isKindOfClass:NSArray.class] || previews.count > 8) return detail;
+    BOOL coop = [context[@"live_state"][@"players"] count] > 1;
+    for (NSDictionary *preview in previews) {
+        if (![preview isKindOfClass:NSDictionary.class] || ![preview[@"index"] isKindOfClass:NSNumber.class]) continue;
+        NSInteger index = [preview[@"index"] integerValue];
+        if (index < 0 || index >= 8) continue;
+        NSString *prefix = coop ? [NSString stringWithFormat:@"P%ld: ",(long)index+1] : @"";
+        if (stars) {
+            NSArray *items = preview[@"items"];
+            if (![items isKindOfClass:NSArray.class] || items.count > ([preview[@"tarot"] boolValue] ? 2u : 1u)) continue;
+            for (NSNumber *item in items) {
+                if (![item isKindOfClass:NSNumber.class] || item.integerValue < 1 || item.integerValue > 732) continue;
+                NSString *name = Text(context[@"item_names"][Key(100,item.integerValue)]);
+                if (name.length) detail = Append(detail,[NSString stringWithFormat:@"%@{{Collectible%@}} {{ColorYellow}}%@{{CR}}",prefix,item,name]);
+            }
+        } else {
+            if (![preview[@"count"] isKindOfClass:NSNumber.class] || ![preview[@"box"] isKindOfClass:NSNumber.class]) continue;
+            NSInteger count = [preview[@"count"] integerValue];
+            if (count < 0 || count > 100000) continue;
+            BOOL box = [preview[@"box"] boolValue], golden = (subtype & 0x8000) != 0;
+            double damage = .5*count*(box ? 2 : 1)*(golden ? 2 : 1);
+            NSString *color = !count ? @"CR" : box || golden ? @"ColorGold" : @"ColorSilver";
+            NSString *value = [NSString stringWithFormat:@"{{%@}}%.4g{{CR}}",color,damage];
+            NSString *text = Text(context[@"context_strings"][@"BlackFeatherInformation"]);
+            text = [text stringByReplacingOccurrencesOfString:@"{1}" withString:@(count).stringValue];
+            text = [text stringByReplacingOccurrencesOfString:@"{2}" withString:value];
+            if (text.length) detail = Append(detail,[prefix stringByAppendingString:text]);
+        }
+    }
+    return detail;
+}
+
 static NSString *Prediction(NSString *detail, NSInteger variant, NSInteger item, NSSet *owned, NSDictionary *context) {
-    if ([context[@"inside_item_reminder"] boolValue]) return detail;
+    if ([context[@"inside_item_reminder"] boolValue] || context[@"pickup_context"][@"collectible_cycle"]) return detail;
     NSDictionary *player = SelectedPlayer(context);
     BOOL rune = variant == 300 && item == 41;
     BOOL voidItem = variant == 100 && item == 477;
@@ -257,15 +339,56 @@ static NSString *Prediction(NSString *detail, NSInteger variant, NSInteger item,
     return detail;
 }
 
+static NSArray *CollectibleCycleItems(NSDictionary *context) {
+    NSArray *items = context[@"pickup_context"][@"collectible_cycle"][@"items"];
+    if (![items isKindOfClass:NSArray.class] || items.count < 5 || items.count > 9 ||
+        [NSSet setWithArray:items].count != items.count) return nil;
+    for (NSNumber *item in items)
+        if (![item isKindOfClass:NSNumber.class] || item.integerValue < 1 || item.integerValue > 732 ||
+            !Text(context[@"item_names"][Key(100,item.integerValue)]).length) return nil;
+    return items;
+}
+
+static NSString *CollectibleCycleToggle(NSString *detail, NSDictionary *context) {
+    NSArray *items = CollectibleCycleItems(context);
+    NSNumber *selection = context[@"pickup_context"][@"crown_selection"];
+    if (!items || ![selection isKindOfClass:NSNumber.class] || selection.integerValue < 0 ||
+        selection.unsignedIntegerValue > items.count) return detail;
+    NSNumber *next = selection.unsignedIntegerValue < items.count ? items[selection.unsignedIntegerValue] : @689;
+    NSString *text = Text(context[@"context_strings"][@"GlitchedCrownToggleInfo"]);
+    if (!text.length) return detail;
+    text = [text stringByReplacingOccurrencesOfString:@"{{CONFIG_BoC_Toggle}}" withString:@"›"];
+    // This upstream translation spells out the map button instead of using
+    // the configurable-input token. Adapt its label to the same iOS control.
+    text = [text stringByReplacingOccurrencesOfString:@"マップボタン" withString:@"›"];
+    text = [text stringByReplacingOccurrencesOfString:@"{1}" withString:[NSString stringWithFormat:@"{{Collectible%@}}",next]];
+    return Append(detail,[@"{{Blank}} " stringByAppendingString:text]);
+}
+
 NSString *EIDAdvancedDescription(NSString *detail, NSInteger variant, NSInteger subtype,
     NSInteger difficulty, NSSet<NSString *> *owned, NSDictionary *context) {
     NSDictionary *player = SelectedPlayer(context);
     if ([player[@"owned"] isKindOfClass:NSArray.class]) owned = [NSSet setWithArray:player[@"owned"]];
-    if (variant == 350) detail = Golden(detail,subtype,owned,context);
-    detail = Luck(detail,variant,variant == 350 ? subtype & 0x7fff : subtype,context);
-    detail = Mimic(detail,variant,subtype,owned,context);
+    BOOL overview = variant == 100 && subtype == 689 && [context[@"pickup_context"][@"crown_overview"] boolValue] &&
+        CollectibleCycleItems(context) != nil;
+    if (overview) {
+        NSMutableArray *lines = [NSMutableArray array];
+        for (NSNumber *item in CollectibleCycleItems(context))
+            [lines addObject:[NSString stringWithFormat:@"{{Collectible%@}} {{ColorYellow}}%@{{CR}}",item,
+                Text(context[@"item_names"][Key(100,item.integerValue)])]];
+        detail = [lines componentsJoinedByString:@"#"];
+    } else {
+        if (variant == 350) detail = Golden(detail,subtype,owned,context);
+        detail = Luck(detail,variant,variant == 350 ? subtype & 0x7fff : subtype,context);
+        detail = Mimic(detail,variant,subtype,owned,context);
+        detail = RepeatPreview(detail,variant,subtype,context);
+        detail = InventoryPreview(detail,variant,subtype,context);
+    }
     if (variant == 100) {
-        detail = Spindown(detail,subtype,difficulty,owned,context);
+        if (!overview) {
+            detail = Abyss(detail,subtype,owned,context);
+            detail = Spindown(detail,subtype,difficulty,owned,context);
+        }
         NSInteger flip = [context[@"pickup_context"][@"flip_id"] integerValue];
         if (flip > 0 && flip <= 732 && ![context[@"inside_item_reminder"] boolValue]) {
             NSString *name = Text(context[@"item_names"][Key(100,flip)]);
@@ -279,5 +402,6 @@ NSString *EIDAdvancedDescription(NSString *detail, NSInteger variant, NSInteger 
                 (long)flip,name,other.length ? @"#" : @"",other]);
         }
     }
-    return Prediction(detail,variant,subtype,owned,context);
+    detail = Prediction(detail,variant,subtype,owned,context);
+    return variant == 100 ? CollectibleCycleToggle(detail,context) : detail;
 }

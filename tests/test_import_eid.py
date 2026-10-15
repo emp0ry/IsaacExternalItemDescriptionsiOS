@@ -21,6 +21,61 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class ImportEIDTests(unittest.TestCase):
+    def test_black_feather_metadata_is_standard_repentance(self) -> None:
+        from eid_context import black_feather_metadata
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+            (source / "features").mkdir()
+            data = source / "features/eid_data.lua"
+            data.write_text('EID.BlackFeatherItems = { [215] = true, [216] = true }\n'
+                'if EID.isRepentance then EID.BlackFeatherItems[654] = true end\n'
+                'if EID.isRepentancePlus then EID.BlackFeatherItems[999] = true end\n'
+                'EID.BlackFeatherTrinkets = { [17] = true, [22] = true }\n', encoding="utf-8")
+            self.assertEqual(black_feather_metadata(source), {"collectibles":[215,216,654],"trinkets":[17,22]})
+            data.write_text('EID.BlackFeatherItems = { [900] = true }\n'
+                'EID.BlackFeatherTrinkets = { [17] = true }\n', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                black_feather_metadata(source)
+
+    def test_abyss_uses_standard_data_and_rejects_malformed_records(self) -> None:
+        from eid_context import abyss_locusts
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+            (source / "features").mkdir()
+            target = source / "features/eid_xmldata.lua"
+            target.write_text('EID.XMLLocusts = {[149] = {1, 1.25, 0.8, {-1}, {-1}, {-1}, {4, 12}, {-1}, {-1}, 1, 1, 1, 1.5, 1}}', encoding="utf-8")
+            (source / "features/eid_xmldata_rep+.lua").write_text('EID.XMLLocusts = {[149] = {999}}', encoding="utf-8")
+            self.assertEqual(abyss_locusts(source)["149"][6], [4, 12])
+            self.assertEqual(abyss_locusts(source)["149"][12], 1.5)
+            target.write_text('EID.XMLLocusts = {[149] = {1, 2}}', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                abyss_locusts(source)
+
+    def test_abyss_rendering_matches_repentance_callback(self) -> None:
+        from eid_context import abyss_descriptions
+        english = {"abyss_texts": {"InfoText": "{amount} {size}{speed}locust{pluralize} ({dmg})",
+            "DamageMult": "{1}x damage", "SizeBig": "big ", "SpeedSlow": "slow ", "Chance": " ({1}% Chance)"},
+            "tear_flags": {"4": "poison", "12": "explosive", "22": "burn"},
+            "abyss_effects": {"0": "explodes", "3": "rerolls"}}
+        locusts = {"149": [1,1.25,.8,[-1],[-1],[-1],[4,12],[-1],[-1],1,1,1,1.5,1],
+            "2": [3,1,1,[-1],[-1],[-1],[-1],[-1],[-1],1,1,1,1,1],
+            "50": [1,1,1,[-1,0],[3],[0],[-1],[22],[12],.25,1,0,1,2]}
+        rendered = abyss_descriptions(locusts, english, english, "en_us")
+        self.assertEqual(rendered["default"], "1 locust (1x damage)")
+        self.assertEqual(rendered["2"], "3 locusts (1x damage)")
+        self.assertEqual(rendered["149"], "1 big slow locust (1.5x damage)#poison")
+        self.assertNotIn("explosive", rendered["149"])
+        # Do not search for a second flag when the first is -1. Independently
+        # process all three groups and preserve upstream probability fallback.
+        self.assertEqual(rendered["50"], "1 locust (1x damage)#2x damage (25% Chance)#rerolls (25% Chance)#explodes (0% Chance)#burn (25% Chance)#explosive (0% Chance)")
+        override = {"abyss_synergies": {"149": "Localized override"}}
+        self.assertEqual(abyss_descriptions(locusts, override, english, "ru")["149"], "Localized override")
+        self.assertEqual(abyss_descriptions(locusts, {}, english, "pl")["2"], "3 locusts (1x damage)")
+        russian = {"abyss_texts": {"InfoText": "{amount} саранча{pluralize} ({dmg})"}}
+        self.assertEqual(abyss_descriptions(locusts, russian, english, "ru")["2"], "3 саранчи (1x damage)")
+        german = {"abyss_texts": {"InfoText": "Eine Heuschrecke ({dmg})", "InfoTextPlural": "{amount} Heuschrecken ({dmg})"}}
+        self.assertEqual(abyss_descriptions(locusts, german, english, "de")["2"], "3 Heuschrecken (1x damage)")
+
     def test_luck_formula_import_uses_repentance_not_plus(self) -> None:
         from eid_context import luck_formulas
         with tempfile.TemporaryDirectory() as directory:

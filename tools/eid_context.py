@@ -3,7 +3,132 @@ from __future__ import annotations
 
 import re
 import ast
+import math
 from pathlib import Path
+
+
+def black_feather_metadata(source: Path) -> dict:
+    path = source / "features/eid_data.lua"
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8-sig")
+    items = table(text, "BlackFeatherItems")
+    trinkets = table(text, "BlackFeatherTrinkets")
+    # Standard Repentance adds False PHD. Do not import Repentance+ branches.
+    for match in re.finditer(r"(?m)^if EID\.isRepentance then EID\.BlackFeatherItems\[(\d+)\] = (true|false) end\s*$", text):
+        items[match[1]] = match[2] == "true"
+    for entries, maximum in ((items, 732), (trinkets, 189)):
+        for identifier, enabled in entries.items():
+            if not identifier.isdigit() or not 1 <= int(identifier) <= maximum or type(enabled) is not bool:
+                raise ValueError("invalid Black Feather metadata")
+    return {"collectibles": sorted(int(key) for key, enabled in items.items() if enabled),
+            "trinkets": sorted(int(key) for key, enabled in trinkets.items() if enabled)} if items and trinkets else {}
+
+
+def abyss_locusts(source: Path) -> dict:
+    """Read only standard Repentance's attributed XML export, never the rep+ file."""
+    path = source / "features/eid_xmldata.lua"
+    entries = table(path.read_text(encoding="utf-8-sig"), "XMLLocusts") if path.is_file() else {}
+    for identifier, row in entries.items():
+        if not identifier.isdigit() or not 1 <= int(identifier) <= 732 or not isinstance(row, list) or len(row) != 14:
+            raise ValueError(f"invalid Abyss locust record: {identifier}")
+        for index in (0, 1, 2, 9, 10, 11, 12, 13):
+            number = row[index]
+            if type(number) not in (int, float) or not math.isfinite(number) or not 0 <= number <= 100:
+                raise ValueError(f"invalid Abyss numeric field: {identifier}/{index}")
+        if type(row[0]) is not int or not 1 <= row[0] <= 64 or row[1] <= 0 or row[2] <= 0 or any(row[i] > 1 for i in (9, 10, 11)):
+            raise ValueError(f"invalid Abyss amount/scale/speed/chance: {identifier}")
+        for flags in row[3:9]:
+            if not isinstance(flags, list) or not 1 <= len(flags) <= 128 or any(type(flag) is not int or not -1 <= flag <= 127 for flag in flags):
+                raise ValueError(f"invalid Abyss flags: {identifier}")
+    return entries
+
+
+def _abyss_plural(text: str, amount: int, language: str) -> str:
+    """Finite text substitutions matching the upstream Abyss grammar; no Lua execution."""
+    multiple = amount > 1
+    replacements = {"pluralize": "s" if multiple else "", "pluralize_y": "ies" if multiple else "y"}
+    if language == "ru":
+        last, last_two = amount % 10, amount % 100
+        noun = "саранча" if last == 1 and last_two != 11 else "саранчи" if 2 <= last <= 4 and not 12 <= last_two <= 14 else "саранч"
+        text = text.replace("саранча{pluralize}", noun)
+        replacements.update(pluralize="", pluralize_y="")
+    elif language == "cs_cz":
+        text = text.replace("kobylka{pluralize}", "kobylka" if amount == 1 else "kobylky" if amount <= 4 else "kobylek")
+        replacements.update(plural_e="e" if multiple else "", plural_ay="y" if multiple else "a")
+    elif language == "de":
+        replacements.update(singular_r="" if multiple else "r", plural_e="e" if multiple else "",
+            plural_en="en" if multiple else "", plural_n="n" if multiple else "",
+            plural_e_sing_en="e" if multiple else "en", plural_e_sing_es="e" if multiple else "es",
+            plural_s="s" if multiple else "")
+    elif language == "it":
+        replacements.update(plural_a_e="e" if multiple else "a", plural_o_i="i" if multiple else "o", plural_e_i="i" if multiple else "e")
+    elif language == "spa":
+        replacements.update(plural_s="s" if multiple else "", plural_es="es" if multiple else "", plural_zon="zones" if multiple else "zón")
+    elif language == "ro_ro":
+        if multiple:
+            text = text.replace("lăcustă", "lăcuste")
+        replacements.update(pluralize_m="i" if multiple else "", pluralize_f="e" if multiple else "")
+    elif language == "pl":
+        form = 0 if amount == 1 else 1 if 2 <= amount % 10 <= 4 and not 12 <= amount % 100 <= 14 else 2
+        text = re.sub(r"\{plural:([^|]+)\|([^|]+)\|([^}]+)\}", lambda match: match[form + 1], text)
+    for token, replacement in replacements.items():
+        text = text.replace("{" + token + "}", replacement)
+    return text
+
+
+def abyss_descriptions(locusts: dict, categories: dict, english: dict, language: str) -> dict:
+    """Pre-render the original Abyss callback for this executable's finite locust set.
+
+    The supported native locusts.xml has been compared against all 17 standard
+    EID records. No game XML is distributed. Repentance applies only the FIRST
+    flag in EACH effect array, even when that flag has no visible description.
+    Damage is not multiplied by quality (that is a Repentance+ feature).
+    """
+    if not locusts:
+        return {}
+    texts = dict(english.get("abyss_texts", {}))
+    texts.update(categories.get("abyss_texts", {}))
+    if not texts.get("InfoText") or not texts.get("DamageMult"):
+        return {}
+    grammar = language if categories.get("abyss_texts", {}).get("InfoText") else "en_us"
+    effects = {**english.get("abyss_effects", {}), **categories.get("abyss_effects", {})}
+    tears = {**english.get("tear_flags", {}), **categories.get("tear_flags", {})}
+    overrides = {**english.get("abyss_synergies", {}), **categories.get("abyss_synergies", {})}
+    default = [1, 1, 1, [-1], [-1], [-1], [-1], [-1], [-1], 1, 1, 1, 1, 1]
+
+    def replace(text, **values):
+        for key, value in values.items():
+            text = text.replace("{" + key + "}", str(value))
+        return text
+
+    def render(identifier, row):
+        override = overrides.get(identifier)
+        if isinstance(override, str) and override:
+            return override
+        amount, scale, speed = row[:3]
+        damage = replace(texts["DamageMult"], **{"1": f"{row[12]:g}"})
+        size = texts.get("SizeSmall" if scale < 1 else "SizeBig", "") if scale != 1 else ""
+        velocity = texts.get("SpeedSlow" if speed < 1 else "SpeedDash" if speed >= 6 else "SpeedFast", "") if speed != 1 else ""
+        headline = texts.get("InfoTextPlural", texts["InfoText"]) if amount > 1 else texts["InfoText"]
+        lines = [replace(headline, amount=amount, size=size, speed=velocity, dmg=damage)]
+
+        def chance(index):
+            # Preserve upstream's priority: chance3/chance2 only override chance1
+            # when they are below one, including a valid zero probability.
+            value = row[9 + index] if index and row[9 + index] < 1 else row[9]
+            return replace(texts.get("Chance", ""), **{"1": f"{value * 100:.2f}".rstrip("0").rstrip(".")}) if value != 1 else ""
+
+        if row[13] != 1:
+            lines.append(replace(texts["DamageMult"], **{"1": f"{row[13]:g}"}) + chance(0))
+        for table_name, offset in ((effects, 3), (tears, 6)):
+            for index in range(3):
+                description = table_name.get(str(row[offset + index][0]))
+                if isinstance(description, str) and description:
+                    lines.append(description + chance(index))
+        return _abyss_plural("#".join(re.sub(r"[ \t]+", " ", line).strip() for line in lines), amount, grammar)
+
+    return {identifier: render(identifier, row) for identifier, row in {"default": default, **locusts}.items()}
 
 
 def luck_formulas(source: Path) -> dict:

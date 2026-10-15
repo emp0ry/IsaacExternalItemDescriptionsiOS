@@ -19,26 +19,26 @@ Download the current files from [GitHub Releases](https://github.com/emp0ry/Isaa
 
 A standalone `IsaacExternalItemDescriptions.dylib`, `descriptions.json`, and `SHA256SUMS` are also provided. No Isaac IPA or copyrighted game bundle is distributed.
 
-### What's new in v0.9.0
+### What's new in v0.10.0
 
-- Spindown Dice previews three eligible results in an arrow-connected chain,
-  respecting native unlocks, run restrictions, and Car Battery.
-- Void and Black Rune preview absorption stat gains without advancing game RNG.
-- Luck-sensitive effects show their chance at your current Luck. Golden trinkets
-  and Mom's Box show their adjusted effects.
-- Collection-page reminders flag collectibles not yet picked up on the active
-  save slot. This does not unlock achievements or change saves.
-- Blank Card, Clear Rune, and Placebo show context-specific charge costs.
-  Flip previews native alternate pedestals; its gameplay verification is pending.
-- PHD/False PHD use player-specific pill effects and rewards, including horse
-  pills and item removal. Distinctive card, rune, and Soul Stone models can be
-  described in shops without revealing shared-model unknown pickups.
-- Fixed undersized inline item artwork and the stuck joystick on LiveContainer
-  cold launch. Four new gameplay screenshots illustrate the new previews.
+- **Glitched Crown:** inspect the pedestal's real five-item cycle without chasing
+  its flashing sprite. Tap the description to advance; `0/5 ›` sits inside the
+  header's top-right corner. Each item keeps its own full description and previews.
+- **Abyss:** see the original standard-Repentance locust count, damage, size,
+  speed, and special effects before absorbing a collectible.
+- **Wild Card and Vurp!:** see the recorded effect Wild Card will repeat and the
+  pill Vurp! will produce, with localized names and actual pill-color artwork.
+- **The Stars?:** preview the oldest eligible passive item it will remove, or two
+  items with Tarot Cloth, using native pickup history and current ownership.
+- **Black Feather:** show the live qualifying-item count and damage bonus,
+  including duplicate items, qualifying trinkets, Mom's Box, and golden Feather.
+- New previews use the game's native state, retain unknown/blind protections,
+  and support all 20 EID languages with English fallback. Existing Spindown,
+  absorption, character, inventory, and LiveContainer fixes remain included.
 
-Read the [complete v0.9.0 release notes](docs/RELEASE_NOTES_v0.9.0.md) for all
-changes and verification limits. The previous character, weapon, wisp, floor,
-and inventory additions remain documented in the [v0.8.0 notes](docs/RELEASE_NOTES_v0.8.0.md).
+Read the [complete v0.10.0 release notes](docs/RELEASE_NOTES_v0.10.0.md) for
+behavior and verification limits. Earlier additions are documented in the
+[v0.9.0 notes](docs/RELEASE_NOTES_v0.9.0.md) and [v0.8.0 notes](docs/RELEASE_NOTES_v0.8.0.md).
 
 ## Features
 
@@ -80,6 +80,10 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Blank Card, Clear Rune, and Placebo show the displayed card/rune/identified pill's mimic charge cost from the installed game's XML. Unknown pills do not reveal costs; Blank Card + Tarot Cloth has its additional upstream notes.
 - Flip reads the native alternate-pedestal record and previews its item and description, without bypassing blind-item protection. It remains included in the build; live device verification is pending.
 - Void and Black Rune preview stat gains from copied native RNG and the authoritative room entity list. Room, purchased-item, and single-item cases use separate predictions; a missing/invalid native snapshot suppresses the forecast instead of guessing.
+- Abyss appends original standard-Repentance locust information for the selected player's owned active, including 17 special definitions and the normal-locust fallback. Repentance+ quality scaling is not applied. See [Abyss checks](docs/testing-abyss.md).
+- Wild Card and Vurp! read native persisted use history for localized effect/pill previews, including normal/horse pill behavior and player-specific effects. See [repeat-preview checks](docs/testing-repeat-previews.md).
+- The Stars? reads native pickup order and removal eligibility, including Tarot Cloth's second item. Black Feather counts qualifying collectible copies and trinket multipliers for its live bonus. See [inventory-preview checks](docs/testing-inventory-previews.md).
+- Glitched Crown reads the native cycle queue. Tap its description to move from overview (`0/5 ›`) through each individual item and back; selection remains stable while the sprite rotates. Native rerolls update the list, separate pedestals have separate selections, and blind items stay hidden. See [Crown checks](docs/testing-glitched-crown.md).
 - Swallowed/smelted normal and golden trinkets appear in a separate pause-inventory section and participate in owned-item conditional checks.
 - Consolation Prize previews the lowest normalized stat and lowest weighted consumable pool. Tied candidates have a `?`; Bethany's soul charges and Tainted Bethany's blood charges are included.
 - Pandora's Box highlights the current native floor payout in green, including Greed/Greedier, the late-game route, Void, and Home. Strange Key highlights its overriding reward instead. Missing floor entries in older translations remain unhighlighted.

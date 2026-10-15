@@ -162,7 +162,8 @@ NSString *EIDCollectionDescription(NSString *detail, NSInteger variant, NSIntege
     NSInteger slot = [collection[@"slot"] integerValue];
     if (variant == 100 && subtype > 0 && subtype <= 732 &&
         slot >= 1 && slot <= 3 &&
-        ![context[@"inside_item_reminder"] boolValue] && [collection[@"progress_allowed"] boolValue] &&
+        ![context[@"inside_item_reminder"] boolValue] && ![context[@"pickup_context"][@"crown_overview"] boolValue] &&
+        [collection[@"progress_allowed"] boolValue] &&
         [collection[@"missing"] containsObject:@(subtype)] &&
         ![context[@"native_metadata"][@"hidden_ids"] containsObject:@(subtype)] && text.length)
         return [detail stringByAppendingFormat:@"#{{Warning}} %@",text];

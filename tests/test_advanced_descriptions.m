@@ -2,7 +2,7 @@
 
 static NSMutableDictionary *AdvancedContext(NSDictionary *database, NSString *code) {
     NSMutableDictionary *context = [NSMutableDictionary dictionary];
-    for (NSString *key in @[@"golden_trinket_effects",@"golden_trinket_overrides",@"tarot_cloth_blank_card",@"context_strings",@"stat_names"]) {
+    for (NSString *key in @[@"golden_trinket_effects",@"golden_trinket_overrides",@"tarot_cloth_blank_card",@"context_strings",@"stat_names",@"abyss_descriptions"]) {
         NSMutableDictionary *entries = [database[@"languages"][@"en_us"][key] mutableCopy] ?: [NSMutableDictionary dictionary];
         [entries addEntriesFromDictionary:database[@"languages"][code][key] ?: @{}];
         context[key] = entries;
@@ -13,11 +13,14 @@ static NSMutableDictionary *AdvancedContext(NSDictionary *database, NSString *co
     context[@"player_index"] = @0;
     NSMutableDictionary *names = [NSMutableDictionary dictionary], *details = [NSMutableDictionary dictionary];
     for (NSString *language in @[@"en_us",code]) {
-        for (NSString *identifier in database[@"languages"][language][@"collectibles"]) {
-            NSDictionary *entry = database[@"languages"][language][@"collectibles"][identifier];
-            NSString *key = [@"5.100." stringByAppendingString:identifier];
-            if ([entry[@"name"] length]) names[key] = entry[@"name"];
-            if ([entry[@"description"] length]) details[key] = entry[@"description"];
+        NSDictionary *prefixes = @{@"collectibles":@"5.100.",@"cards":@"5.300.",@"pills":@"5.70.",@"horsepills":@"5.1070."};
+        for (NSString *category in prefixes) {
+            for (NSString *identifier in database[@"languages"][language][category]) {
+                NSDictionary *entry = database[@"languages"][language][category][identifier];
+                NSString *key = [prefixes[category] stringByAppendingString:identifier];
+                if ([entry[@"name"] length]) names[key] = entry[@"name"];
+                if ([entry[@"description"] length]) details[key] = entry[@"description"];
+            }
         }
     }
     context[@"item_names"] = names; context[@"item_details"] = details;
@@ -33,6 +36,97 @@ void TestAdvancedDescriptions(NSDictionary *database) {
     NSSet *none = [NSSet set];
     for (NSString *code in database[@"languages"]) {
         NSMutableDictionary *context = AdvancedContext(database,code);
+        for (NSDictionary *effect in @[
+            @{@"index":@0,@"variant":@100,@"id":@34,@"color":@0},
+            @{@"index":@0,@"variant":@300,@"id":@19,@"color":@0},
+            @{@"index":@0,@"variant":@300,@"id":@48,@"color":@0},
+            @{@"index":@0,@"variant":@70,@"id":@1,@"color":@1},
+            @{@"index":@0,@"variant":@1070,@"id":@2,@"color":@(0x805)}]) {
+            context[@"pickup_context"] = @{@"repeat_previews":@[effect]};
+            NSString *preview = EIDAdvancedDescription(@"Base",300,80,0,none,context);
+            NSString *key = [NSString stringWithFormat:@"5.%@.%@",effect[@"variant"],effect[@"id"]];
+            NSCAssert([preview containsString:context[@"item_names"][key]], @"Wild Card localizes cards, actives and concrete pills: %@ %@",code,key);
+            NSString *icon = [NSString stringWithFormat:@"{{%@%@}}",[effect[@"color"] integerValue] ? @"Pill" :
+                [effect[@"variant"] integerValue] == 100 ? @"Collectible" : @"Card",
+                [effect[@"color"] integerValue] ? effect[@"color"] : effect[@"id"]];
+            NSCAssert([preview containsString:icon], @"Repeat preview keeps native card/pill artwork: %@",icon);
+        }
+        for (NSNumber *variant in @[@70,@1070]) {
+            NSDictionary *effect = @{@"index":@0,@"variant":variant,@"id":@2,@"color":@([variant intValue] == 1070 ? 0x805 : 5)};
+            context[@"pickup_context"] = @{@"repeat_previews":@[effect]};
+            NSString *preview = EIDAdvancedDescription(@"Base",variant.integerValue,47,0,none,context);
+            NSString *key = [NSString stringWithFormat:@"5.%@.2",variant];
+            NSCAssert([preview containsString:context[@"item_names"][key]], @"Vurp uses the resulting normal/horse pill name: %@",code);
+            NSCAssert([EIDAdvancedDescription(@"Base",2070,47,0,none,context) isEqual:@"Base"], @"Unidentified pills never leak Vurp history");
+            NSCAssert([EIDAdvancedDescription(@"Base",70,2,0,none,context) isEqual:@"Base"], @"Other pills never inherit Vurp previews");
+        }
+        context[@"pickup_context"] = @{@"repeat_previews":@[@{@"index":@0,@"variant":@70,@"id":@47,@"color":@5}]};
+        NSCAssert([EIDAdvancedDescription(@"Base",70,47,0,none,context) containsString:context[@"item_names"][@"5.70.47"]], @"First Vurp predicts itself without inventing a previous pill");
+        for (NSDictionary *invalid in @[
+            @{@"index":@0,@"variant":@300,@"id":@80},
+            @{@"index":@0,@"variant":@100,@"id":@733},
+            @{@"index":@0,@"variant":@2070,@"id":@1,@"color":@1},
+            @{@"index":@0,@"variant":@70,@"id":@51,@"color":@1},
+            @{@"index":@0,@"variant":@70,@"id":@1,@"color":@0x1001},
+            @{@"index":@0,@"variant":@1070,@"id":@1,@"color":@1},
+            @{@"index":@8,@"variant":@100,@"id":@34}]) {
+            context[@"pickup_context"] = @{@"repeat_previews":@[invalid]};
+            NSCAssert([EIDAdvancedDescription(@"Base",300,80,0,none,context) isEqual:@"Base"], @"Invalid/unavailable native history fails closed: %@",invalid);
+        }
+        context[@"pickup_context"] = @{@"repeat_previews":@[]};
+        NSCAssert([EIDAdvancedDescription(@"Base",300,80,0,none,context) isEqual:@"Base"], @"No Wild Card history preserves its base description");
+        context[@"live_state"] = @{@"players":@[@{@"index":@0},@{@"index":@1}]};
+        context[@"pickup_context"] = @{@"repeat_previews":@[
+            @{@"index":@0,@"variant":@100,@"id":@34,@"color":@0},
+            @{@"index":@1,@"variant":@300,@"id":@19,@"color":@0}]};
+        NSString *coopRepeat = EIDAdvancedDescription(@"Base",300,80,0,none,context);
+        NSCAssert([coopRepeat containsString:@"#P1:"] && [coopRepeat containsString:@"#P2:"], @"Co-op history is separate for each native player");
+        context = AdvancedContext(database,code);
+        context[@"pickup_context"] = @{@"collectible_cycle":@{@"items":@[@1,@25,@2,@118,@689]},
+            @"crown_overview":@YES,@"crown_selection":@0};
+        NSSet *cycleOwned = [NSSet setWithArray:@[@"5.100.723",@"5.100.706"]];
+        NSString *overview = EIDAdvancedDescription(@"Not a real Crown pedestal",100,689,0,cycleOwned,context);
+        for (NSNumber *item in @[@1,@25,@2,@118,@689]) {
+            NSString *icon = [NSString stringWithFormat:@"{{Collectible%@}}",item];
+            NSString *key = [NSString stringWithFormat:@"5.100.%@",item];
+            NSCAssert([overview containsString:icon] && [overview containsString:context[@"item_names"][key]], @"Crown overview has all five native items and localized icons/names: %@",code);
+        }
+        NSCAssert(![overview containsString:@"Not a real Crown pedestal"] && ![overview containsString:@"{{Collectible723}} →"] &&
+            ![overview containsString:@"{{Collectible706}}"], @"Overview never describes or rerolls an invented Glitched Crown pickup");
+        NSCAssert([overview containsString:@"›"] && ![overview containsString:@"CONFIG_BoC_Toggle"] && ![overview containsString:@"{1}"], @"Desktop Tab hint is adapted to the iOS next indicator: %@",code);
+        context[@"pickup_context"] = @{@"collectible_cycle":@{@"items":@[@1,@25,@2,@118,@689]},
+            @"crown_overview":@NO,@"crown_selection":@5};
+        NSString *selectedCycle = EIDAdvancedDescription(@"Selected item details",100,689,0,none,context);
+        NSCAssert([selectedCycle hasPrefix:@"Selected item details#"] && [selectedCycle containsString:@"{{Collectible689}}"], @"The final item links back to the Crown overview");
+        context[@"pickup_context"] = @{@"collectible_cycle":@{@"items":@[@1,@2,@3,@4]},@"crown_overview":@YES,@"crown_selection":@0};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,689,0,none,context) isEqual:@"Base"], @"Too few native variants do not create a fake Crown summary");
+        context[@"pickup_context"] = @{@"collectible_cycle":@{@"items":@[@1,@1,@2,@3,@4]},@"crown_overview":@YES,@"crown_selection":@0};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,689,0,none,context) isEqual:@"Base"], @"Repeated IDs do not count as five distinct items");
+        context = AdvancedContext(database,code);
+        context[@"pickup_context"] = @{@"stars_previews":@[@{@"index":@0,@"items":@[@25],@"tarot":@NO}]};
+        NSString *stars = EIDAdvancedDescription(@"Base",300,73,0,none,context);
+        NSCAssert([stars containsString:@"{{Collectible25}}"] && [stars containsString:context[@"item_names"][@"5.100.25"]], @"The Stars? shows the native oldest removable item: %@",code);
+        NSCAssert([EIDAdvancedDescription(@"Base",300,17,0,none,context) isEqual:@"Base"], @"Ordinary Stars is not reversed Stars");
+        context[@"pickup_context"] = @{@"stars_previews":@[@{@"index":@0,@"items":@[@25,@2],@"tarot":@YES}]};
+        NSString *twoStars = EIDAdvancedDescription(@"Base",300,73,0,none,context);
+        NSCAssert([twoStars containsString:@"{{Collectible25}}"] && [twoStars containsString:@"{{Collectible2}}"], @"Tarot Cloth shows two native removals");
+        context[@"pickup_context"] = @{@"stars_previews":@[@{@"index":@0,@"items":@[],@"tarot":@NO}]};
+        NSCAssert([EIDAdvancedDescription(@"Base",300,73,0,none,context) isEqual:@"Base"], @"No eligible item never invents a Stars target");
+        for (NSNumber *box in @[@NO,@YES]) for (NSNumber *gold in @[@NO,@YES]) {
+            context[@"pickup_context"] = @{@"black_feather":@[@{@"index":@0,@"count":@3,@"box":box}]};
+            NSString *feather = EIDAdvancedDescription(@"Base",350,80+(gold.boolValue ? 0x8000 : 0),0,none,context);
+            NSString *number = [NSString stringWithFormat:@"%.4g",1.5*(box.boolValue ? 2 : 1)*(gold.boolValue ? 2 : 1)];
+            NSString *tint = box.boolValue || gold.boolValue ? @"ColorGold" : @"ColorSilver";
+            NSString *expectedDamage = [NSString stringWithFormat:@"{{%@}}%@{{CR}}",tint,number];
+            NSCAssert([feather containsString:expectedDamage], @"Black Feather uses upstream ordinary/golden/Box math: %@",code);
+            NSCAssert(![feather containsString:@"{1}"] && ![feather containsString:@"{2}"], @"Black Feather text is localized and fully substituted");
+        }
+        context[@"pickup_context"] = @{@"black_feather":@[@{@"index":@0,@"count":@0,@"box":@NO}]};
+        NSCAssert([EIDAdvancedDescription(@"Base",350,80,0,none,context) containsString:@"{{CR}}0{{CR}}"], @"Removing the last evil item updates to zero");
+        NSCAssert([EIDAdvancedDescription(@"Base",350,17,0,none,context) isEqual:@"Base"], @"Other trinkets do not get Black Feather's computed line");
+        context[@"pickup_context"] = @{@"black_feather":@[@{@"index":@0,@"count":@-1,@"box":@NO}]};
+        NSCAssert([EIDAdvancedDescription(@"Base",350,80,0,none,context) isEqual:@"Base"], @"Invalid counters fail closed");
+        context = AdvancedContext(database,code);
         NSCAssert([EIDAdvancedDescription(@"+2",350,35,0,none,context) isEqual:@"+2"], @"Ordinary trinkets remain unchanged");
         NSString *gold = EIDAdvancedDescription(@"+2 {{Collectible2}}",350,0x8000+35,0,none,context);
         NSCAssert([gold containsString:@"{{ColorGold}}4{{CR}}"] && [gold containsString:@"{{Collectible2}}"], @"Double whole values, not sprite IDs");
@@ -44,6 +138,22 @@ void TestAdvancedDescriptions(NSDictionary *database) {
         NSCAssert([luck containsString:@"{{ColorGreen}}100{{CR}}"] && [luck containsString:@"5"], @"Lodestone is guaranteed at five luck");
         NSCAssert([EIDAdvancedDescription(@"Base",100,496,0,none,context) containsString:@"{{ColorGreen}}5{{CR}}"], @"Euthanasia: 5 luck yields 5%%, not the newer patch formula");
         NSSet *dice = [NSSet setWithObject:@"5.100.723"];
+        NSSet *abyss = [NSSet setWithObject:@"5.100.706"];
+        NSMutableDictionary *abyssContext = context.mutableCopy;
+        abyssContext[@"live_state"] = @{@"players":@[@{@"index":@0,@"type":@0,@"luck":@0}]};
+        for (NSNumber *identifier in @[@2,@3,@4,@6,@7,@10,@13,@25,@103,@118,@149,@153,@257,@305,@374,@494,@559,@34]) {
+            NSString *preview = context[@"abyss_descriptions"][identifier.stringValue] ?: context[@"abyss_descriptions"][@"default"];
+            NSString *expected = [NSString stringWithFormat:@"Base#{{Collectible706}} {{ColorRed}}%@{{CR}}",
+                [preview stringByReplacingOccurrencesOfString:@"#" withString:@"#{{ColorRed}}"]];
+            NSCAssert([EIDAdvancedDescription(@"Base",100,identifier.integerValue,0,abyss,abyssContext) isEqual:expected], @"Abyss matches original locust preview: %@ %@",code,identifier);
+        }
+        NSCAssert([EIDAdvancedDescription(@"Base",100,25,0,none,context) isEqual:@"Base"], @"No Abyss preview after ownership is removed");
+        NSCAssert([EIDAdvancedDescription(@"Base",350,35,0,abyss,context) isEqual:@"Base"], @"Abyss does not absorb trinkets");
+        NSCAssert([EIDAdvancedDescription(@"Base",300,41,0,abyss,context) isEqual:@"Base"], @"Abyss does not absorb pocket items");
+        NSCAssert([EIDAdvancedDescription(@"Base",100,25,0,abyss,@{}) isEqual:@"Base"], @"An older database never invents missing Abyss text");
+        context[@"inside_item_reminder"] = @YES;
+        NSCAssert([EIDAdvancedDescription(@"Base",100,25,0,abyss,context) containsString:@"{{Collectible706}}"], @"The original hypothetical locust information remains available in inventory descriptions");
+        context[@"inside_item_reminder"] = @NO;
         NSString *chain = EIDAdvancedDescription(@"Base",100,10,0,dice,context);
         NSCAssert([chain containsString:@"{{Collectible9}}"] && [chain containsString:@"{{Collectible7}}"] && ![chain containsString:@"{{Collectible8}}"], @"Spindown skips hidden IDs");
         NSString *doubleChain = EIDAdvancedDescription(@"Base",100,10,0,[NSSet setWithArray:@[@"5.100.723",@"5.100.356"]],context);
@@ -98,7 +208,10 @@ void TestAdvancedDescriptions(NSDictionary *database) {
         NSCAssert([EIDAdvancedDescription(@"Base",100,1,0,none,context) containsString:@"+2"], @"Purchased item uses the extra-absorption prediction");
         player[@"owned"] = @[]; context[@"live_state"] = @{@"players":@[player]};
         NSCAssert([EIDAdvancedDescription(@"Base",300,5,0,[NSSet setWithObject:@"5.100.286"],context) isEqual:@"Base"], @"Co-op cannot borrow another player's mimic active");
+        NSCAssert([EIDAdvancedDescription(@"Base",100,25,0,abyss,context) isEqual:@"Base"], @"Co-op cannot borrow another player's Abyss");
+        player[@"owned"] = @[@"5.100.706"]; context[@"live_state"] = @{@"players":@[player]};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,25,0,none,context) containsString:@"{{Collectible706}}"], @"Abyss follows the fresh personal native inventory, not a stale aggregate");
         NSCAssert([EIDAdvancedDescription(@"Base",100,1,0,none,@{}) isEqual:@"Base"], @"Unavailable native state fails closed");
     }
-    puts("Advanced descriptions: golden trinkets, Luck, Spindown, mimic charges, Flip and absorption passed in 20 languages");
+    puts("Advanced descriptions: golden trinkets, Luck, Spindown, mimic charges, Flip, absorption, Abyss, Wild Card, Vurp!, The Stars?, Black Feather and Glitched Crown passed in 20 languages");
 }
