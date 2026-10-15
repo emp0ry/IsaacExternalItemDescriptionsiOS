@@ -32,4 +32,14 @@ reject("initWithWindowScene:")
 reject("[hostView addSubview:")
 reject("root.userInteractionEnabled = NO;")
 
+# Paused console changes must either repaint or retain a pending repaint.
+require("self.descriptionNeedsRefresh = YES;")
+require("if (self.descriptionNeedsRefresh && !self.menuMode &&")
+require("self.descriptionNeedsRefresh = NO;")
+NATIVE = (ROOT / "src" / "EIDNativeProbe.mm").read_text(encoding="utf-8")
+PRESENTATION = (ROOT / "src" / "EIDParityPresentation.m").read_text(encoding="utf-8")
+assert "!NSThread.isMainThread" in NATIVE
+assert "self.pillModifiers == other.pillModifiers" in NATIVE
+assert 'context[@"pill_modifiers"] = @(pickup.pillModifiers)' in PRESENTATION
+
 print("Overlay architecture test passed")

@@ -227,7 +227,9 @@ def main() -> int:
             for key in ("TaintedCainPedestalBase", "TaintedCainPedestalBaseBirthright",
                         "TaintedCainPedestalGuaranteed", "TaintedCainPedestalBonus",
                         "TaintedCainPedestalLuckyToe", "TaintedCainPedestalLuckyToeBirthright",
-                        "TaintedCainPedestalDaemonsTail"):
+                        "TaintedCainPedestalDaemonsTail", "CollectionPageInfo", "FalsePHDHeart",
+                        "FalsePHDDamage", "FalsePHDHorseDamage", "ExperimentalPillPHD",
+                        "ExperimentalPillFalsePHD"):
                 text = parse_string_assignment(path, key)
                 if text:
                     categories["context_strings"][key] = text
@@ -247,6 +249,9 @@ def main() -> int:
         payload["weapon_rules"] = weapon_rules(source)
         payload["character_metadata"] = character_metadata(source)
         payload["car_battery_metadata"] = battery_metadata(source)
+        xml_data = source / "features/eid_xmldata.lua"
+        if xml_data.is_file():
+            payload["pill_metadata"] = context_table(xml_data.read_text(encoding="utf-8-sig"), "pillMetadata")
         for categories in languages.values():
             categories["greed_no_effect_notes"] = greed_no_effect_notes(categories, payload["context_rules"])
     output.parent.mkdir(parents=True, exist_ok=True)

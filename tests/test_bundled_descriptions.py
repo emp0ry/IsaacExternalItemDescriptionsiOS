@@ -60,6 +60,16 @@ class BundledDescriptionsTests(unittest.TestCase):
                 for entry in language[category].values():
                     self.assertFalse(entry["name"].startswith("["))
 
+    def test_pill_synergy_and_collection_reference_strings(self) -> None:
+        for code in ("en_us", "ru"):
+            strings = self.payload["languages"][code]["context_strings"]
+            for key in ("CollectionPageInfo", "FalsePHDHeart", "FalsePHDDamage",
+                        "FalsePHDHorseDamage", "ExperimentalPillPHD", "ExperimentalPillFalsePHD"):
+                self.assertTrue(strings[key], (code, key))
+        self.assertEqual(len(self.payload["pill_metadata"]), 50)
+        self.assertEqual(self.payload["pill_metadata"]["15"]["class"], "3-")
+        self.assertEqual(self.payload["pill_metadata"]["47"]["class"], "1-")
+
     def test_extended_character_metadata_and_reference_tables_are_bundled(self) -> None:
         english = self.payload["languages"]["en_us"]
         metadata = self.payload["character_metadata"]

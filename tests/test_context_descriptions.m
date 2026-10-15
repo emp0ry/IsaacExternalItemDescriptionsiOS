@@ -4,6 +4,7 @@
 #import "EIDInlineIconPolicy.h"
 #import "EIDTransformationProgress.h"
 #import "EIDNativeProbe.h"
+#include "EIDPillPolicy.h"
 
 // A read-only native snapshot, sufficient to exercise the production tracker.
 @interface TestPlayerSnapshot : NSObject
@@ -32,6 +33,7 @@ static NSDictionary *Context(NSDictionary *database, NSString *language) {
     context[@"rules"] = database[@"context_rules"];
     context[@"weapon_rules"] = database[@"weapon_rules"];
     context[@"car_battery_metadata"] = database[@"car_battery_metadata"];
+    context[@"pill_metadata"] = database[@"pill_metadata"];
     context[@"character_metadata"] = database[@"character_metadata"];
     context[@"native_metadata"] = @{@"active_ids":@[@33,@34,@35,@78,@133,@135,@164,@297,@584,@636,@653,@713],
         @"quest_ids":@[@238,@239,@327,@328,@626,@627,@633,@668],@"quest_metadata_available":@YES};
@@ -62,12 +64,101 @@ static NSString *PandoraLines(NSString *text) {
     return [lines componentsJoinedByString:@"#"];
 }
 
+static void TestPillsAndCollection(NSDictionary *database) {
+    for (NSString *language in database[@"languages"]) {
+        NSMutableDictionary *context = [Context(database,language) mutableCopy];
+        NSDictionary *strings = context[@"context_strings"];
+        NSSet *falsePHD = [NSSet setWithObject:@"5.100.654"];
+        NSString *damage = strings[@"FalsePHDDamage"], *horseDamage = strings[@"FalsePHDHorseDamage"];
+        NSString *heart = strings[@"FalsePHDHeart"];
+        NSCAssert(damage.length && horseDamage.length && heart.length, @"Pill translations fall back to English");
+        for (NSNumber *effect in @[@7,@12,@14,@16,@18,@48]) {
+            NSString *text = EIDContextDescriptionWithOwnedItems(@"Base",70,effect.integerValue,-1,0,falsePHD,context);
+            NSCAssert([text containsString:damage] && ![text containsString:heart], @"False PHD stat down / shot-speed down grants damage");
+            text = EIDContextDescriptionWithOwnedItems(@"Base",1070,effect.integerValue,-1,0,falsePHD,context);
+            NSCAssert([text containsString:horseDamage], @"Horse damage doubles to 1.2");
+        }
+        for (NSNumber *effect in @[@2,@23,@26,@28,@30,@32,@38,@43]) {
+            NSString *text = EIDContextDescriptionWithOwnedItems(@"Base",70,effect.integerValue,-1,0,falsePHD,context);
+            NSCAssert([text containsString:heart], @"False PHD bad pill / I'm Excited grants a black heart");
+        }
+        for (NSNumber *effect in @[@8,@10,@15,@17,@33,@40])
+            NSCAssert([EIDContextDescriptionWithOwnedItems(@"Base",70,effect.integerValue,-1,0,falsePHD,context)
+                isEqualToString:@"Base"], @"Positive, neutral and class-0 pills have no invented reward");
+        NSCAssert([EIDContextDescriptionWithOwnedItems(@"Unknown",2070,5,0,0,falsePHD,context)
+            isEqualToString:@"Unknown"], @"Unknown pills expose neither effect nor synergy");
+        NSCAssert([EIDContextDescriptionWithOwnedItems(@"Base",70,16,0,0,[NSSet set],context)
+            isEqualToString:@"Base"], @"Without False PHD no bonus is shown");
+        for (NSNumber *good in @[@75,@46,@303]) {
+            NSSet *owned = [NSSet setWithObject:[NSString stringWithFormat:@"5.100.%@",good]];
+            NSString *text = EIDContextDescriptionWithOwnedItems(@"Base",70,50,0,0,owned,context);
+            NSCAssert([text containsString:strings[@"ExperimentalPillPHD"]], @"Good pill modifier prevents Experimental stat down");
+        }
+        NSString *experimental = EIDContextDescriptionWithOwnedItems(@"Base",70,50,0,0,falsePHD,context);
+        NSCAssert([experimental containsString:strings[@"ExperimentalPillFalsePHD"]] &&
+            [experimental containsString:damage], @"False PHD Experimental pill has no stat up and grants damage");
+        NSSet *both = [NSSet setWithArray:@[@"5.100.75",@"5.100.654"]];
+        experimental = EIDContextDescriptionWithOwnedItems(@"Base",1070,50,0,0,both,context);
+        NSCAssert([experimental containsString:horseDamage] &&
+            ![experimental containsString:strings[@"ExperimentalPillFalsePHD"]] &&
+            ![experimental containsString:strings[@"ExperimentalPillPHD"]], @"PHD + False PHD cancel stat filtering, not the damage bonus");
+        // One background scan deliberately retains both removed items. Fresh
+        // main-thread modifiers must win even when the effect ID is unchanged.
+        context[@"player_index"] = @0;
+        context[@"live_state"] = @{@"players":@[@{@"index":@0,@"owned":both.allObjects}]};
+        for (NSNumber *mask in @[@3,@2,@3,@1,@0,@(-1)]) {
+            context[@"pill_modifiers"] = mask;
+            NSInteger modifiers = mask.integerValue;
+            BOOL bad = modifiers >= 0 && (modifiers & EIDPillModifierFalsePHD);
+            BOOL good = modifiers >= 0 && (modifiers & EIDPillModifierPHD);
+            for (NSNumber *variant in @[@70,@1070]) {
+                NSString *expectedDamage = variant.integerValue == 1070 ? horseDamage : damage;
+                NSString *down = EIDContextDescriptionWithOwnedItems(@"Base",variant.integerValue,16,0,0,both,context);
+                NSCAssert([down containsString:expectedDamage] == bad, @"Removing False PHD clears damage despite stale inventory");
+                NSString *paralysis = EIDContextDescriptionWithOwnedItems(@"Base",variant.integerValue,23,0,0,both,context);
+                NSCAssert([paralysis containsString:heart] == bad, @"Removing False PHD clears black-heart reward");
+                NSString *up = EIDContextDescriptionWithOwnedItems(@"Base",variant.integerValue,17,0,0,both,context);
+                NSCAssert([up isEqualToString:@"Base"], @"Both items never grant a False PHD bonus to a positive pill");
+                NSString *exp = EIDContextDescriptionWithOwnedItems(@"Base",variant.integerValue,50,0,0,both,context);
+                NSCAssert([exp containsString:expectedDamage] == bad, @"Experimental damage follows current ownership");
+                NSCAssert([exp containsString:strings[@"ExperimentalPillFalsePHD"]] == (bad && !good),
+                    @"Both cancel bad filtering; removing PHD restores it");
+                NSCAssert([exp containsString:strings[@"ExperimentalPillPHD"]] == (good && !bad),
+                    @"Removing False PHD restores the PHD-only Experimental rule");
+            }
+            NSCAssert([EIDContextDescriptionWithOwnedItems(@"Unknown",2070,5,0,0,both,context)
+                isEqualToString:@"Unknown"], @"No modifier combination reveals unknown pill bonuses");
+        }
+        [context removeObjectForKey:@"pill_modifiers"];
+        context[@"player_index"] = @0;
+        context[@"live_state"] = @{@"players":@[@{@"index":@0,@"owned":@[]},@{@"index":@1,@"owned":falsePHD.allObjects}]};
+        NSCAssert([EIDContextDescriptionWithOwnedItems(@"Base",70,16,0,0,falsePHD,context)
+            isEqualToString:@"Base"], @"Co-op partner's False PHD is not applied to this player");
+
+        context[@"live_state"] = @{@"collection":@{@"slot":@2,@"progress_allowed":@YES,@"missing":@[@25,@626]}};
+        context[@"native_metadata"] = @{@"hidden_ids":@[@626]};
+        NSString *note = EIDCollectionDescription(@"Base",100,25,context);
+        NSCAssert([note hasSuffix:strings[@"CollectionPageInfo"]] && [note containsString:@"{{Warning}}"], @"Active save's missing collectible has a final localized notice");
+        NSCAssert([EIDCollectionDescription(@"Base",100,26,context) isEqualToString:@"Base"], @"Already collected item is not flagged");
+        NSCAssert([EIDCollectionDescription(@"Base",100,626,context) isEqualToString:@"Base"], @"Hidden quest item is excluded");
+        NSCAssert([EIDCollectionDescription(@"Base",300,25,context) isEqualToString:@"Base"], @"Cards are not collection-page collectibles");
+        context[@"inside_item_reminder"] = @YES;
+        NSCAssert([EIDCollectionDescription(@"Base",100,25,context) isEqualToString:@"Base"], @"Reminder never tells the player to collect an owned item");
+        context[@"inside_item_reminder"] = @NO;
+        context[@"live_state"] = @{@"collection":@{@"slot":@2,@"progress_allowed":@NO,@"missing":@[@25]}};
+        NSCAssert([EIDCollectionDescription(@"Base",100,25,context) isEqualToString:@"Base"], @"Read-only/custom runs do not promise collection progress");
+        context[@"live_state"] = @{};
+        NSCAssert([EIDCollectionDescription(@"Base",100,25,context) isEqualToString:@"Base"], @"Unavailable collection state fails closed");
+    }
+}
+
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         NSCAssert(argc == 2, @"Pass the bundled descriptions database");
         NSData *bytes = [NSData dataWithContentsOfFile:@(argv[1])];
         NSDictionary *database = [NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil];
         NSCAssert(database[@"context_rules"], @"Context data is bundled");
+        TestPillsAndCollection(database);
         for (NSString *token in @[@"Damage",@"Speed",@"Tears",@"Range",@"Shotspeed",@"Luck",
                                    @"AngelChance",@"DevilChance",@"Tearsize"]) {
             NSCAssert([EIDRepentanceStatIconAlias(token) isEqualToString:[token stringByAppendingString:@"REP"]],

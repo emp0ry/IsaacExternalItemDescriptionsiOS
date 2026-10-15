@@ -77,12 +77,13 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
 
 @interface EIDItemsXMLParser : NSObject <NSXMLParserDelegate>
 @property(nonatomic, strong) NSMutableDictionary<NSString *, EIDDescription *> *items;
+@property(nonatomic, strong) NSMutableSet<NSNumber *> *hiddenIDs;
 @end
 
 @implementation EIDItemsXMLParser
 - (instancetype)init {
     self = [super init];
-    if (self) _items = [NSMutableDictionary dictionary];
+    if (self) { _items = [NSMutableDictionary dictionary]; _hiddenIDs = [NSMutableSet set]; }
     return self;
 }
 
@@ -106,6 +107,7 @@ static NSString *EIDDescriptionKey(NSInteger variant, NSInteger subtype) {
     }
     if ([detail hasPrefix:@"#"]) detail = @"Description available after importing EID data";
     NSInteger itemID = identifier.integerValue;
+    if (collectible && [attributes[@"hidden"] boolValue]) [self.hiddenIDs addObject:@(itemID)];
     NSInteger variant = trinket ? EIDPickupVariantTrinket : EIDPickupVariantCollectible;
     NSInteger quality = -1;
     if (collectible && attributes[@"quality"].length) {
@@ -306,6 +308,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
 
 - (void)loadGameItemMetadata {
     NSMutableSet *quests = [NSMutableSet set];
+    NSMutableSet *hidden = [NSMutableSet set];
     BOOL questMetadataAvailable = NO;
     NSString *bundlePath = NSBundle.mainBundle.bundlePath;
     NSArray<NSString *> *relativePaths = @[@"rebirth-resources/data/items.xml", @"afterbirth-resources/data/items.xml",
@@ -316,7 +319,10 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
         if (!data.length) continue;
         EIDItemsXMLParser *delegate = [[EIDItemsXMLParser alloc] init];
         NSXMLParser *parser = [[NSXMLParser alloc] initWithData:data]; parser.delegate = delegate;
-        if ([parser parse]) [self.items addEntriesFromDictionary:delegate.items];
+        if ([parser parse]) {
+            [self.items addEntriesFromDictionary:delegate.items];
+            [hidden unionSet:delegate.hiddenIDs];
+        }
     }
     NSArray<NSString *> *metadataPaths = @[@"repentance-resources/data/items_metadata.xml", @"repentance-resources/data/items_metadata2.xml"];
     for (NSString *relativePath in metadataPaths) {
@@ -342,6 +348,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
         if (item.pickupVariant == EIDPickupVariantCollectible && item.itemType == EIDCollectibleItemTypeActive)
             [actives addObject:@(item.collectibleID)];
     self.nativeMetadata = @{@"active_ids":[actives sortedArrayUsingSelector:@selector(compare:)],
+        @"hidden_ids":[hidden.allObjects sortedArrayUsingSelector:@selector(compare:)],
         @"quest_ids":[quests.allObjects sortedArrayUsingSelector:@selector(compare:)],
         @"quest_metadata_available":@(questMetadataAvailable)};
     __block NSUInteger activeCount = 0, timedCount = 0, specialCount = 0;
@@ -406,6 +413,8 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
     if ([root[@"weapon_rules"] isKindOfClass:NSArray.class]) context[@"weapon_rules"] = root[@"weapon_rules"];
     if ([root[@"car_battery_metadata"] isKindOfClass:NSDictionary.class])
         context[@"car_battery_metadata"] = root[@"car_battery_metadata"];
+    if ([root[@"pill_metadata"] isKindOfClass:NSDictionary.class])
+        context[@"pill_metadata"] = root[@"pill_metadata"];
     NSMutableDictionary *itemNames = [NSMutableDictionary dictionary];
     for (NSString *category in @[@"collectibles", @"trinkets"]) {
         NSString *prefix = [category isEqualToString:@"collectibles"] ? @"5.100." : @"5.350.";

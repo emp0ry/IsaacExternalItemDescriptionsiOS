@@ -173,7 +173,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
         [self eid_parity_renderPickups:pickups];
         return;
     }
-    EIDPickupIdentity *pickup = pickups.firstObject;
+    EIDPickupIdentity *pickup = [probe resolvedPillIdentity:pickups.firstObject];
     EIDDescription *item = [store descriptionForPickupVariant:pickup.variant subtype:pickup.subtype];
     if (!item) { [self eid_parity_renderPickups:pickups]; return; }
     NSInteger playerType = pickup.playerType >= 0 ? pickup.playerType : probe.primaryPlayerType;
@@ -181,6 +181,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     context[@"live_state"] = probe.descriptionState;
     context[@"player_type"] = @(playerType);
     context[@"player_index"] = @(pickup.playerIndex >= 0 ? pickup.playerIndex : 0);
+    if (pickup.rawPillSubtype) context[@"pill_modifiers"] = @(pickup.pillModifiers);
     context[@"inside_item_reminder"] = @([self valueForKey:@"selectedInventoryItem"] != nil);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     CGFloat scale = [defaults objectForKey:EIDScaleKey] ? [defaults doubleForKey:EIDScaleKey] : 1;
@@ -197,7 +198,9 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     if (!image && showIcon) {
         SEL selector = NSSelectorFromString(@"pocketIconForVariant:subtype:");
         if ([self respondsToSelector:selector])
-            image = ((UIImage *(*)(id,SEL,NSInteger,NSInteger))objc_msgSend)(self,selector,pickup.variant,pickup.subtype);
+            image = ((UIImage *(*)(id,SEL,NSInteger,NSInteger))objc_msgSend)(self,selector,
+                pickup.rawPillSubtype ? EIDPickupVariantUnidentifiedPill : pickup.variant,
+                pickup.rawPillSubtype ?: pickup.subtype);
     }
     NSMutableAttributedString *output = [NSMutableAttributedString new];
     NSUInteger headerEnd = 0;
@@ -244,6 +247,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
         NSString *detail = EIDContextDescriptionWithOwnedItems(item.detail, pickup.variant, pickup.subtype,
             playerType, probe.gameDifficulty, owned, context);
         detail = EIDDynamicDescription(detail,pickup.variant,pickup.subtype,probe.gameDifficulty,owned,context);
+        detail = EIDCollectionDescription(detail,pickup.variant,pickup.subtype,context);
         AppendMarkup(output, detail, bodyFont, scale, store);
     }
     NSMutableParagraphStyle *bodyStyle = [NSMutableParagraphStyle new];

@@ -39,17 +39,29 @@ inline bool IsPill(int32_t variant) {
         variant == kUnidentifiedPillVariant;
 }
 
+inline bool IsVisuallyDistinctCard(int32_t subtype) {
+    // Unique pickup models in native Repentance 1.7.9b pocketitems.xml.
+    // Chaos Card shares its model with three other cards; ordinary rune
+    // shapes are also shared, so neither group identifies its exact effect.
+    switch (subtype) {
+        case 41: case 43: case 45: case 47: case 49: case 50: case 51:
+        case 55: case 78: case 80: return true;
+        default: return subtype >= kFirstSoulStoneSubtype && subtype <= kLastSoulStoneSubtype;
+    }
+}
+
 // Mirrors original EID's default card/rune/pill visibility settings. Touched is
 // intentionally absent: ordinary floor cards are identified when reachable,
-// shop cards stay hidden, while shop Soul Stones and shop pills are shown.
+// shared shop card models stay hidden. User-requested unique-model exceptions
+// extend the original Soul Stone rule without identifying ambiguous sprites.
 inline bool ShouldRevealFloorIdentity(int32_t variant, int32_t subtype,
                                       bool isShopItem, int32_t optionsPickupIndex,
                                       bool hasReachablePath) {
     if (variant == kCardVariant) {
-        const bool soulStone = IsSoulStone(variant, subtype);
+        const bool distinct = IsVisuallyDistinctCard(subtype);
         if (optionsPickupIndex > 0) return false;
-        if (isShopItem && !soulStone) return false;
-        return soulStone || hasReachablePath;
+        if (isShopItem && !distinct) return false;
+        return distinct || hasReachablePath;
     }
     if (IsPill(variant)) {
         // Original defaults show purchasable and Options? pills, but not pills

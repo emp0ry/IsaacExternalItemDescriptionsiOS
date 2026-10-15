@@ -4,6 +4,12 @@
 #include <vector>
 
 namespace EIDNativeContextPolicy {
+inline bool ValidCollectionFlags(const uint8_t *flags, size_t count) {
+    if (!flags || count != 733 || flags[0] != 0) return false;
+    for (size_t index = 1; index < count; ++index) if (flags[index] > 1) return false;
+    return true;
+}
+
 // HasCollectible(59) has a virtual-ownership branch in native Repentance:
 // Judas/Black Judas + Birthright. It need not exist in the raw count table.
 inline bool HasPassiveBelial(int32_t playerType, int32_t birthrightCount,

@@ -1,4 +1,5 @@
 #import "EIDContextDescriptions.h"
+#include "EIDPillPolicy.h"
 
 static NSString *ReplaceVariables(NSString *text, NSString *name, NSInteger amount) {
     if ([text isKindOfClass:NSNumber.class]) text = [(NSNumber *)text stringValue];
@@ -155,6 +156,69 @@ NSString *EIDContextDescription(NSString *detail, NSInteger variant, NSInteger s
         difficulty, [NSSet set], context);
 }
 
+NSString *EIDCollectionDescription(NSString *detail, NSInteger variant, NSInteger subtype, NSDictionary *context) {
+    NSDictionary *collection = context[@"live_state"][@"collection"];
+    NSString *text = context[@"context_strings"][@"CollectionPageInfo"];
+    NSInteger slot = [collection[@"slot"] integerValue];
+    if (variant == 100 && subtype > 0 && subtype <= 732 &&
+        slot >= 1 && slot <= 3 &&
+        ![context[@"inside_item_reminder"] boolValue] && [collection[@"progress_allowed"] boolValue] &&
+        [collection[@"missing"] containsObject:@(subtype)] &&
+        ![context[@"native_metadata"][@"hidden_ids"] containsObject:@(subtype)] && text.length)
+        return [detail stringByAppendingFormat:@"#{{Warning}} %@",text];
+    return detail;
+}
+
+static NSString *PillSynergies(NSString *detail, NSInteger variant, NSInteger subtype,
+    NSSet<NSString *> *owned, NSDictionary *context) {
+    if ((variant != 70 && variant != 1070) || subtype < 1 || subtype > 50) return detail;
+    // Effects are resolved for the nearest/selected player. Do not attribute a
+    // co-op partner's False PHD reward to this player's pill.
+    for (NSDictionary *player in context[@"live_state"][@"players"]) {
+        if ([player[@"index"] isEqual:context[@"player_index"]] && player[@"owned"]) {
+            owned = [NSSet setWithArray:player[@"owned"]];
+            break;
+        }
+    }
+    if ([context[@"pill_modifiers"] isKindOfClass:NSNumber.class]) {
+        // Explicit zero overrides every older ownership snapshot. Unavailable
+        // native state also fails closed instead of reusing a previous reward.
+        NSInteger modifiers = [context[@"pill_modifiers"] integerValue];
+        NSMutableSet *current = [NSMutableSet set];
+        if (modifiers >= 0 && modifiers <= EIDPillModifierAll) {
+            if (modifiers & EIDPillModifierPHD) [current addObject:@"5.100.75"];
+            if (modifiers & EIDPillModifierFalsePHD) [current addObject:@"5.100.654"];
+            if (modifiers & EIDPillModifierVirgo) [current addObject:@"5.100.303"];
+            if (modifiers & EIDPillModifierLuckyFoot) [current addObject:@"5.100.46"];
+        }
+        owned = current;
+    }
+    NSDictionary *strings = context[@"context_strings"];
+    BOOL falsePHD = [owned containsObject:@"5.100.654"];
+    NSString *damage = strings[variant == 1070 ? @"FalsePHDHorseDamage" : @"FalsePHDDamage"];
+    if (subtype == 50) { // Experimental Pill, zero-based effect 49.
+        NSInteger good = [owned containsObject:@"5.100.75"] ? 75 :
+            [owned containsObject:@"5.100.46"] ? 46 : [owned containsObject:@"5.100.303"] ? 303 : 0;
+        if (falsePHD) {
+            NSString *text = strings[@"ExperimentalPillFalsePHD"];
+            if (!good && text.length) detail = [detail stringByAppendingFormat:@"#{{Collectible654}} %@",text];
+            if (damage.length) detail = [detail stringByAppendingFormat:@"#{{Collectible654}} %@",damage];
+        } else if (good && [strings[@"ExperimentalPillPHD"] length]) {
+            detail = [detail stringByAppendingFormat:@"#{{Collectible%ld}} %@",(long)good,strings[@"ExperimentalPillPHD"]];
+        }
+    } else if (falsePHD) {
+        NSString *pillClass = context[@"pill_metadata"][@(subtype - 1).stringValue][@"class"];
+        if (![pillClass isKindOfClass:NSString.class]) return detail;
+        BOOL negative = [pillClass containsString:@"-"];
+        BOOL damageUp = (negative && [pillClass containsString:@"3"]) || subtype == 48;
+        BOOL blackHeart = ([pillClass containsString:@"1"] || [pillClass containsString:@"2"]) &&
+            (negative || subtype == 43); // I'm Excited has no '-' in XML.
+        NSString *text = damageUp ? damage : blackHeart ? strings[@"FalsePHDHeart"] : nil;
+        if (text.length) detail = [detail stringByAppendingFormat:@"#{{Collectible654}} %@",text];
+    }
+    return detail;
+}
+
 NSString *EIDContextDescriptionWithOwnedItems(NSString *detail, NSInteger variant, NSInteger subtype,
     NSInteger playerType, NSInteger difficulty, NSSet<NSString *> *ownedItems, NSDictionary *context) {
     detail = detail ?: @"";
@@ -294,6 +358,7 @@ NSString *EIDContextDescriptionWithOwnedItems(NSString *detail, NSInteger varian
         if (!weapon) [applied addObject:specific];
     }
     detail = ChargeSynergies(detail,variant,subtype,ownedItems,context);
+    detail = PillSynergies(detail,variant,subtype,ownedItems,context);
     if (![context[@"inside_item_reminder"] boolValue]) {
         for (NSNumber *type in differentPlayers) {
             NSString *name = PlayerName(type.integerValue,context);

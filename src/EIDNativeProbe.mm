@@ -2,6 +2,7 @@
 #import "EIDLogger.h"
 #include "EIDPickupPolicy.hpp"
 #include "EIDNativeContextPolicy.hpp"
+#include "EIDPillPolicy.h"
 
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
@@ -246,6 +247,13 @@ constexpr vm_size_t kVMReadChunk = 2 * 1024 * 1024;
 constexpr vm_size_t kGamePlayerVectorScanLimit = 512 * 1024;
 constexpr float kMaximumDescriptionDistance = 220.0f;
 constexpr uintptr_t kGameGlobalOffset = 0xac3b90;
+constexpr uintptr_t kManagerGlobalOffset = 0xac2428;
+// Collection menu (0x10066b3c0) and persistent loader (0x1006ffd78)
+// independently address the same currently selected save's collection flags.
+constexpr size_t kManagerPersistentDataOffset = 0x204d0;
+constexpr size_t kPersistentCollectionOffset = 0xa68;
+constexpr uintptr_t kItemPoolGetPillEffectOffset = 0x879bf0;
+constexpr uintptr_t kPlayerHasCollectibleOffset = 0x4eeb74;
 constexpr size_t kGameCursesOffset = 0xc;
 constexpr size_t kGameCurrentRoomOffset = 0x21550;
 // Entity_Pickup's Tainted Cain branch at 0x100720a64 reads these fields.
@@ -287,6 +295,7 @@ struct VMPickup {
     bool hasPosition = false;
     bool isShopItem = false;
     int32_t optionsPickupIndex = 0;
+    int32_t rawPillSubtype = 0;
 };
 
 struct VMPlayer {
@@ -832,6 +841,31 @@ static bool IsQuestionMarkSpritePath(std::string path) {
     return basename == "questionmark.png";
 }
 
+static NSDictionary *ReadCollectionSnapshot(void) {
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
+    uintptr_t manager = 0;
+    if (!header || !ReadOwnTaskMemory(reinterpret_cast<vm_address_t>(header) +
+        kManagerGlobalOffset, &manager, sizeof(manager)) || !manager) return nil;
+    uintptr_t persistent = manager + kManagerPersistentDataOffset;
+    std::array<uint8_t, 24> filenameBytes{};
+    std::string filename;
+    uint8_t readOnly = UINT8_MAX;
+    std::array<uint8_t, kMaximumCollectibleID + 1> flags{};
+    if (!ReadOwnTaskMemory(persistent + 0x10, filenameBytes.data(), filenameBytes.size()) ||
+        !ReadRemoteLibCppString(filenameBytes.data(), filename) ||
+        !ReadOwnTaskMemory(persistent + 1, &readOnly, sizeof(readOnly)) || readOnly > 1 ||
+        !ReadOwnTaskMemory(persistent + kPersistentCollectionOffset, flags.data(), flags.size()) ||
+        !EIDNativeContextPolicy::ValidCollectionFlags(flags.data(), flags.size())) return nil;
+    NSString *basename = [[NSString stringWithUTF8String:filename.c_str()] lastPathComponent];
+    NSInteger slot = 0;
+    for (NSInteger candidate = 1; candidate <= 3; ++candidate)
+        if ([basename isEqualToString:[NSString stringWithFormat:@"rep_persistentgamedata%ld.dat",(long)candidate]]) slot = candidate;
+    if (!slot) return nil; // Never confuse another DLC or an unloaded slot.
+    NSMutableArray *missing = [NSMutableArray array];
+    for (size_t item = 1; item < flags.size(); ++item) if (!flags[item]) [missing addObject:@(item)];
+    return @{@"slot":@(slot), @"progress_allowed":@(readOnly == 0), @"missing":missing.copy};
+}
+
 enum class PickupVisibility { Visible, Blind, Unreadable };
 
 static PickupVisibility PickupVisibilityState(const uint8_t *object, size_t available) {
@@ -874,7 +908,8 @@ static bool IsDescribableVariant(int32_t variant) {
 
 static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype,
                         float x, float y, bool hasPosition,
-                        bool isShopItem = false, int32_t optionsPickupIndex = 0) {
+                        bool isShopItem = false, int32_t optionsPickupIndex = 0,
+                        int32_t rawPillSubtype = 0) {
     if (!IsDescribableVariant(variant) || subtype <= 0 || subtype > 65535) return;
     // Subtype zero and out-of-range tarot IDs are unknown/hidden card identities.
     if (variant == EIDPickupVariantCard && subtype > 97) return;
@@ -882,7 +917,7 @@ static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype
     // and proximity must choose the actual nearest entity rather than the first copy.
     if (result.pickupCount < result.pickups.size()) {
         result.pickups[result.pickupCount++] = {
-            variant, subtype, x, y, hasPosition, isShopItem, optionsPickupIndex
+            variant, subtype, x, y, hasPosition, isShopItem, optionsPickupIndex, rawPillSubtype
         };
     }
 }
@@ -1017,7 +1052,8 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
                     : PickupVisibility::Visible;
                 if (visibility == PickupVisibility::Visible) {
                     AddVMPickup(result, displayVariant, displaySubtype, x, y,
-                                positionAvailable, price != 0, optionsPickupIndex);
+                                positionAvailable, price != 0, optionsPickupIndex,
+                                identity[1] == EIDPickupVariantPill ? identity[2] : 0);
                 } else if (visibility == PickupVisibility::Blind) {
                     result.blindPickupCount++;
                 } else {
@@ -1231,12 +1267,28 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
                       playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex {
+    return [self initWithVariant:variant subtype:subtype playerType:playerType
+                     playerIndex:playerIndex rawPillSubtype:0];
+}
+
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex
+                  rawPillSubtype:(NSInteger)rawPillSubtype {
+    return [self initWithVariant:variant subtype:subtype playerType:playerType playerIndex:playerIndex
+        rawPillSubtype:rawPillSubtype pillModifiers:-1];
+}
+
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex
+                  rawPillSubtype:(NSInteger)rawPillSubtype pillModifiers:(NSInteger)pillModifiers {
     self = [super init];
     if (self) {
         _variant = variant;
         _subtype = subtype;
         _playerType = playerType;
         _playerIndex = playerIndex;
+        _rawPillSubtype = rawPillSubtype;
+        _pillModifiers = pillModifiers;
     }
     return self;
 }
@@ -1246,7 +1298,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     if (![object isKindOfClass:EIDPickupIdentity.class]) return NO;
     EIDPickupIdentity *other = object;
     return self.variant == other.variant && self.subtype == other.subtype &&
-        self.playerType == other.playerType && self.playerIndex == other.playerIndex;
+        self.playerType == other.playerType && self.playerIndex == other.playerIndex &&
+        self.rawPillSubtype == other.rawPillSubtype && self.pillModifiers == other.pillModifiers;
 }
 
 - (NSUInteger)hash {
@@ -1311,6 +1364,9 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic) BOOL pillPoolReady;
 @property(nonatomic) NSUInteger developmentCaptureIndex;
 @property(nonatomic) NSInteger lastPauseState;
+// Diagnostics only; accessed exclusively by the main-thread pill resolver.
+@property(nonatomic) NSUInteger loggedPillModifierRun;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *loggedPillModifiers;
 @end
 
 @implementation EIDNativeProbe
@@ -1598,7 +1654,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
                 int32_t variant = EIDPickupVariantPill;
                 int32_t subtype = 0;
                 if (ResolvePillPresentation(pocket.id, variant, subtype)) {
-                    addIdentity(variant, subtype);
+                    int32_t type = -1;
+                    ReadOwnTaskMemory(playerAddress+kPlayerTypeOffset,&type,sizeof(type));
+                    [items addObject:[[EIDPickupIdentity alloc] initWithVariant:variant subtype:subtype
+                        playerType:type playerIndex:(NSInteger)playerIndex rawPillSubtype:pocket.id]];
                 }
             }
         }
@@ -1630,6 +1689,11 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
 - (void)updateDescriptionStateForPlayers:(const VMRegionResult&)players {
     NSMutableDictionary *state = [NSMutableDictionary dictionary];
+    NSDictionary *collection = ReadCollectionSnapshot();
+    if (collection) state[@"collection"] = collection;
+    if (collection && !self.descriptionState[@"collection"])
+        EIDLog(@"native collection validated: slot %@, %lu missing entries, progress allowed %@",
+            collection[@"slot"],(unsigned long)[collection[@"missing"] count],collection[@"progress_allowed"]);
     vm_address_t game = 0;
     int32_t floor[2] = {};
     // Pandora's native branch uses Game[0] for the reward stage and Game[1]
@@ -1979,7 +2043,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
             }
             [pickups addObject:[[EIDPickupIdentity alloc] initWithVariant:closest->variant
                                                                   subtype:closest->subtype
-                                                               playerType:contextType playerIndex:closestPlayerIndex]];
+                                                               playerType:contextType playerIndex:closestPlayerIndex
+                                                           rawPillSubtype:closest->rawPillSubtype]];
         }
     }
     if (!pickups.count && !playerResult.playerCount) {
@@ -2007,7 +2072,70 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 }
 
 - (NSArray<EIDPickupIdentity *> *)currentInventoryItems {
-    return self.inventoryStateAvailable ? self.inventoryItems.copy : @[];
+    if (!self.inventoryStateAvailable) return @[];
+    NSMutableArray *items = [NSMutableArray array];
+    for (EIDPickupIdentity *item in self.inventoryItems) [items addObject:[self resolvedPillIdentity:item]];
+    return items.copy;
+}
+
+- (EIDPickupIdentity *)resolvedPillIdentity:(EIDPickupIdentity *)identity {
+    if (!identity.rawPillSubtype || !self.supportedBuild || !NSThread.isMainThread ||
+        !EIDPickupPolicy::IsPill((int32_t)identity.variant)) return identity;
+    uint32_t color = (uint32_t)identity.rawPillSubtype & kPillColorMask;
+    if (!color || color >= kGoldenPillColor) return identity;
+    int32_t variant = EIDPickupVariantUnidentifiedPill;
+    int32_t subtype = (int32_t)identity.rawPillSubtype;
+    EIDPickupIdentity *unavailable = [[EIDPickupIdentity alloc] initWithVariant:variant subtype:subtype
+        playerType:identity.playerType playerIndex:identity.playerIndex rawPillSubtype:identity.rawPillSubtype];
+    vm_address_t game = 0;
+    VMRegionResult players;
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
+    if (!header || !ReadGameObjectAddress(game) || !self.playerVectorOffset ||
+        !ReadPlayerVector(self.scanContext,game+self.playerVectorOffset,false,players) ||
+        identity.playerIndex < 0 || (size_t)identity.playerIndex >= players.playerCount) return unavailable;
+    vm_address_t player = players.players[(size_t)identity.playerIndex].address;
+    uint8_t identified = UINT8_MAX, disabled = UINT8_MAX;
+    std::array<int32_t, kMaximumCollectibleID + 1> counts{};
+    if (!ReadOwnTaskMemory(game+kGameItemPoolOffset+kItemPoolIdentifiedPillsOffset+color,
+        &identified,sizeof(identified)) || identified > 1 ||
+        !ReadOwnTaskMemory(player+kPlayerNonQuestItemsDisabledOffset,&disabled,sizeof(disabled)) || disabled > 1 ||
+        !ReadPlayerCollectibleCounts(player,counts)) return unavailable;
+    // Read exactly the ownership used by native GetPillEffect, at the same
+    // main-thread boundary. A background inventory snapshot may be one scan
+    // behind a console removal and must not keep its reward text alive.
+    using HasCollectible = bool (*)(uintptr_t, uint32_t, bool);
+    HasCollectible has = reinterpret_cast<HasCollectible>(reinterpret_cast<uintptr_t>(header)+kPlayerHasCollectibleOffset);
+    int modifiers = (has(player,75,false) ? EIDPillModifierPHD : 0) |
+        (has(player,654,false) ? EIDPillModifierFalsePHD : 0) |
+        (has(player,303,false) ? EIDPillModifierVirgo : 0) |
+        (has(player,46,false) ? EIDPillModifierLuckyFoot : 0);
+    if (!self.loggedPillModifiers || self.loggedPillModifierRun != self.runCounter) {
+        self.loggedPillModifiers = [NSMutableDictionary dictionary];
+        self.loggedPillModifierRun = self.runCounter;
+    }
+    NSNumber *previous = self.loggedPillModifiers[@(identity.playerIndex)];
+    if (!previous || previous.integerValue != modifiers) {
+        self.loggedPillModifiers[@(identity.playerIndex)] = @(modifiers);
+        EIDLog(@"native pill modifiers: player %ld PHD %d FalsePHD %d Virgo %d LuckyFoot %d",
+            (long)identity.playerIndex,!!(modifiers & EIDPillModifierPHD),
+            !!(modifiers & EIDPillModifierFalsePHD),!!(modifiers & EIDPillModifierVirgo),
+            !!(modifiers & EIDPillModifierLuckyFoot));
+    }
+    // PHD and False PHD identify pills; Virgo and Lucky Foot only improve them.
+    if (identified || EIDPillModifiersIdentify(modifiers)) {
+        // Reverse-verified ItemPool::GetPillEffect(color, player), not the mutating
+        // pill randomizer. It handles good/bad conversions, health safety and
+        // temporary Virgo effects exactly as the game's own pocket tooltip.
+        using GetEffect = int32_t (*)(uintptr_t, uint32_t, uintptr_t);
+        GetEffect getEffect = reinterpret_cast<GetEffect>(reinterpret_cast<uintptr_t>(header)+kItemPoolGetPillEffectOffset);
+        int32_t effect = getEffect(game+kGameItemPoolOffset,color,player);
+        if (effect < 0 || effect > 49) return unavailable;
+        variant = ((uint32_t)identity.rawPillSubtype & kHorsePillFlag) ? EIDPickupVariantHorsePill : EIDPickupVariantPill;
+        subtype = effect + 1;
+    }
+    return [[EIDPickupIdentity alloc] initWithVariant:variant subtype:subtype
+        playerType:identity.playerType playerIndex:identity.playerIndex rawPillSubtype:identity.rawPillSubtype
+        pillModifiers:modifiers];
 }
 
 - (NSArray<EIDPickupIdentity *> *)currentSmeltedTrinkets {

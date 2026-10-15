@@ -1,5 +1,6 @@
 #include "EIDPickupPolicy.hpp"
 #include "EIDNativeContextPolicy.hpp"
+#include "EIDPillPolicy.h"
 
 #include <array>
 #include <cassert>
@@ -8,6 +9,24 @@ using namespace EIDPickupPolicy;
 
 int main() {
     using namespace EIDNativeContextPolicy;
+    assert(!EIDPillModifiersIdentify(-1));
+    assert(!EIDPillModifiersIdentify(0));
+    assert(EIDPillModifiersIdentify(EIDPillModifierPHD));
+    assert(EIDPillModifiersIdentify(EIDPillModifierFalsePHD));
+    assert(EIDPillModifiersIdentify(EIDPillModifierPHD | EIDPillModifierFalsePHD));
+    assert(!EIDPillModifiersIdentify(EIDPillModifierVirgo | EIDPillModifierLuckyFoot));
+    assert(!EIDPillModifiersIdentify(16));
+    std::array<uint8_t,733> collection{};
+    assert(ValidCollectionFlags(collection.data(),collection.size()));
+    collection[732] = 1;
+    assert(ValidCollectionFlags(collection.data(),collection.size()));
+    collection[732] = 2;
+    assert(!ValidCollectionFlags(collection.data(),collection.size()));
+    collection[732] = 0;
+    collection[0] = 1;
+    assert(!ValidCollectionFlags(collection.data(),collection.size()));
+    assert(!ValidCollectionFlags(nullptr,733));
+    assert(!ValidCollectionFlags(collection.data(),732));
     for (int32_t type = 0; type <= 40; ++type) {
         assert(HasPassiveBelial(type,1,0,false) == (type == 3 || type == 12));
         assert(!HasPassiveBelial(type,0,0,false));
@@ -51,6 +70,15 @@ int main() {
     assert(ShouldRevealFloorIdentity(300, 81, false, 0, false));
     assert(ShouldRevealFloorIdentity(300, 81, true, 0, false));
     assert(!ShouldRevealFloorIdentity(300, 81, false, 4, true));
+    for (int32_t card : {41,43,45,47,49,50,51,55,78,80,81,97}) {
+        assert(IsVisuallyDistinctCard(card));
+        assert(ShouldRevealFloorIdentity(300,card,true,0,false));
+        assert(!ShouldRevealFloorIdentity(300,card,true,4,true));
+    }
+    for (int32_t card : {1,22,23,31,32,33,40,42,52,53,54,56,77,79,98}) {
+        assert(!IsVisuallyDistinctCard(card));
+        assert(!ShouldRevealFloorIdentity(300,card,true,0,true));
+    }
 
     // Current upstream defaults show shop and Options? pills when reachable,
     // while obstruction applies to known, unknown and horse pills alike.

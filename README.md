@@ -28,6 +28,14 @@ highlighting for Pandora's Box. This release also fixes pill transformation coun
 Greed notices, character names, and missing stat icons, and adds an optional description
 background and a new screenshot gallery.
 
+### In development
+
+- A final collection-page reminder for collectibles not yet picked up on the active save slot. This assists collection completion; it does not unlock achievements or alter saves.
+- Shop descriptions for unmistakable pickup models, including Credit Card, Black Rune, Dice Shard, and Soul Stones. Shared card/rune models remain protected.
+- Player-specific PHD/False PHD pill effects, False PHD damage/black-heart rewards, and Experimental Pill modifiers, with original EID translations and the correct native pill color.
+
+See [the test checklist](docs/testing-collection-and-pills.md) before reporting these additions as device-verified.
+
 Read the [complete v0.8.0 release notes](docs/RELEASE_NOTES_v0.8.0.md) for every
 addition, fix, and remaining testing limitation.
 
@@ -48,9 +56,11 @@ The overlay tracks the player's position and displays the nearest eligible objec
 ### Correct knowledge and run state
 
 - Card, rune, Soul Stone, and pill visibility follows original EID's separate defaults instead of treating `Touched` as a universal knowledge flag.
-- Reachable ordinary floor cards and runes are described immediately. Purchasable ordinary cards and every `Options?` card stay unidentified; purchasable Soul Stones remain visible.
+- Reachable ordinary floor cards and runes are described immediately. Shared-model shop cards and every `Options?` card stay unidentified. Unique models (Credit Card, Card Against Humanity, Get Out of Jail Free Card, Emergency Contact, Dice Shard, Holy Card, Black Rune, Rune Shard, Cracked Key, Wild Card, and Soul Stones) may be described even in shops or behind obstacles. Chaos Card shares a model with other green cards and is not an exception.
 - Reachable pills are shown in shops and `Options?` choices. Isaac's native ItemPool state decides whether the real effect or only a localized **Unidentified Pill** label may be shown.
-- Unreachable ordinary cards, runes, and pills remain unidentified. Soul Stones keep original EID's default exception, and flying players bypass the obstruction check.
+- Unreachable shared-model cards, runes, and pills remain unidentified. Visually distinct cards retain their exception, and flying players bypass the obstruction check.
+- Collection-page reminders use Isaac's live `PersistentGameData` for the selected save slot, not current-run inventory or another slot's progress. Hidden collectibles, pause-inventory entries, and read-only/custom runs do not show this reminder. The native table updates after a legitimate pickup; no separate progress database is written.
+- PHD and False PHD identify pills. Known effects are obtained from the game's player-specific `GetPillEffect` on the main thread after live-player validation, including Virgo/Lucky Foot conversions and native low-health exceptions. False PHD adds `+0.6` damage (`+1.2` for horse pills) or a black-heart reward only for the appropriate resulting effects. Unknown pills reveal neither effects nor synergy bonuses.
 - Curse of the Blind suppresses every collectible description using the native level curse mask. The forced-blind field and question-mark sprite are retained as additional guards.
 - Transformation progress combines Isaac's persisted PlayerForm counters with the live owned-item table. It updates immediately after a pickup while still preserving progress across active-item replacement and save reloads.
 - The 14 normal transformations use the native counters and inventory state. Super Bum completion is read from its native merged familiar.

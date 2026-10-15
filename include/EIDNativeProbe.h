@@ -23,11 +23,22 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 // Native character closest to this pickup, or -1 when unavailable.
 @property(nonatomic, readonly) NSInteger playerType;
 @property(nonatomic, readonly) NSInteger playerIndex;
+// Original native color/horse bit, independent of the player-adjusted effect.
+@property(nonatomic, readonly) NSInteger rawPillSubtype;
+// Fresh native HasCollectible flags used for this exact effect query. -1 when
+// unavailable, zero when none are owned; see EIDPillPolicy.h.
+@property(nonatomic, readonly) NSInteger pillModifiers;
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype;
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
                       playerType:(NSInteger)playerType;
 - (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
                       playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex;
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex
+                  rawPillSubtype:(NSInteger)rawPillSubtype;
+- (instancetype)initWithVariant:(NSInteger)variant subtype:(NSInteger)subtype
+                      playerType:(NSInteger)playerType playerIndex:(NSInteger)playerIndex
+                  rawPillSubtype:(NSInteger)rawPillSubtype pillModifiers:(NSInteger)pillModifiers;
 @end
 
 @interface EIDNativeProbe : NSObject
@@ -51,6 +62,9 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups;
 - (NSArray<EIDPickupIdentity *> *)currentInventoryItems;
 - (NSArray<EIDPickupIdentity *> *)currentSmeltedTrinkets;
+// Main-thread-only, read-only native GetPillEffect adapter. Revalidates the live
+// player vector; never invokes game code from the background memory scanner.
+- (EIDPickupIdentity *)resolvedPillIdentity:(EIDPickupIdentity *)identity;
 // Normalized collectible/trinket identities for conditional descriptions.
 - (NSSet<NSString *> *)currentOwnedItemKeys;
 - (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID;

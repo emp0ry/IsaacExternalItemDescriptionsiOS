@@ -11,3 +11,7 @@ FOUNDATION_EXPORT NSString *EIDContextDescription(NSString *detail,
 FOUNDATION_EXPORT NSString *EIDContextDescriptionWithOwnedItems(NSString *detail,
     NSInteger variant, NSInteger subtype, NSInteger playerType,
     NSInteger difficulty, NSSet<NSString *> *ownedItems, NSDictionary *context);
+
+// Append a collection-page notice only from a validated active-slot snapshot.
+FOUNDATION_EXPORT NSString *EIDCollectionDescription(NSString *detail,
+    NSInteger variant, NSInteger subtype, NSDictionary *context);

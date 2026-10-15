@@ -132,6 +132,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, copy) NSString *inventorySignature;
 @property(nonatomic, copy) NSString *transformationProgressSignature;
 @property(nonatomic) BOOL pauseUIActive;
+@property(nonatomic) BOOL descriptionNeedsRefresh;
 @end
 
 @implementation EIDOverlayController
@@ -455,13 +456,23 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     if (self.scanInProgress) return;
     self.scanInProgress = YES;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSArray<EIDPickupIdentity *> *pickups = [self.probe currentDescribablePickups];
+        NSArray<EIDPickupIdentity *> *rawPickups = [self.probe currentDescribablePickups];
         dispatch_async(dispatch_get_main_queue(), ^{
+            NSMutableArray<EIDPickupIdentity *> *pickups = [NSMutableArray array];
+            for (EIDPickupIdentity *identity in rawPickups)
+                [pickups addObject:[self.probe resolvedPillIdentity:identity]];
             self.scanInProgress = NO;
             [self updateMenuModeForGameplay:self.probe.gameplayActive];
             BOOL paused = self.probe.gameplayActive && self.probe.pauseStateAvailable &&
                 self.probe.paused;
             [self updatePauseInventoryForPaused:paused];
+            if (paused && self.selectedInventoryItem.rawPillSubtype) {
+                EIDPickupIdentity *selected = [self.probe resolvedPillIdentity:self.selectedInventoryItem];
+                if (![selected isEqual:self.selectedInventoryItem]) {
+                    self.selectedInventoryItem = selected;
+                    self.descriptionNeedsRefresh = YES;
+                }
+            }
             NSString *progressSignature = [[EIDTransformationProgress shared]
                 progressSignatureForPickups:pickups];
             NSArray *ownedKeys = [[[self.probe currentOwnedItemKeys] allObjects]
@@ -477,12 +488,18 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
             self.transformationProgressSignature = progressSignature;
             if (![pickups isEqualToArray:self.lastPickups] || progressChanged) {
                 self.lastPickups = pickups;
-                if (!self.menuMode && !paused && !self.selectedInventoryItem) {
-                    [self renderPickups:pickups];
-                } else if (paused && self.selectedInventoryItem && self.settingsCard.hidden) {
-                    [self renderPickups:@[self.selectedInventoryItem]];
-                }
+                self.descriptionNeedsRefresh = YES;
                 EIDLog(@"visible describable pickups: %@", pickups);
+            }
+            // A console command may change an item while Isaac is paused.
+            // Repaint the visible floor description too; when an EID panel
+            // covers it, retain invalidation until it can actually be rendered.
+            if (self.descriptionNeedsRefresh && !self.menuMode &&
+                self.settingsCard.hidden && self.inventoryCard.hidden) {
+                NSArray *display = paused && self.selectedInventoryItem
+                    ? @[self.selectedInventoryItem] : self.lastPickups;
+                [self renderPickups:display];
+                self.descriptionNeedsRefresh = NO;
             }
         });
     });
@@ -518,7 +535,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         if (!self.menuMode) self.settingsCard.hidden = YES;
         if (self.pauseUIActive) {
             self.selectedInventoryItem = nil;
-            if (!self.menuMode) [self renderPickups:self.lastPickups];
+            self.descriptionNeedsRefresh = YES;
             EIDLog(@"pause inventory hidden; gameplay resumed");
         }
     } else if (!self.inventoryCard.hidden) {
@@ -622,7 +639,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                                                                     subtype:identity.subtype];
     UIImage *image = description.iconPath.length
         ? [UIImage imageWithContentsOfFile:description.iconPath] : nil;
-    return image ?: [self pocketIconForVariant:identity.variant subtype:identity.subtype];
+    return image ?: [self pocketIconForVariant:identity.rawPillSubtype ? EIDPickupVariantUnidentifiedPill : identity.variant
+                                     subtype:identity.rawPillSubtype ?: identity.subtype];
 }
 
 - (void)addInventoryHeading:(NSString *)title y:(CGFloat *)y width:(CGFloat)width {
@@ -753,6 +771,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     if (variant <= 0 || subtype <= 0) return;
     EIDPickupIdentity *identity = [[EIDPickupIdentity alloc] initWithVariant:variant
                                                                     subtype:subtype];
+    for (EIDPickupIdentity *entry in [self.probe currentInventoryItems]) {
+        if (entry.variant == variant && entry.subtype == subtype) { identity = entry; break; }
+    }
     self.selectedInventoryItem = identity;
     self.inventoryCard.hidden = YES;
     [self renderPickups:@[identity]];
