@@ -1,6 +1,6 @@
 # Original EID parity target
 
-The `main` branch contains the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions. The reference for v0.10.0 remains revision `8b59d00c6828e333294639ad2b2b6875eae821cb`, importing only standard-Repentance rules and excluding Repentance+ patches.
+The `main` branch contains the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions. The reference for v0.10.1 remains revision `8b59d00c6828e333294639ad2b2b6875eae821cb`, importing only standard-Repentance rules and excluding Repentance+ patches.
 
 ## Reference defaults
 
@@ -269,6 +269,21 @@ first-occurrence replacement pairs retain the original conditional semantics.
 An optional description background is disabled by default and is rendered in
 the established non-interactive description panel. Its opacity is independent
 of text opacity and the settings stay within the existing scroll view.
+
+Since v0.10.1, the final panel width fits the title and the widest laid-out body
+line, including inline artwork and any cycle-counter header inset. The backdrop
+is resized after the final header layout, without changing text scale. Selected
+pause-inventory descriptions force a backdrop with at least 72% opacity; they
+never overwrite the user's saved background preference. Normal gameplay resumes
+with the configured toggle and opacity.
+
+The pause inventory also offers a read-only D Infinity browser. Its `0/10 ›`
+overview cycles through the ten dice in upstream's standard-Repentance
+`dinfinityList` order. This shares the existing in-header description control,
+not the native Drop input or any use-item adapter. Selection survives refreshes
+and resets when another inventory item is chosen or gameplay resumes. Native
+D Infinity mode, charge and saves are not changed. See
+[pause-description checks](testing-pause-descriptions.md).
 
 ## Native repetition previews
 

@@ -62,7 +62,12 @@ assert "PickupVisibilityState(bytes.data(),bytes.size()) != PickupVisibility::Vi
 assert "prepareCollectibleCycleIdentity:pickup" in PRESENTATION
 assert "prepareCollectibleCycleIdentity:nil" in PRESENTATION
 assert "self.collectibleCycleIndicator.hidden = YES;" in SOURCE
-assert "self.settingsCard.hidden && self.inventoryCard.hidden && self.rootView.superview" in SOURCE
+assert "[self descriptionCycleAvailable] && self.panel.alpha > .01 && self.rootView.superview" in SOURCE
+assert "EIDDescriptionCycleInventoryDice" in SOURCE
+assert "EIDDInfinityPreviewID(self.inventoryDiceSelection)" in SOURCE
+assert "EIDNextDescriptionSelection(self.inventoryDiceSelection,EIDDInfinityPreviewCount)" in SOURCE
+assert "EIDDescriptionBackgroundVisible" in SOURCE
+assert "EIDDescriptionBackgroundAlpha(opacity,inventoryPaused)" in SOURCE
 assert "UIControl *panel = [[UIControl alloc] initWithFrame:CGRectZero]" in SOURCE
 assert "[panel addTarget:self action:@selector(advanceCollectibleCycle:)" in SOURCE
 assert "panel.userInteractionEnabled = NO;" in SOURCE
@@ -74,6 +79,9 @@ assert "collectibleCycleButton" not in SOURCE
 HEADER_TUNING = (ROOT / "src" / "EIDHeaderTuning.m").read_text(encoding="utf-8")
 assert "CGFloat headerWidth = MAX(1,textWidth-cycleInset);" in HEADER_TUNING
 assert "updateCollectibleCycleControls];" in HEADER_TUNING
+assert "usedRectForTextContainer:container" in HEADER_TUNING
+assert "EIDDescriptionFittedWidth" in HEADER_TUNING
+assert "applyDescriptionBackground];" in HEADER_TUNING
 assert "available(config,3)" in NATIVE
 assert "availablePrologue != 0xd10143ff" in NATIVE
 assert "unlockedPrologue != 0x3100083f" in NATIVE

@@ -3,9 +3,23 @@
 #import <objc/message.h>
 #import <stdlib.h>
 #import "EIDOverlayController.h"
+#import "EIDDescriptionInteraction.h"
 
 static const void *EIDHeaderLabelKey = &EIDHeaderLabelKey;
 static const void *EIDHeaderLogoKey = &EIDHeaderLogoKey;
+
+static CGSize EIDUsedDescriptionSize(NSAttributedString *text, CGFloat width) {
+    if (!text.length || width <= 0) return CGSizeZero;
+    NSTextStorage *storage = [[NSTextStorage alloc] initWithAttributedString:text];
+    NSLayoutManager *layout = [NSLayoutManager new];
+    NSTextContainer *container = [[NSTextContainer alloc] initWithSize:CGSizeMake(width,CGFLOAT_MAX)];
+    container.lineFragmentPadding = 0;
+    container.lineBreakMode = NSLineBreakByWordWrapping;
+    [storage addLayoutManager:layout];
+    [layout addTextContainer:container];
+    [layout ensureLayoutForTextContainer:container];
+    return [layout usedRectForTextContainer:container].size;
+}
 
 static UIImage *EIDHeaderCrispRaster(UIImage *image, CGSize pointSize) {
     if (!image || pointSize.width <= 0 || pointSize.height <= 0) return image;
@@ -71,7 +85,10 @@ static UIImage *EIDTrimTransparentPadding(UIImage *image) {
 
 static UILabel *EIDHeaderLabelForController(id controller, UIView *panel) {
     UILabel *header = objc_getAssociatedObject(controller, EIDHeaderLabelKey);
-    if (header) return header;
+    if (header) {
+        if (header.superview != panel) [panel addSubview:header];
+        return header;
+    }
     header = [[UILabel alloc] initWithFrame:CGRectZero];
     header.numberOfLines = 1;
     header.backgroundColor = UIColor.clearColor;
@@ -89,7 +106,10 @@ static UILabel *EIDHeaderLabelForController(id controller, UIView *panel) {
 
 static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
     UIImageView *logo = objc_getAssociatedObject(controller, EIDHeaderLogoKey);
-    if (logo) return logo;
+    if (logo) {
+        if (logo.superview != panel) [panel addSubview:logo];
+        return logo;
+    }
     logo = [[UIImageView alloc] initWithFrame:CGRectZero];
     logo.contentMode = UIViewContentModeScaleAspectFit;
     logo.layer.magnificationFilter = kCAFilterNearest;
@@ -130,9 +150,11 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
     if (![bodyLabel isKindOfClass:UILabel.class] || ![panel isKindOfClass:UIView.class] || !bodyLabel.attributedText.length) return;
 
     NSAttributedString *rendered = bodyLabel.attributedText;
+    BOOL hasHeader = ![NSUserDefaults.standardUserDefaults objectForKey:@"IsaacEIDShowItemName"] ||
+        [NSUserDefaults.standardUserDefaults boolForKey:@"IsaacEIDShowItemName"];
     NSRange newline = [rendered.string rangeOfString:@"\n"];
-    NSUInteger headerLength = newline.location == NSNotFound ? rendered.length : newline.location;
-    if (!headerLength) return;
+    NSUInteger headerLength = hasHeader ? (newline.location == NSNotFound ? rendered.length : newline.location) : 0;
+    if (hasHeader && !headerLength) return;
 
     CGFloat scale = [[NSUserDefaults standardUserDefaults] objectForKey:@"IsaacEIDScale"]
         ? [[NSUserDefaults standardUserDefaults] doubleForKey:@"IsaacEIDScale"] : 1.0;
@@ -190,7 +212,7 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
     }];
 
     UILabel *headerLabel = EIDHeaderLabelForController(self, panel);
-    headerLabel.hidden = NO;
+    headerLabel.hidden = !hasHeader;
     headerLabel.attributedText = headerText;
 
     CGFloat gap = 5.0 * scale;
@@ -204,17 +226,12 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
                                                     context:nil];
     CGFloat cycleInset = [(EIDOverlayController *)self collectibleCycleHeaderInset];
     CGFloat desiredWidth = ceil(measuredHeader.size.width) + textInset + 2.0 * scale + cycleInset;
-    if (desiredWidth > panel.bounds.size.width) {
-        CGRect widened = panel.frame;
-        widened.size.width = MIN(availableWidth, desiredWidth);
-        panel.frame = widened;
-    }
-    CGFloat textWidth = MAX(1, panel.bounds.size.width - textInset);
-    CGFloat headerWidth = MAX(1,textWidth-cycleInset);
-    CGFloat headerHeight = 22.0 * scale;
-    headerLabel.frame = CGRectMake(textInset, 0, headerWidth, headerHeight);
+    CGFloat wrappingWidth = MIN(availableWidth,MAX(panel.bounds.size.width,desiredWidth));
+    CGFloat headerHeight = hasHeader || cycleInset > 0 ? 22.0 * scale : 0;
 
-    if (newline.location != NSNotFound && NSMaxRange(newline) < rendered.length) {
+    if (!hasHeader) {
+        bodyLabel.attributedText = rendered;
+    } else if (newline.location != NSNotFound && NSMaxRange(newline) < rendered.length) {
         NSAttributedString *body = [rendered attributedSubstringFromRange:NSMakeRange(NSMaxRange(newline), rendered.length - NSMaxRange(newline))];
         bodyLabel.attributedText = body;
     } else {
@@ -222,19 +239,27 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
     }
 
     BOOL hasBody = bodyLabel.attributedText.length > 0;
+    CGSize used = EIDUsedDescriptionSize(bodyLabel.attributedText,MAX(1,wrappingWidth-textInset));
+    CGFloat fittedWidth = EIDDescriptionFittedWidth(availableWidth,ceil(measuredHeader.size.width),
+        ceil(used.width),textInset,cycleInset,scale);
+    CGFloat textWidth = MAX(1,fittedWidth-textInset);
+    CGFloat headerWidth = MAX(1,textWidth-cycleInset);
     CGSize bodySize = hasBody
         ? [bodyLabel sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)] : CGSizeZero;
     CGRect panelFrame = panel.frame;
-    panelFrame.size.height = headerHeight + (hasBody ? gap + ceil(bodySize.height) : 0);
+    panelFrame.size.width = fittedWidth;
+    CGFloat bodyY = headerHeight + (hasBody && headerHeight > 0 ? gap : 0);
+    panelFrame.size.height = bodyY + (hasBody ? ceil(bodySize.height) : 0);
     panel.frame = panelFrame;
 
     logo.frame = CGRectMake(0, logoYOffset, logoSize, logoSize);
     headerLabel.frame = CGRectMake(textInset, 0, headerWidth, headerHeight);
-    bodyLabel.frame = CGRectMake(textInset, headerHeight + (hasBody ? gap : 0),
+    bodyLabel.frame = CGRectMake(textInset, bodyY,
                                  textWidth, hasBody ? ceil(bodySize.height) : 0);
     // The final header layout may widen the panel. Keep the counter inside its
     // actual trailing edge, not at the parity renderer's intermediate frame.
     [(EIDOverlayController *)self updateCollectibleCycleControls];
+    [(EIDOverlayController *)self applyDescriptionBackground];
 }
 @end
 

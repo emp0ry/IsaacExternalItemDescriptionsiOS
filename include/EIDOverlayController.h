@@ -15,6 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable EIDPickupIdentity *)prepareCollectibleCycleIdentity:(nullable EIDPickupIdentity *)identity;
 - (void)updateCollectibleCycleControls;
 - (CGFloat)collectibleCycleHeaderInset;
+- (void)applyDescriptionBackground;
 @end
 
 NS_ASSUME_NONNULL_END

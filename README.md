@@ -19,7 +19,24 @@ Download the current files from [GitHub Releases](https://github.com/emp0ry/Isaa
 
 A standalone `IsaacExternalItemDescriptions.dylib`, `descriptions.json`, and `SHA256SUMS` are also provided. No Isaac IPA or copyrighted game bundle is distributed.
 
-### What's new in v0.10.0
+### What's new in v0.10.1
+
+- **Readable pause descriptions:** selecting an item in **EID Items** always
+  gives it a dark background, even when Background is disabled. The temporary
+  pause-inventory backdrop is at least 72% opaque; saved gameplay settings stay
+  unchanged and return when the run resumes.
+- **Content-sized backgrounds:** the box fits the actual title and widest
+  laid-out text line, including icons and the preview counter. Short descriptions
+  no longer retain a long default-width box. Text size is unchanged.
+- **D Infinity description browser:** select it in **EID Items**, then tap the
+  description to inspect all ten dice. The top-right `0/10 ›` counter starts at
+  D Infinity's overview and returns there after D100. This only changes the
+  displayed description, never the game's selected die or charge.
+
+Read the [v0.10.1 release notes](docs/RELEASE_NOTES_v0.10.1.md) and
+[pause-description checks](docs/testing-pause-descriptions.md).
+
+### Previous update: v0.10.0
 
 - **Glitched Crown:** inspect the pedestal's real five-item cycle without chasing
   its flashing sprite. Tap the description to advance; `0/5 ›` sits inside the
@@ -98,7 +115,7 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Original EID inline symbols, Q0-Q4 quality icons, transformation icons, colors, and description markup are rendered through UIKit.
 - Inline collectible and trinket artwork is cropped to its visible pixels before scaling, so transparent sprite padding does not shrink items in predictions and conditional descriptions.
 - Active collectibles show the original EID battery and maximum-charge indicator. Normal, timed, and special/dynamic charge types use their matching upstream symbols.
-- Compact outlined text is shown without a background by default. An optional rounded black backdrop has its own opacity setting.
+- Compact outlined text is shown without a background by default during gameplay. An optional rounded black backdrop has its own opacity setting and fits the title and laid-out text instead of a fixed default width. Pause-inventory selections always receive a readable dark backdrop without changing saved settings.
 - Item title, icon, and description disappear together after an item is collected.
 
 ### In-game settings
@@ -129,6 +146,17 @@ It opens a scrollable browser containing the player's current collectibles,
 active item, trinkets, held cards and runes, identified pills, and progress for
 all transformations. Selecting an item closes the browser and renders its full
 EID description. The button and browser disappear as soon as gameplay resumes.
+
+Selected descriptions always have a dark, content-sized backdrop over the light
+pause screen. The temporary backdrop has a minimum opacity of 72%, even when
+the normal gameplay background is disabled or more transparent. Resuming restores
+the saved gameplay setting.
+
+Select **D Infinity** to open its description browser. Tap the description to
+advance from the overview (`0/10 ›`) through D1, D4, D6, Eternal D6, D7, D8, D10,
+D12, D20 and D100, then back to the overview. Each page uses its own localized
+description, icon, quality and charge indicator. Browsing never switches the
+actual active item, uses it or spends charge.
 
 ## Screenshots
 

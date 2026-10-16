@@ -4,6 +4,7 @@
 #import "EIDLogger.h"
 #import "EIDTransformationProgress.h"
 #import "EIDGameHost.h"
+#import "EIDDescriptionInteraction.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -16,6 +17,12 @@ static const CGFloat EIDItemIconSize = 28.0;
 static const CGFloat EIDItemIconSpacing = 6.0;
 static NSString *const EIDHorizontalPositionKey = @"IsaacEIDHorizontalPosition";
 static NSString *const EIDVerticalPositionKey = @"IsaacEIDVerticalPosition";
+
+typedef NS_ENUM(NSUInteger, EIDDescriptionCycleKind) {
+    EIDDescriptionCycleNone,
+    EIDDescriptionCyclePedestal,
+    EIDDescriptionCycleInventoryDice,
+};
 
 static NSString *EIDGameResourcePath(NSString *relativePath) {
     NSArray<NSString *> *roots = @[@"repentance-resources", @"afterbirthplus-resources",
@@ -140,6 +147,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, copy) NSString *collectibleCycleScope;
 @property(nonatomic) NSUInteger collectibleCycleSelection;
 @property(nonatomic) NSUInteger collectibleCycleCount;
+@property(nonatomic) EIDDescriptionCycleKind descriptionCycleKind;
+@property(nonatomic) NSUInteger inventoryDiceSelection;
 @end
 
 @implementation EIDOverlayController
@@ -195,6 +204,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     if (self.rootView.superview == window) return;
     self.collectibleCycleIndicator = nil;
     self.collectibleCycleSource = nil;
+    self.descriptionCycleKind = EIDDescriptionCycleNone;
+    self.descriptionBackground = nil;
     [self.rootView removeFromSuperview];
 
     EIDPassthroughView *root = [[EIDPassthroughView alloc] initWithFrame:window.bounds];
@@ -541,6 +552,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         if (!self.menuMode) self.settingsCard.hidden = YES;
         if (self.pauseUIActive) {
             self.selectedInventoryItem = nil;
+            self.inventoryDiceSelection = 0;
+            [self clearCollectibleCycleControls];
             self.descriptionNeedsRefresh = YES;
             EIDLog(@"pause inventory hidden; gameplay resumed");
         }
@@ -783,6 +796,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         if (entry.variant == variant && entry.subtype == subtype) { identity = entry; break; }
     }
     self.selectedInventoryItem = identity;
+    self.inventoryDiceSelection = 0;
+    [self clearCollectibleCycleControls];
     self.inventoryCard.hidden = YES;
     [self renderPickups:@[identity]];
     EIDLog(@"pause inventory selected %@", identity);
@@ -813,7 +828,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     slider.value = position;
     [[NSUserDefaults standardUserDefaults] setDouble:position forKey:EIDHorizontalPositionKey];
     self.settingsPositionLabel.text = [NSString stringWithFormat:@"Horizontal position: %.0f px", position];
-    [self sizePanelForText];
+    self.descriptionNeedsRefresh = YES;
     CGRect diagnosticsFrame = self.diagnosticsLabel.frame;
     diagnosticsFrame.origin.x = position;
     diagnosticsFrame.size.width = MAX(100, self.rootView.bounds.size.width - position - EIDOverlayRightMargin);
@@ -826,7 +841,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     [[NSUserDefaults standardUserDefaults] setDouble:position forKey:EIDVerticalPositionKey];
     self.settingsVerticalPositionLabel.text = [NSString stringWithFormat:
         @"Vertical position: %.0f px", position];
-    [self sizePanelForText];
+    self.descriptionNeedsRefresh = YES;
 }
 
 - (void)resetPosition:(UIButton *)sender {
@@ -928,13 +943,55 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
 - (void)clearCollectibleCycleControls {
     self.collectibleCycleSource = nil;
+    self.descriptionCycleKind = EIDDescriptionCycleNone;
+    self.collectibleCycleCount = 0;
+    self.collectibleCycleSelection = 0;
     self.collectibleCycleIndicator.hidden = YES;
     self.panel.userInteractionEnabled = NO;
     self.panel.isAccessibilityElement = NO;
 }
 
+- (BOOL)inventoryDescriptionActive {
+    return self.selectedInventoryItem && self.probe.gameplayActive &&
+        self.probe.pauseStateAvailable && self.probe.paused;
+}
+
+- (BOOL)inventoryDicePreviewActive {
+    return [self inventoryDescriptionActive] && self.probe.inventoryStateAvailable &&
+        self.selectedInventoryItem.variant == EIDPickupVariantCollectible &&
+        self.selectedInventoryItem.subtype == 489;
+}
+
+- (BOOL)descriptionCycleAvailable {
+    if (!self.collectibleCycleSource || self.menuMode || !self.probe.gameplayActive ||
+        !self.settingsCard.hidden || !self.inventoryCard.hidden) return NO;
+    if (self.descriptionCycleKind == EIDDescriptionCycleInventoryDice)
+        return [self inventoryDicePreviewActive] && self.collectibleCycleCount == EIDDInfinityPreviewCount;
+    return self.descriptionCycleKind == EIDDescriptionCyclePedestal && !self.selectedInventoryItem &&
+        self.collectibleCycleCount >= 5 && self.collectibleCycleCount <= 9;
+}
+
 - (EIDPickupIdentity *)prepareCollectibleCycleIdentity:(EIDPickupIdentity *)identity {
     if (!identity) { [self clearCollectibleCycleControls]; return nil; }
+    if (self.selectedInventoryItem) {
+        if (![self inventoryDicePreviewActive]) { [self clearCollectibleCycleControls]; return identity; }
+        if (self.inventoryDiceSelection > EIDDInfinityPreviewCount) self.inventoryDiceSelection = 0;
+        self.descriptionCycleKind = EIDDescriptionCycleInventoryDice;
+        self.collectibleCycleSource = self.selectedInventoryItem;
+        self.collectibleCycleSelection = self.inventoryDiceSelection;
+        self.collectibleCycleCount = EIDDInfinityPreviewCount;
+        EIDPickupIdentity *source = self.selectedInventoryItem;
+        NSMutableDictionary *context = source.pickupContext.mutableCopy;
+        // These are inspection previews, never floor-pickup predictions or a
+        // command to change D Infinity's actual native mode/charge.
+        for (NSString *key in @[@"pedestal",@"collectible_cycle",@"crown_overview",
+            @"crown_selection",@"spindown",@"flip_id"])
+            [context removeObjectForKey:key];
+        return [[EIDPickupIdentity alloc] initWithVariant:EIDPickupVariantCollectible
+            subtype:EIDDInfinityPreviewID(self.inventoryDiceSelection)
+            playerType:source.playerType playerIndex:source.playerIndex rawPillSubtype:0
+            pillModifiers:source.pillModifiers pickupContext:context];
+    }
     EIDPickupIdentity *native = [self.probe resolvedCollectibleCycleIdentity:identity];
     if ([native.pickupContext[@"collectible_hidden"] boolValue]) {
         [self clearCollectibleCycleControls];
@@ -962,6 +1019,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.collectibleCycleSelection = selection;
     self.collectibleCycleCount = items.count;
     self.collectibleCycleSource = native;
+    self.descriptionCycleKind = EIDDescriptionCyclePedestal;
     NSMutableDictionary *context = native.pickupContext.mutableCopy;
     context[@"crown_overview"] = @(selection == 0);
     context[@"crown_selection"] = @(selection);
@@ -975,6 +1033,15 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
 - (void)advanceCollectibleCycle:(UIControl *)sender {
     (void)sender;
+    if (self.descriptionCycleKind == EIDDescriptionCycleInventoryDice) {
+        if (![self descriptionCycleAvailable]) return;
+        self.inventoryDiceSelection = EIDNextDescriptionSelection(self.inventoryDiceSelection,EIDDInfinityPreviewCount);
+        [self renderPickups:@[self.selectedInventoryItem]];
+        EIDLog(@"pause D Infinity preview: %lu/%d, item %d (description only)",
+            (unsigned long)self.inventoryDiceSelection,EIDDInfinityPreviewCount,
+            EIDDInfinityPreviewID(self.inventoryDiceSelection));
+        return;
+    }
     if (!self.collectibleCycleSource || self.menuMode || self.selectedInventoryItem ||
         !self.settingsCard.hidden || !self.inventoryCard.hidden) return;
     EIDPickupIdentity *fresh = [self.probe resolvedCollectibleCycleIdentity:self.collectibleCycleSource];
@@ -994,17 +1061,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 
 - (CGFloat)collectibleCycleHeaderInset {
-    if (!self.collectibleCycleSource || self.menuMode || self.selectedInventoryItem ||
-        !self.settingsCard.hidden || !self.inventoryCard.hidden) return 0;
+    if (![self descriptionCycleAvailable]) return 0;
     CGFloat scale = [NSUserDefaults.standardUserDefaults objectForKey:@"IsaacEIDScale"]
         ? [NSUserDefaults.standardUserDefaults doubleForKey:@"IsaacEIDScale"] : 1;
     return 58 * MIN(1.8,MAX(.5,scale));
 }
 
 - (void)updateCollectibleCycleControls {
-    BOOL visible = self.collectibleCycleSource && !self.menuMode && !self.selectedInventoryItem &&
-        self.probe.gameplayActive && self.panel.alpha > .01 && self.collectibleCycleCount >= 5 &&
-        self.settingsCard.hidden && self.inventoryCard.hidden && self.rootView.superview;
+    BOOL visible = [self descriptionCycleAvailable] && self.panel.alpha > .01 && self.rootView.superview;
     self.panel.userInteractionEnabled = visible;
     self.panel.isAccessibilityElement = visible;
     if (!visible) { self.collectibleCycleIndicator.hidden = YES; return; }
@@ -1029,7 +1093,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.collectibleCycleIndicator.hidden = NO;
     self.panel.accessibilityTraits = UIAccessibilityTraitButton;
     self.panel.accessibilityLabel = [NSString stringWithFormat:@"%@, %@",self.label.attributedText.string,title];
-    self.panel.accessibilityHint = @"Tap the description to inspect the next item";
+    self.panel.accessibilityHint = self.descriptionCycleKind == EIDDescriptionCycleInventoryDice
+        ? @"Tap the description to inspect the next die; this does not switch the game's active item"
+        : @"Tap the description to inspect the next item";
     [self.panel bringSubviewToFront:self.collectibleCycleIndicator];
 }
 
@@ -1137,11 +1203,13 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         self.descriptionBackground = backdrop;
     }
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    BOOL enabled = [defaults boolForKey:@"IsaacEIDBackgroundEnabled"];
+    BOOL inventoryPaused = [self inventoryDescriptionActive];
+    BOOL enabled = EIDDescriptionBackgroundVisible([defaults boolForKey:@"IsaacEIDBackgroundEnabled"],inventoryPaused);
     CGFloat opacity = [defaults objectForKey:@"IsaacEIDBackgroundOpacity"]
         ? [defaults doubleForKey:@"IsaacEIDBackgroundOpacity"] : .28;
     self.descriptionBackground.hidden = !enabled;
-    self.descriptionBackground.backgroundColor = [UIColor colorWithWhite:0 alpha:MIN(1, MAX(0, opacity))];
+    self.descriptionBackground.backgroundColor = [UIColor colorWithWhite:0
+        alpha:EIDDescriptionBackgroundAlpha(opacity,inventoryPaused)];
     self.descriptionBackground.frame = CGRectInset(self.panel.bounds, -6, -4);
 }
 

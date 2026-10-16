@@ -1,5 +1,17 @@
 # Test matrix
 
+## v0.10.1 release validation (2026-10-16)
+
+| Area | Result |
+| --- | --- |
+| Pause-inventory background | User confirmed working after installation on the development iPhone |
+| Content-sized description background | User confirmed working; host policy tests cover short/long content, counter space and screen-width limits |
+| D Infinity pause browser | User confirmed working; host tests cover all ten standard-Repentance dice, overview wrap and invalid selection handling |
+| Saved gameplay background preferences | Temporary pause policy does not write settings; tests cover disabled backgrounds, minimum pause opacity and configured gameplay opacity |
+| Strict ARM64 build and package checks | Passed locally for standalone, rootless, LiveContainer and embedded formats before publication |
+| Existing Glitched Crown | Native cycle policy tests retained; shared counter control supports the separate pedestal and inventory contexts |
+| Every loading mode, language and visibility setting | Not exhaustively replayed on device; the full acceptance checklist is in [pause-description checks](testing-pause-descriptions.md) |
+
 ## v0.9.0 release validation (2026-10-16)
 
 | Area | Result |

@@ -8,6 +8,7 @@
 #include "EIDCollectibleCyclePolicy.hpp"
 #include "EIDHostReadinessPolicy.hpp"
 #include "EIDArtworkBounds.h"
+#include "EIDDescriptionInteraction.h"
 
 #include <array>
 #include <cassert>
@@ -15,6 +16,35 @@
 using namespace EIDPickupPolicy;
 
 int main() {
+    {
+        assert(EIDDInfinityPreviewID(0) == 489);
+        const int expected[] = {476,284,105,609,437,406,285,386,166,283};
+        size_t selection = 0;
+        for (size_t i = 0; i < 10; ++i) {
+            selection = EIDNextDescriptionSelection(selection,EIDDInfinityPreviewCount);
+            assert(selection == i+1 && EIDDInfinityPreviewID(selection) == expected[i]);
+        }
+        assert(EIDNextDescriptionSelection(selection,EIDDInfinityPreviewCount) == 0);
+        assert(EIDDInfinityPreviewID(11) == 489);
+        assert(EIDNextDescriptionSelection(SIZE_MAX,10) == 0);
+        assert(EIDNextDescriptionSelection(0,0) == 0);
+        assert(EIDNextDescriptionSelection(0,33) == 0);
+        assert(!EIDDescriptionBackgroundVisible(false,false));
+        assert(EIDDescriptionBackgroundVisible(true,false));
+        assert(EIDDescriptionBackgroundVisible(false,true));
+        assert(EIDDescriptionBackgroundAlpha(0,true) == .72);
+        assert(EIDDescriptionBackgroundAlpha(.9,true) == .9);
+        assert(EIDDescriptionBackgroundAlpha(.2,false) == .2);
+        assert(EIDDescriptionBackgroundAlpha(-1,false) == 0);
+        assert(EIDDescriptionBackgroundAlpha(2,false) == 1);
+        assert(EIDDescriptionBackgroundAlpha(NAN,false) == .28);
+        assert(EIDDescriptionFittedWidth(390,80,110,27,0,1) == 139);
+        assert(EIDDescriptionFittedWidth(390,80,110,27,58,1) == 167);
+        assert(EIDDescriptionFittedWidth(200,240,110,27,58,1) == 200);
+        assert(EIDDescriptionFittedWidth(390,80,350,27,58,1) == 379);
+        assert(EIDDescriptionFittedWidth(0,80,110,27,0,1) == 0);
+        assert(EIDDescriptionFittedWidth(390,NAN,110,27,0,1) == 0);
+    }
     {
         using namespace EIDCollectibleCyclePolicy;
         std::vector<int32_t> original{25,2,118,689,1}, normalized;
