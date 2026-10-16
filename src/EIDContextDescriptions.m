@@ -59,6 +59,26 @@ static NSString *Apply(NSString *detail, id entry, NSString *variable, NSInteger
     return ApplyStyled(detail,entry,variable,amount,nil);
 }
 
+static BOOL UnlockRuleMatches(NSDictionary *rule, NSDictionary *context) {
+    if (![rule[@"achievement"] isKindOfClass:NSNumber.class]) return NO;
+    NSDictionary *state = context[@"live_state"][@"unlocks"];
+    NSNumber *value = state[[rule[@"achievement"] stringValue]];
+    NSNumber *slot = state[@"slot"];
+    if (![state[@"validated"] boolValue] || ![slot isKindOfClass:NSNumber.class] || slot.integerValue<1 || slot.integerValue>3 ||
+        ![value isKindOfClass:NSNumber.class] ||
+        (value.doubleValue!=0 && value.doubleValue!=1)) return NO;
+    return [rule[@"predicate"] isEqual:@"achievement_locked"] ? !value.boolValue :
+        [rule[@"predicate"] isEqual:@"achievement_unlocked"] && value.boolValue;
+}
+
+NSString *EIDUnlockDescription(NSString *detail, NSInteger variant, NSInteger subtype, NSDictionary *context) {
+    NSString *target = [NSString stringWithFormat:@"5.%ld.%ld",(long)variant,(long)subtype];
+    for (NSDictionary *rule in context[@"rules"])
+        if ([rule[@"target"] isEqual:target] && [rule[@"predicate"] hasPrefix:@"achievement_"] && UnlockRuleMatches(rule,context))
+            detail = Apply(detail,context[@"conditionals"][target],@"",1);
+    return detail;
+}
+
 static NSString *HeartType(NSInteger player) {
     if (player == 10 || player == 31) return @"None";
     if (player == 14 || player == 33) return @"Coin";
@@ -218,6 +238,11 @@ static NSString *SupplementalDescriptions(NSString *detail, NSInteger variant, N
             NSDictionary *floor = context[@"live_state"][@"floor"];
             NSNumber *stage = floor[@"stage"];
             if ([predicate isEqual:@"restock"]) matches = (difficulty==2 || difficulty==3) || [owned containsObject:@"5.100.376"];
+            else if ([predicate isEqual:@"golden_bomb"]) {
+                matches = NO;
+                for (NSDictionary *player in EIDRelevantPlayers(context))
+                    if ([player[@"golden_bomb"] isKindOfClass:NSNumber.class] && [player[@"golden_bomb"] doubleValue]==1) matches=YES;
+            }
             else if ([predicate isEqual:@"stage_void"]) matches = stage && stage.integerValue==12;
             else if ([predicate isEqual:@"stage_shop"]) matches = stage && stage.integerValue==0 && (difficulty==2 || difficulty==3);
             else if ([predicate isEqual:@"stage_no_treasure"]) matches = stage && stage.integerValue>6;
@@ -520,6 +545,7 @@ NSString *EIDContextDescriptionWithOwnedItems(NSString *detail, NSInteger varian
             BOOL matched = NO;
             if ([predicate isEqualToString:@"greed"]) matched = difficulty == 2 || difficulty == 3;
             else if ([predicate isEqualToString:@"hard"]) matched = difficulty == 1 || difficulty == 3;
+            else if ([predicate hasPrefix:@"achievement_"]) matched = UnlockRuleMatches(rule,context);
             else for (NSNumber *type in playerTypes) {
                 if ([predicate isEqualToString:@"no_red_health"] && ![HeartType(type.integerValue) isEqualToString:@"Red"]) matched = YES;
                 if ([predicate isEqualToString:@"tainted"] && [context[@"character_metadata"][@"tainted_ids"] containsObject:type]) matched = YES;

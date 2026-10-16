@@ -330,6 +330,10 @@ def rules(source: Path) -> tuple[list[dict], dict[str, int], list[str]]:
             continue
         predicate = {"EID.IsGreedMode": "greed", "EID.CheckForNoRedHealthPlayer": "no_red_health",
                      "EID.CheckForTaintedPlayer": "tainted", "EID.IsHardMode": "hard"}.get(args[1], "")
+        unlock = re.fullmatch(r"function\(\)return(not)?EID:HaveNotUnlockedAchievement\((82|366)\)end",
+                              re.sub(r"\s+", "", args[1])) if call[1] == "AddConditional" else None
+        if unlock:
+            predicate = "achievement_unlocked" if unlock[1] else "achievement_locked"
         greed = predicate == "greed"
         if call[1] == "AddConditional" and not predicate:
             continue
@@ -359,6 +363,8 @@ def rules(source: Path) -> tuple[list[dict], dict[str, int], list[str]]:
             rule["closest"] = call[1] == "AddClosestPlayerConditional"
             if predicate:
                 rule["predicate"] = predicate
+            if unlock:
+                rule["achievement"] = int(unlock[2])
             if location:
                 rule["table"] = value(location[1])
             if variable:

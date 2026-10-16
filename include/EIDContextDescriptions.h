@@ -15,3 +15,7 @@ FOUNDATION_EXPORT NSString *EIDContextDescriptionWithOwnedItems(NSString *detail
 // Append a collection-page notice only from a validated active-slot snapshot.
 FOUNDATION_EXPORT NSString *EIDCollectionDescription(NSString *detail,
     NSInteger variant, NSInteger subtype, NSDictionary *context);
+
+// Shared by the ordinary description and Pandora's floor-highlight matcher.
+FOUNDATION_EXPORT NSString *EIDUnlockDescription(NSString *detail,
+    NSInteger variant, NSInteger subtype, NSDictionary *context);

@@ -1,5 +1,6 @@
 #import "EIDAdvancedDescriptions.h"
 #import "EIDContextPlayers.h"
+#import "EIDFeatureConfig.h"
 #import "EIDContextDescriptions.h"
 #import "EIDDynamicDescriptions.h"
 #include <math.h>
@@ -309,6 +310,7 @@ static NSString *InventoryPreview(NSString *detail, NSInteger variant, NSInteger
 }
 
 static NSString *Prediction(NSString *detail, NSInteger variant, NSInteger item, NSSet *owned, NSDictionary *context) {
+    if (![context[@"void_stat_info_enabled"] boolValue]) return detail;
     if ([context[@"inside_item_reminder"] boolValue] || context[@"pickup_context"][@"collectible_cycle"]) return detail;
     NSDictionary *player = SelectedPlayer(context);
     BOOL rune = variant == 300 && item == 41;
@@ -435,12 +437,13 @@ static NSString *CurrentInventoryEffects(NSString *detail, NSInteger variant, NS
         }
     }
     NSDictionary *effect = pickup[@"current_effect"];
+    NSInteger trinket = [effect[@"source_id"] integerValue];
     if (variant==100 && [effect[@"validated"] boolValue] && [effect[@"source_variant"] integerValue]==350 &&
-        [effect[@"source_id"] integerValue]==166 && [effect[@"result"] integerValue]==item &&
-        [owned containsObject:@"5.350.166"]) {
-        NSString *source = Text(context[@"item_names"][@"5.350.166"]);
+        [effect[@"result"] integerValue]==item &&
+        EIDTrinketEffectVisible(player,trinket,[context[@"hidden_info_enabled"] boolValue])) {
+        NSString *source = Text(context[@"item_names"][Key(350,trinket)]);
         NSString *name = Text(context[@"item_names"][Key(100,item)]);
-        if (source.length && name.length) detail = [NSString stringWithFormat:@"{{Trinket166}} %@ → {{Collectible%ld}} %@#%@",source,(long)item,name,detail];
+        if (source.length && name.length) detail = [NSString stringWithFormat:@"{{Trinket%ld}} %@ → {{Collectible%ld}} %@#%@",(long)trinket,source,(long)item,name,detail];
     }
     if ([pickup[@"void_absorbed"] boolValue] && variant==100 && [owned containsObject:@"5.100.477"] &&
         [player[@"void_actives"] containsObject:@(item)] && [context[@"native_metadata"][@"active_ids"] containsObject:@(item)])

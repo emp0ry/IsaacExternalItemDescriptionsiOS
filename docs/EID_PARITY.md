@@ -151,7 +151,13 @@ conditions aggregate ownership; the pause inventory selects a native player.
 Purity reads its native boost field and live temporary-effect presence, including
 disabled/inactive state. It never advances RNG or predicts the next aura.
 Modeling Clay reads the current room's cached item only while inspecting the
-owned trinket. No-effect rooms retain its ordinary description. Void reads the
+owned trinket. Equipped Clay remains available normally; swallowed-only Clay
+requires **Hidden current effects**. Liberty Cap, Broken Syringe and Mom's Lock
+also require this setting. Their current native trinket record selects a
+candidate, which must be present in the actual applied temporary-effect list.
+The iOS Liberty Cap table's mushroom order is retained rather than copied from
+PC EID. No-effect rooms retain the ordinary trinket description. These reads
+neither predict the next room nor advance RNG. Void reads the
 persisted native int32 active-ID vector with bounded stable reads. Duplicate
 copies are retained; consumed single-use items follow the game's own list.
 Absorbed actives are clickable but not physically owned collectibles.
@@ -178,8 +184,16 @@ unique IDs, localization replacements and colors. A duplicate-copy note applies
 when owning another copy or Diplopia/Crooked Penny, but not in the item reminder.
 The existing Pandora/Strange Key adapter owns its highlighting, avoiding a
 second copy of that note. Unreviewed Lua expressions fail import rather than
-being evaluated. Golden-bomb and arbitrary subplayer-count predicates remain
-outside this adapter; this is not a claim to port every EID condition.
+being evaluated. Mama Mega's golden-bomb predicate uses the native player's
+actual golden-bomb flag, with personal pause context and acquisition/removal
+refresh. Arbitrary subplayer-count predicates remain outside this adapter;
+this is not a claim to port every EID condition.
+
+Missing Poster/Lost and Pandora's Box/Moving Box use only the selected loaded
+Isaac save's achievement bytes (82 and 366), with stable manager, slot and
+progress validation. Invalid or unloaded state suppresses the hint. Pandora's
+current-floor highlighting follows the localized reward replacement. These
+checks neither access Game Center nor alter save data.
 
 Charge predicates use installed item metadata and actual four-slot snapshots.
 They distinguish normal/timed/special charges and preserve upstream pocket-slot
@@ -197,6 +211,12 @@ percent-bearing payout lines. It does not reveal the next random payout. Older
 upstream translations may contain fewer probability lines than English/Russian.
 
 ## Charge-item conditionals
+
+Three controls are independent and default to off, following original EID's
+separate spoiler permissions: RNG predictions, Void/Black Rune stat previews,
+and hidden current effects. Existing explicitly saved preferences are kept.
+Deterministic Spindown, Flip and Glitched Crown remain enabled; the user's
+existing iOS language and layout settings are unchanged.
 
 The optional **RNG predictions (spoilers)** setting follows upstream's opt-in
 approach to revealing outcomes, but uses this executable's verified native
@@ -338,7 +358,9 @@ read from Pickup + `0x610`, saved record subtype + `8`; ForceBlind is saved at
 record + `0x23`. Existing curse, sprite and native blind checks remain in force.
 Flip remains included in the build, but live device verification is pending.
 
-Absorption previews copy RNG records; they never invoke native RNG functions.
+Absorption previews require **Void / Black Rune stat previews**, independently
+of the RNG-prediction setting. With that option off the native probe skips their
+forecast calculations. Enabled previews copy RNG records; they never invoke native RNG functions.
 Void uses Player's collectible RNG vector + `0x1bb0`, entry 477; Black Rune
 uses the card RNG vector + `0x1bf8`, entry 41. Sixteen-byte records contain
 seed and shifts. Only nonzero seeds with verified shifts `(5,9,7)` are accepted.

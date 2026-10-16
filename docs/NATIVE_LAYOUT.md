@@ -9,6 +9,32 @@ revalidated for every new UUID.
 
 ## Read-only dynamic description fields
 
+### Original defaults, current trinket effects and unlock hints
+
+- Three independent options mirror upstream defaults: RNG predictions, Void/
+  Black Rune stat previews and Hidden Info are all off. Opting into RNG does
+  not enable the other two. Spindown is an ID operation, not an RNG prediction.
+- Native new-room setup at `0x10054c754` reads the trinket RNG vector at
+  `Player + 0x1bc8`. Its 16-byte records for IDs 32, 132 and 153 select entries
+  in tables at `0x100953360`, `0x100953378` and `0x100953398`. The tables are
+  checked against this executable before use. The iOS Liberty Cap table swaps
+  the two mushroom entries relative to the upstream PC table.
+- The reader uses the current saved seed modulo the verified table length,
+  without advancing RNG, and requires the candidate to be present in the
+  current temporary-effect list. It implements the metadata-type 1/3/4 and
+  disabled-byte predicate of `HasCollectibleEffect` at `0x1006fdc90` with stable
+  bounded copies. A failed room proc never exposes a future result.
+- `Player + 0x16d9` is the golden-bomb byte: add at `0x1005526f0`, removal at
+  `0x10055272c`, and Mama Mega's branch at `0x10058ad78`. Double reads accept
+  only 0/1. It is not inferred from the ordinary bomb count.
+- `PersistentGameData::Unlocked` at `0x1007027f8` reads raw flags at
+  `PersistentGameData + 0x28 + achievementID`. The adapter reads only Lost (82)
+  and Moving Box (366), validates the selected Repentance save slot before
+  and after, and suppresses hints in read-only/custom contexts. It does not
+  call an unlock setter, use Game Center, or inherit the getter's special
+  challenge-mode fallback. The shared localized replacement also adjusts
+  Pandora's floor-highlight matching after Moving Box is unlocked.
+
 ### Additional original conditions (2026-10-16)
 
 - `Player::GlyphOfBalance` at image + `0x554364` is called by native reward

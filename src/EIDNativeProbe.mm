@@ -13,6 +13,8 @@
 #include "EIDCollectibleCyclePolicy.hpp"
 #include "EIDPocketInventoryPolicy.hpp"
 #include "EIDOutcomePredictionPolicy.hpp"
+#include "EIDTrinketEffectPolicy.hpp"
+#import "EIDFeatureConfig.h"
 
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
@@ -267,6 +269,10 @@ constexpr size_t kPlayerDamageOffset = 0x1844;
 constexpr size_t kPlayerTearRangeOffset = 0x1854;
 constexpr size_t kPlayerCoinsOffset = 0x16e0;
 constexpr size_t kPlayerBombsOffset = 0x16dc;
+// AddGoldenBomb 0x1005526f0; consumed by Mama Mega at 0x10058ad78.
+constexpr size_t kPlayerGoldenBombOffset = 0x16d9;
+// New-room temporary trinket effects at 0x10054c754 use this RNG vector.
+constexpr size_t kPlayerTrinketRNGOffset = 0x1bc8;
 constexpr size_t kPlayerKeysOffset = 0x16d4;
 constexpr size_t kPlayerSoulChargeOffset = 0x2478;
 constexpr size_t kPlayerBloodChargeOffset = 0x247c;
@@ -835,11 +841,74 @@ static bool ReadPlayerTransformationCounters(vm_address_t address,
 
 static bool ResolvePillPresentation(int32_t rawSubtype, int32_t& variant, int32_t& subtype);
 
+static NSSet *ReadCurrentCollectibleEffects(vm_address_t player) {
+    RemotePointerVector span{}, after{};
+    uint8_t disabled=0xff, second=0xff;
+    if (!ReadOwnTaskMemory(player+kPlayerTemporaryEffectsOffset+0x21,&disabled,1) || disabled>1 ||
+        !ReadOwnTaskMemory(player+kPlayerTemporaryEffectsOffset+8,&span,sizeof(span)) ||
+        !EIDCurrentEffectsPolicy::ValidSpan(span.begin,span.end,span.capacity,16,1024)) return nil;
+    std::vector<uint8_t> bytes(span.end-span.begin), confirmation(bytes.size());
+    if (!bytes.empty() && !ReadOwnTaskMemory(span.begin,bytes.data(),bytes.size())) return nil;
+    NSMutableSet *items = [NSMutableSet set];
+    for (size_t at=0; at<bytes.size(); at+=16) {
+        uintptr_t metadata=0; int32_t definition[2]{};
+        memcpy(&metadata,bytes.data()+at,sizeof(metadata));
+        if (!metadata || !ReadOwnTaskMemory(metadata,definition,sizeof(definition)) ||
+            definition[0]<0 || definition[0]>4) return nil;
+        // Same metadata-type predicate as native HasCollectibleEffect.
+        if (!disabled && (definition[0]==1 || definition[0]==3 || definition[0]==4) &&
+            definition[1]>0 && definition[1]<=(int32_t)kMaximumCollectibleID) [items addObject:@(definition[1])];
+    }
+    if ((!bytes.empty() && (!ReadOwnTaskMemory(span.begin,confirmation.data(),confirmation.size()) || bytes!=confirmation)) ||
+        !ReadOwnTaskMemory(player+kPlayerTemporaryEffectsOffset+8,&after,sizeof(after)) || memcmp(&span,&after,sizeof(span)) ||
+        !ReadOwnTaskMemory(player+kPlayerTemporaryEffectsOffset+0x21,&second,1) || second!=disabled) return nil;
+    return items.copy;
+}
+
+template<size_t N> static bool VerifyCurrentEffectTable(uintptr_t image, size_t offset, const std::array<int32_t,N>& expected) {
+    std::array<int32_t,N> actual{};
+    return ReadOwnTaskMemory(image+offset,actual.data(),sizeof(actual)) && actual==expected;
+}
+
+static NSDictionary *ReadCurrentTrinketEffects(vm_address_t player, NSSet *owned) {
+    if (!EIDFeatureEnabled(NSUserDefaults.standardUserDefaults,EIDHiddenInfoKey)) return nil;
+    if (![owned containsObject:@"5.350.32"] && ![owned containsObject:@"5.350.132"] && ![owned containsObject:@"5.350.153"]) return nil;
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
+    uintptr_t image = (uintptr_t)header;
+    if (!header || !VerifyCurrentEffectTable(image,0x953360,EIDTrinketEffectPolicy::Liberty) ||
+        !VerifyCurrentEffectTable(image,0x953378,EIDTrinketEffectPolicy::Syringe) ||
+        !VerifyCurrentEffectTable(image,0x953398,EIDTrinketEffectPolicy::Lock)) return nil;
+    NSSet *effects = ReadCurrentCollectibleEffects(player);
+    RemotePointerVector span{}, after{};
+    if (!effects || !ReadOwnTaskMemory(player+kPlayerTrinketRNGOffset,&span,sizeof(span)) ||
+        !EIDCurrentEffectsPolicy::ValidSpan(span.begin,span.end,span.capacity,16,4096)) return nil;
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    for (int32_t trinket : {32,132,153}) {
+        if (![owned containsObject:[NSString stringWithFormat:@"5.350.%d",trinket]] ||
+            (span.end-span.begin)/16 <= (size_t)trinket) continue;
+        EIDPredictionPolicy::RNG rng{}, confirmation{};
+        uintptr_t at = span.begin+(size_t)trinket*sizeof(rng);
+        if (!ReadOwnTaskMemory(at,&rng,sizeof(rng)) || !rng.seed ||
+            !rng.shift1 || rng.shift1>31 || !rng.shift2 || rng.shift2>31 || !rng.shift3 || rng.shift3>31 ||
+            !ReadOwnTaskMemory(at,&confirmation,sizeof(confirmation)) || memcmp(&rng,&confirmation,sizeof(rng))) continue;
+        // Use the CURRENT seed, with no RNG advance. Require the selected
+        // effect to have actually been applied; a failed room proc stays hidden.
+        int32_t item = EIDTrinketEffectPolicy::CurrentCandidate(trinket,rng.seed);
+        result[@(trinket).stringValue] = @{@"validated":@YES,@"result":[effects containsObject:@(item)] ? @(item) : @0};
+    }
+    if (!ReadOwnTaskMemory(player+kPlayerTrinketRNGOffset,&after,sizeof(after)) || memcmp(&span,&after,sizeof(span))) return nil;
+    return result.copy;
+}
+
 static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
     int32_t type = -1;
     if (!ReadOwnTaskMemory(address+kPlayerTypeOffset,&type,sizeof(type)) || type < 0 || type > 40) return nil;
     NSMutableDictionary *player = [ReadDescriptionStats(address) mutableCopy] ?: [NSMutableDictionary dictionary];
     player[@"type"] = @(type);
+    uint8_t goldenBomb=0xff, goldenAgain=0xff;
+    if (ReadOwnTaskMemory(address+kPlayerGoldenBombOffset,&goldenBomb,1) && goldenBomb<=1 &&
+        ReadOwnTaskMemory(address+kPlayerGoldenBombOffset,&goldenAgain,1) && goldenBomb==goldenAgain)
+        player[@"golden_bomb"] = @(goldenBomb!=0);
     NSDictionary *repeat = ReadRepeatState(address);
     if (repeat) player[@"repeat_state"] = repeat;
     std::vector<EIDInventoryPreviewPolicy::HistoryEntry> history;
@@ -929,6 +998,8 @@ static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
                 ReadOwnTaskMemory(address+kPlayerModelingClayOffset,&again,sizeof(again)) && clay==again)
                 player[@"modeling_clay"] = @{@"validated":@YES,@"result":@(clay)};
         }
+        NSDictionary *trinketEffects = ReadCurrentTrinketEffects(address,owned);
+        if (trinketEffects) player[@"trinket_effects"] = trinketEffects;
         if ([NSUserDefaults.standardUserDefaults boolForKey:@"IsaacEIDOutcomePredictions"] &&
             [owned containsObject:@"5.100.485"]) {
             EIDPredictionPolicy::RNG rng{};
@@ -1225,6 +1296,30 @@ static NSDictionary *ReadCollectionSnapshot(void) {
     NSMutableArray *missing = [NSMutableArray array];
     for (size_t item = 1; item < flags.size(); ++item) if (!flags[item]) [missing addObject:@(item)];
     return @{@"slot":@(slot), @"progress_allowed":@(readOnly == 0), @"missing":missing.copy};
+}
+
+static NSDictionary *ReadUnlockHintState(void) {
+    NSDictionary *before = ReadCollectionSnapshot();
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
+    uintptr_t manager=0; uint32_t prologue=0;
+    if (!header || ![before[@"progress_allowed"] boolValue] ||
+        !ReadOwnTaskMemory((uintptr_t)header+kManagerGlobalOffset,&manager,sizeof(manager)) || !manager ||
+        !ReadOwnTaskMemory((uintptr_t)header+kPersistentIsAchievementUnlockedOffset,&prologue,4) || prologue!=0x3100083f) return nil;
+    NSMutableDictionary *state = [@{@"validated":@YES,@"slot":before[@"slot"]} mutableCopy];
+    // Persistent::Unlocked reads a byte at +0x28+ID (0x100702818). Read the
+    // actual selected save, not its challenge-mode fallback or Game Center.
+    for (int32_t achievement : {82,366}) {
+        uint8_t flag=0xff, confirmation=0xff;
+        uintptr_t at=manager+kManagerPersistentDataOffset+0x28+(size_t)achievement;
+        if (!ReadOwnTaskMemory(at,&flag,1) || flag>1 ||
+            !ReadOwnTaskMemory(at,&confirmation,1) || flag!=confirmation) return nil;
+        state[@(achievement).stringValue] = @(flag!=0);
+    }
+    NSDictionary *after = ReadCollectionSnapshot();
+    uintptr_t latest=0;
+    if (!after || ![before[@"slot"] isEqual:after[@"slot"]] || ![after[@"progress_allowed"] boolValue] ||
+        !ReadOwnTaskMemory((uintptr_t)header+kManagerGlobalOffset,&latest,sizeof(latest)) || latest!=manager) return nil;
+    return state.copy;
 }
 
 enum class PickupVisibility { Visible, Blind, Unreadable };
@@ -2099,6 +2194,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     NSMutableDictionary *state = [NSMutableDictionary dictionary];
     NSDictionary *collection = ReadCollectionSnapshot();
     if (collection) state[@"collection"] = collection;
+    NSDictionary *unlocks = ReadUnlockHintState();
+    if (unlocks) state[@"unlocks"] = unlocks;
     if (collection && !self.descriptionState[@"collection"])
         EIDLog(@"native collection validated: slot %@, %lu missing entries, progress allowed %@",
             collection[@"slot"],(unsigned long)[collection[@"missing"] count],collection[@"progress_allowed"]);
@@ -2130,7 +2227,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     BOOL needsAbsorption = [self ownedCollectibleCountForID:477] > 0;
     for (EIDPickupIdentity *identity in self.inventoryItems)
         if (identity.variant == 300 && identity.subtype == 41) needsAbsorption = YES;
-    NSArray *pedestals = game && needsAbsorption ? ReadRoomPedestals(game,self.scanContext) : nil;
+    BOOL voidStatsEnabled = EIDFeatureEnabled(NSUserDefaults.standardUserDefaults,EIDVoidStatInfoKey);
+    NSArray *pedestals = game && needsAbsorption && voidStatsEnabled ? ReadRoomPedestals(game,self.scanContext) : nil;
     unsigned voidCount = 0, runeCount = 0;
     NSMutableSet *options = [NSMutableSet set];
     for (NSDictionary *pedestal in pedestals) {
@@ -2155,7 +2253,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
             }
             NSArray *previousPlayers = self.descriptionState[@"players"];
             NSDictionary *previous = index < previousPlayers.count ? previousPlayers[index] : nil;
-            for (NSString *key in @[@"purity",@"modeling_clay",@"void_actives"])
+            for (NSString *key in @[@"purity",@"modeling_clay",@"void_actives",@"trinket_effects",@"golden_bomb"])
                 if (player[key] && ![player[key] isEqual:previous[key]])
                     EIDLog(@"native current effect: player %lu %@ %@ (read only)",(unsigned long)index,key,
                         [key isEqualToString:@"void_actives"] ? @([player[key] count]) : player[key]);
@@ -2852,19 +2950,32 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     return finish();
 }
 
-- (EIDPickupIdentity *)resolvedCurrentEffectIdentity:(EIDPickupIdentity *)identity {
-    if (identity.variant!=350 || (identity.subtype & 0x7fff)!=166 || !self.supportedBuild ||
+- (EIDPickupIdentity *)resolvedCurrentEffectIdentity:(EIDPickupIdentity *)identity hiddenInfo:(BOOL)hiddenInfo {
+    NSDictionary *oldEffect = identity.pickupContext[@"current_effect"];
+    if ([oldEffect[@"validated"] boolValue] && [oldEffect[@"source_variant"] integerValue]==350) {
+        NSInteger original = [oldEffect[@"source_subtype"] integerValue];
+        if ((original & 0x7fff)==[oldEffect[@"source_id"] integerValue] && original>0 && original<=0xffff) {
+            NSMutableDictionary *originalContext = identity.pickupContext.mutableCopy;
+            [originalContext removeObjectForKey:@"current_effect"];
+            identity = [[EIDPickupIdentity alloc] initWithVariant:350 subtype:original playerType:identity.playerType
+                playerIndex:identity.playerIndex rawPillSubtype:0 pillModifiers:identity.pillModifiers pickupContext:originalContext];
+        }
+    }
+    NSInteger trinket = identity.subtype & 0x7fff;
+    if (identity.variant!=350 || (trinket!=166 && trinket!=32 && trinket!=132 && trinket!=153) || !self.supportedBuild ||
         !NSThread.isMainThread || !self.gameplayActive || !self.paused || identity.playerIndex<0) return identity;
     vm_address_t game=0; VMRegionResult players;
     if (!ReadGameObjectAddress(game) || self.playerVectorOffset==NSUIntegerMax ||
         !ReadPlayerVector(self.scanContext,game+self.playerVectorOffset,false,players) ||
         (size_t)identity.playerIndex>=players.playerCount) return identity;
     NSDictionary *player = ReadDescriptionPlayer(players.players[(size_t)identity.playerIndex].address);
-    NSDictionary *clay = player[@"modeling_clay"];
-    NSInteger result = [clay[@"result"] integerValue];
-    if (![player[@"owned"] containsObject:@"5.350.166"] || ![clay[@"validated"] boolValue] || result<1 || result>732) return identity;
+    if (!EIDTrinketEffectVisible(player,trinket,hiddenInfo)) return identity;
+    NSDictionary *effect = trinket==166 ? player[@"modeling_clay"] : player[@"trinket_effects"][@(trinket).stringValue];
+    NSInteger result = [effect[@"result"] integerValue];
+    if (![effect[@"validated"] boolValue] || result<1 || result>732) return identity;
     NSMutableDictionary *context = identity.pickupContext.mutableCopy;
-    context[@"current_effect"] = @{@"source_variant":@350,@"source_id":@166,@"result":@(result),@"validated":@YES};
+    context[@"current_effect"] = @{@"source_variant":@350,@"source_id":@(trinket),@"source_subtype":@(identity.subtype),
+        @"result":@(result),@"validated":@YES};
     return [[EIDPickupIdentity alloc] initWithVariant:100 subtype:result playerType:[player[@"type"] integerValue]
         playerIndex:identity.playerIndex rawPillSubtype:0 pillModifiers:identity.pillModifiers pickupContext:context];
 }

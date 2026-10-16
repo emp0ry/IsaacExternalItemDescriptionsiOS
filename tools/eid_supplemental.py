@@ -57,7 +57,8 @@ def supplemental_rules(source: Path) -> list[dict]:
     dynamic = {"EID.PlayersHaveRestock": "restock", "EID.InStageVoid": "stage_void",
                "EID.InStageNoTreasureRoom": "stage_no_treasure", "EID.InStageTheShop": "stage_shop",
                "EID.CheckForMultipleActives": "multiple_actives",
-               "EID.CheckForMultipleChargeableActives": "multiple_chargeable_actives"}
+               "EID.CheckForMultipleChargeableActives": "multiple_chargeable_actives",
+               "EID.PlayersHaveGoldenBomb": "golden_bomb"}
     for section in sections:
         enabled, branches = True, []
         for raw_line in section.splitlines():
@@ -109,9 +110,8 @@ def supplemental_rules(source: Path) -> list[dict]:
                 # These are already supplied by the character/mode importer.
                 if args[1] in {"EID.IsHardMode", "EID.IsGreedMode", "EID.CheckForTaintedPlayer"}:
                     continue
-                # Native gold-bomb and subplayer counting require additional
-                # validated state; do not guess those unrelated predicates.
-                if args[1] in {"EID.PlayersHaveGoldenBomb", "EID.MultiplePlayerCharacters"}:
+                # Arbitrary subplayer counting still needs validated state.
+                if args[1] == "EID.MultiplePlayerCharacters":
                     continue
                 predicate, params = dynamic.get(args[1], ""), {}
                 compact = re.sub(r"\s+", "", args[1])

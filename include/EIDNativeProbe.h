@@ -93,9 +93,10 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 // Paused inventory only: read the game's already cached Bag of Crafting result.
 // Never calls crafting, modifies ingredients, advances RNG or adds ownership.
 - (EIDPickupIdentity *)resolvedCraftingIdentity:(EIDPickupIdentity *)identity;
-// Current (already applied) Modeling Clay effect in the selected player's
-// pause inventory. Never rolls or applies a temporary effect.
-- (EIDPickupIdentity *)resolvedCurrentEffectIdentity:(EIDPickupIdentity *)identity;
+// Current (already applied) Clay/Liberty Cap/Syringe/Mom's Lock effect in the
+// selected player's pause inventory, respecting upstream Hidden Info policy.
+// Never rolls or applies a temporary effect.
+- (EIDPickupIdentity *)resolvedCurrentEffectIdentity:(EIDPickupIdentity *)identity hiddenInfo:(BOOL)hiddenInfo;
 // Optional, read-only next-outcome previews. Copies RNG state; never calls an
 // item effect or native RNG. Eternal D6 is one reroll, not a future-use count.
 - (EIDPickupIdentity *)resolvedOutcomeIdentity:(EIDPickupIdentity *)identity

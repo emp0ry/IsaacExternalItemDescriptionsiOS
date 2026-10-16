@@ -1,5 +1,6 @@
 #import "EIDDynamicDescriptions.h"
 #import "EIDCharacterSynergies.h"
+#import "EIDContextDescriptions.h"
 #include <math.h>
 
 static NSString *PandoraSegment(NSString *text) {
@@ -40,6 +41,9 @@ static NSString *HighlightPandora(NSString *detail, NSInteger difficulty, NSSet 
     NSString *text = context[@"pandora_floor_lines"][key];
     if (![text isKindOfClass:NSString.class] || !text.length) return detail;
     text = PandoraSegment(text);
+    // The base description already replaced "Unlocks Moving Box" with
+    // "Nothing" when unlocked. Match the same adjusted current-floor line.
+    text = EIDUnlockDescription(text,100,297,context);
     // Exact segment equality avoids highlighting C1 inside "C2: C1 + ...".
     NSRegularExpression *segments = [NSRegularExpression regularExpressionWithPattern:@"[^#;]+" options:0 error:nil];
     for (NSTextCheckingResult *match in [segments matchesInString:detail options:0 range:NSMakeRange(0,detail.length)]) {

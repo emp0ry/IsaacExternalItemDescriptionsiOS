@@ -2,6 +2,37 @@
 
 All release changes are kept here. Older entries describe their own release; historical limitations may have been resolved by a later update.
 
+## v0.13.0
+
+2026-10-16
+
+Original EID spoiler defaults, current room trinket effects and save-aware unlock hints, plus Mama Mega's golden-bomb interaction.
+
+### Settings and spoiler controls
+
+- Three independent controls now default to **OFF**: **RNG predictions (spoilers)**, **Void / Black Rune stat previews**, and **Hidden current effects**. Enabling one does not enable the others.
+- Void and Black Rune's exact future stat gains are no longer shown unless their own control is enabled; disabled forecasts are not calculated in the native probe.
+- Spindown remains an enabled three-use deterministic ID preview. Flip and Glitched Crown remain enabled. Language, layout and explicitly saved settings are preserved.
+- The settings panel accommodates the additional controls without overlapping its help text or credits.
+
+### Added and improved
+
+- With **Hidden current effects** enabled, inspect Liberty Cap, Broken Syringe and Mom's Lock to see their already-applied room effect. Verified native trinket records are checked against actual temporary effects; failed procs keep the ordinary description. This does not predict the next room's roll or advance RNG.
+- Equipped Modeling Clay remains inspectable normally; swallowed-only Clay follows Hidden Info. Turning the option off removes the revealed effect, including cached pause selections.
+- Missing Poster's Lost-unlock hint uses the selected Isaac save's achievement flag. Pandora's Box shows the appropriate Dark Room reward when Moving Box is already unlocked, retaining current-floor highlighting and localized text. No Game Center or save modification is involved.
+- Mama Mega's reuse hint follows the actual native golden-bomb flag, refreshing on acquisition and removal. Personal pause descriptions use the selected player's state rather than borrowing another player's bomb.
+- The bundled description database and README now cover these rules and independent options.
+
+### Compatibility and verification
+
+- The user confirmed the installed update working on the development iPhone. Local policy, importer, 20-language context and independent-toggle regressions passed, along with strict ARM64 build, signature, portable-dependency and packaging checks. Every language, co-op and loading-mode combination has not been exhaustively replayed.
+- Native Isaac iOS **1.4 / Repentance 1.7.9b.J754**, ARM64, iOS 15+. Repentance+ and other executable builds are not supported by these offsets. Arbitrary Lua and unreviewed conditional expressions are not executed.
+- No IPA, game executable, save or credential is distributed. Viewing descriptions does not activate items, advance game RNG or write save data.
+
+Fully restart Isaac after updating and use only one loading method. Thanks to wofsauge and all original EID contributors and translators; attributed descriptions and resources are included with permission.
+
+[Website](https://isaaceidios.emp0ry.com/) · [Report a problem](https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/issues)
+
 ## v0.12.0
 
 2026-10-16

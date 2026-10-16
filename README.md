@@ -31,7 +31,17 @@ Choose **one** format, install it, then fully restart Isaac.
 
 Choose any of **20 EID languages**, independently of the game's language. Missing translations fall back to English. Settings include horizontal/vertical position, scale, text opacity, background and background opacity, Name/Icon/Quality/Description visibility, position reset, credits and dataset information. The settings panel scrolls on small screens. Default position: **140 px right, 50 px down**.
 
-Gameplay is text-only by default, with an optional content-sized background. Pause descriptions temporarily use a dark backdrop of at least 72% opacity without changing your saved settings. **RNG predictions (spoilers)** are optional and **off by default**.
+Gameplay is text-only by default, with an optional content-sized background. Pause descriptions temporarily use a dark backdrop of at least 72% opacity without changing your saved settings.
+
+Original EID's spoiler controls are separate, and all three default to **OFF**:
+
+| Setting | What it reveals |
+| --- | --- |
+| RNG predictions (spoilers) | Crooked Penny and the next individual Eternal D6 reroll. |
+| Void / Black Rune stat previews | The exact future random stat gains from absorption; independent of the RNG setting. |
+| Hidden current effects | Already-applied Liberty Cap, Broken Syringe and Mom's Lock effects; also swallowed-only Modeling Clay. |
+
+Spindown's three ID-based results, Flip and Glitched Crown remain enabled as in original EID. Held Modeling Clay remains inspectable without Hidden Info. Updating preserves your language, layout and explicitly saved preferences.
 
 ## Everything included
 
@@ -48,6 +58,7 @@ The sections below describe implemented features, not a promise of complete pari
 - Reachable ordinary floor cards/runes are described immediately. Shared-model shop cards and `Options?` cards stay unidentified. Distinctive models, including Credit Card, Black Rune, Rune Shard, Cracked Key, Wild Card and Soul Stones, retain upstream visibility exceptions; Chaos Card is not a unique-model exception.
 - Unreachable shared-model cards/runes/pills stay unidentified; flight bypasses the obstruction check. Pills use native identified state, including shop/Options? cases, and otherwise show only a localized unidentified label and color.
 - A collection-page reminder marks eligible collectibles never picked up in the selected save slot. This is separate from unlock status and current-run ownership; hidden items, pause entries and read-only/custom runs do not get it.
+- Missing Poster offers its Lost-unlock hint only while Lost is locked. Pandora's Box changes its Moving Box unlock reward to Nothing after that unlock, retaining current-floor highlighting. Both read the selected Isaac save, not Game Center.
 - Title, artwork and body disappear together after collection. Short rotating pedestals, including Binge Eater, follow the currently visible item rather than the previous half-cycle.
 
 </details>
@@ -74,13 +85,14 @@ The sections below describe implemented features, not a promise of complete pari
 - Duplicate-copy notes, including meaningful stacking and ineffective extra copies. Diplopia/Crooked Penny can enable prospective-copy notes; owned pause entries do not pretend another copy is being acquired.
 - Charge interactions for 9 Volt, 4.5 Volt, Sharp Plug, Vibrant/Dim Bulb and Schoolbag, respecting normal/timed/special charging and primary/pocket-slot rules.
 - Additional original combinations, including Black Candle/Cursed Eye, non-stacking damage multipliers, Sacrificial Altar familiars, supported fart/poop effects, Uranus and single-use/mimic interactions. These are reviewed declarative rules, not arbitrary Lua execution.
+- Mama Mega shows its repeat-use interaction while a native golden bomb is available; the hint disappears when the bomb is spent or cleared.
 - Binge Eater's food-specific stats, temporary damage, speed/healing changes and character conversions. Supported BFFS!/Hive Mind familiar changes avoid applying their shared bonus twice; Forgotten Lullaby includes supported clots and no-effect exceptions.
 - PHD/False PHD, Virgo and Lucky Foot use the current player's native pill effect. False PHD's eligible damage/black-heart rewards include horse pills and combined PHD behavior. Removing an item removes its conditional bonus; genuinely learned pill knowledge may remain.
 - Golden and swallowed trinkets, Mom's Box multipliers and localized special cases, with gold highlighting. Black Feather shows qualifying copies/trinkets and its current damage bonus.
 - Supported luck-sensitive items show their chance at your current Luck.
 - Consolation Prize shows normalized-stat and weighted-consumable candidates, tie markers and Bethany charge pools.
 - Owned Glyph of Balance shows the selected player's current native pickup priority outside Greed; it does not predict a random reward.
-- Purity shows its current aura or inactive state. Modeling Clay shows its already-applied room item, not a future roll.
+- Purity shows its current aura or inactive state. Modeling Clay shows its already-applied room item, not a future roll. With Hidden current effects enabled, Liberty Cap, Broken Syringe and Mom's Lock show their actually-applied room effect. A failed proc retains the ordinary trinket description; no next-room roll is predicted.
 
 </details>
 
@@ -89,7 +101,7 @@ The sections below describe implemented features, not a promise of complete pari
 
 - Spindown Dice shows three eligible results in an arrow-connected chain. Locked, missing, hidden and run-restricted IDs are skipped, not crossed out. Car Battery, Dad's Note stopping and item disappearance are handled.
 - Flip shows the native alternate pedestal and its description while retaining blind-item protection.
-- Void and Black Rune show separate stat-gain previews from copied native RNG, with single-item, room and purchased-item cases.
+- With **Void / Black Rune stat previews** enabled, see separate stat-gain predictions from copied native RNG, with single-item, room and purchased-item cases. This control defaults to off and is independent of RNG predictions.
 - Abyss shows standard-Repentance locust count, damage, size, speed and special effects. Repentance+ quality scaling is intentionally not used.
 - Wild Card shows the recorded effect it will repeat; Vurp! shows the previous pill, with normal/horse-pill and player-specific context.
 - The Stars? shows the oldest eligible passive removal, or two with Tarot Cloth.

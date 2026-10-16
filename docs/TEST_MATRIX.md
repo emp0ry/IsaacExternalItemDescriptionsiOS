@@ -1,5 +1,17 @@
 # Test matrix
 
+## v0.13.0 release validation (2026-10-16)
+
+| Area | Result |
+| --- | --- |
+| Independent spoiler controls | Local defaults, saved-preference, toggle-independence and cached-selection regressions passed; all three options default off |
+| Current trinket effects | Native room tables, stable RNG records and actual applied-effect checks verified; iOS Liberty Cap table order retained; failed-proc and ownership guards passed |
+| Save-aware unlock hints | Selected-slot Lost/Moving Box flags, unavailable-state suppression, localized replacement and Pandora highlighting covered by host tests |
+| Mama Mega and golden bombs | Actual native flag and item-dispatch read verified; acquisition/removal and personal-context regressions passed |
+| Device acceptance | User confirmed the installed update working; exhaustive co-op, locale and loading-mode coverage is not claimed |
+| Build and packaging | Local policy, 31 importer, 20-language context and documentation checks passed, with strict ARM64, signature, public-dependency and distribution checks before publication |
+| Public source | Tests remain local-only; the universal workflow builds and verifies all release formats without distributing the private suite |
+
 ## v0.12.0 release validation (2026-10-16)
 
 | Area | Result |
