@@ -490,6 +490,42 @@ def weapon_rules(source: Path) -> list[dict]:
     return sorted(result, key=lambda rule: rule["layer"], reverse=True)
 
 
+def familiar_metadata(source: Path) -> dict:
+    """Import the reviewed familiar block, excluding Repentance+ patches.
+
+    Keep ownership/eligibility separate from translated replacement text. A
+    missing translation must not make an unrelated item eligible for a buff.
+    """
+    text = (source / "features/eid_data.lua").read_text(encoding="utf-8-sig")
+    block = text.split("-- Familiars that have no effect from BFFS!", 1)[1]
+    block = block.split("-- Tainted character", 1)[0]
+    names = {"BFFSNoSynergy": "no_synergy", "BFFSPedestalWhitelist": "pedestal_whitelist",
+             "HiveMindFamiliars": "hive_mind", "BFFSIgnore": "bffs_ignore"}
+    tables = {name: table(block, name) for name in names}
+    enabled, branches = True, []
+    for line in block.splitlines():
+        line = re.sub(r"--.*", "", line).strip()
+        if line in {"if EID.isRepentance then", "if EID.isRepentancePlus then"}:
+            branches.append(enabled)
+            enabled = enabled and line == "if EID.isRepentance then"
+        elif line == "end":
+            if not branches:
+                raise ValueError("unexpected familiar metadata branch end")
+            enabled = branches.pop()
+        elif enabled:
+            for name, key, flag in re.findall(
+                    r"EID\.(BFFSNoSynergy|BFFSPedestalWhitelist|HiveMindFamiliars|BFFSIgnore)\[(\d+)\]\s*=\s*(true|false|nil)", line):
+                tables[name][key] = flag == "true"
+    if branches:
+        raise ValueError("unclosed familiar metadata branch")
+    for entries in tables.values():
+        if any(not key.isdigit() or not 1 <= int(key) <= 732 or type(flag) is not bool
+               for key, flag in entries.items()):
+            raise ValueError("invalid familiar metadata")
+    return {names[name]: sorted(int(key) for key, flag in entries.items() if flag)
+            for name, entries in tables.items()}
+
+
 def battery_metadata(source: Path) -> dict:
     """Read boolean table patches in the reviewed AB+/Repentance data block."""
     text = (source / "features/eid_data.lua").read_text(encoding="utf-8-sig")

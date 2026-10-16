@@ -13,7 +13,8 @@ from eid_context import greed_no_effect_notes
 from eid_context import character_metadata
 from eid_context import luck_formulas
 from eid_context import abyss_locusts, abyss_descriptions
-from eid_context import black_feather_metadata
+from eid_context import black_feather_metadata, familiar_metadata
+from eid_outcome_strings import outcome_strings
 
 
 ENTRY = re.compile(r"^\s*(?:\[(\d+)\]\s*=\s*)?\{")
@@ -199,6 +200,8 @@ def main() -> int:
                                         ("car_battery", "carBattery"),
                                         ("tarot_cloth", "tarotClothBuffs"),
                                         ("BFFSSynergies", "BFFSSynergies"),
+                                        ("binge_eater", "bingeEaterBuffs"),
+                                        ("purity_boosts", "PurityBoosts"),
                                         ("book_of_belial", "bookOfBelialBuffs"),
                                         ("wisp_texts", "BookOfVirtuesWispTexts"),
                                         ("wisp_extras", "bookOfVirtuesWisps"),
@@ -245,10 +248,13 @@ def main() -> int:
                         "ExperimentalPillFalsePHD", "LuckModifier", "goldenTrinket", "tripledTrinket",
                         "quadrupledTrinket", "VariableCharge", "BlankCardEffect", "spindownError",
                         "ResultsWithX", "VoidText", "VoidShopText", "VoidOptionText", "BlackFeatherInformation",
-                        "GlitchedCrownToggleInfo"):
+                        "GlitchedCrownToggleInfo", "CrookedPennyHeads", "CrookedPennyTails"):
                 text = parse_string_assignment(path, key)
                 if text:
                     categories["context_strings"][key] = text
+        categories["context_strings"].update(outcome_strings(code))
+        categories["context_strings"]["CurrentEffectInactive"] = (
+            "Нет эффекта до следующей комнаты" if code == "ru" else "Inactive until the next room")
         languages[code] = categories
         counts.append(f"{code}({', '.join(category_counts)})")
     locusts = abyss_locusts(source)
@@ -270,6 +276,7 @@ def main() -> int:
         payload["weapon_rules"] = weapon_rules(source)
         payload["character_metadata"] = character_metadata(source)
         payload["car_battery_metadata"] = battery_metadata(source)
+        payload["familiar_metadata"] = familiar_metadata(source)
         payload["luck_formulas"] = luck_formulas(source)
         native_rules = (source / "features/eid_data.lua").read_text(encoding="utf-8-sig")
         payload["golden_trinket_data"] = context_table(native_rules,"GoldenTrinketData")

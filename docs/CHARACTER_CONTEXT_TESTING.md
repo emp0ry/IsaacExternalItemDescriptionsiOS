@@ -30,11 +30,12 @@ must get the closest player's effect plus a localized difference notice. Change
 the closest player and check that the base description switches. Two characters
 of the same type must not borrow each other's Birthright/trinkets for salvage.
 
-Known scope: the pause inventory list remains aggregated, though conditional
-ownership is scoped to the primary player. Book of Virtues pedestal previews
-include all owned actives, not just the selected primary slot. Void-absorbed
-actives, full twin/subplayer presentation, and seeded salvage drops are not
-implemented. Host tests are not a substitute for these gameplay checks.
+Known scope: pause inventory and conditional ownership now follow the selected
+native player. Void-absorbed actives have a separate inspectable list. Book of
+Virtues pedestal previews include all owned actives, not just the selected
+primary slot. Arbitrary subplayer filtering, per-player merged Super Bum
+ownership and seeded salvage drops are not claimed. Host tests are not a
+substitute for these gameplay checks.
 
 ## Device acceptance status (2026-10-14)
 
@@ -46,3 +47,11 @@ implemented. Host tests are not a substitute for these gameplay checks.
 - Tainted Cain and Tainted Lilith are not unlocked on the test account. Their
   gameplay acceptance checks remain pending. No unlock or save modification is
   performed to make those tests available.
+
+## Follow-up (2026-10-16)
+
+The earlier unlock note describes the October 14 account state, not a current
+restriction. Tainted Cain's pocket-active fix and native Bag of Crafting result
+preview were confirmed by the user and logs. Salvage/Birthright/Lucky Toe/quest
+exceptions and Tainted Lilith's BFFS/Gello/Lullaby notes still require the
+individual gameplay checks above before being marked accepted.

@@ -21,6 +21,26 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class ImportEIDTests(unittest.TestCase):
+    def test_familiar_metadata_applies_only_standard_repentance_patches(self) -> None:
+        from eid_context import familiar_metadata
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+            (source / "features").mkdir()
+            target = source / "features/eid_data.lua"
+            target.write_text('-- Familiars that have no effect from BFFS!\n'
+                'EID.BFFSNoSynergy = {[178]=true,[10]=true}\n'
+                'if EID.isRepentance then\nEID.BFFSNoSynergy[178] = false\n'
+                'EID.BFFSNoSynergy[325] = true\nend\n'
+                'if EID.isRepentancePlus then\nEID.BFFSNoSynergy[10] = false\nend\n'
+                'EID.BFFSPedestalWhitelist = {[403]=true}\n'
+                'EID.HiveMindFamiliars = {[629]=true}\nEID.BFFSIgnore = {}\n'
+                '-- Tainted character\n', encoding="utf-8")
+            self.assertEqual(familiar_metadata(source), {"no_synergy":[10,325],
+                "pedestal_whitelist":[403],"hive_mind":[629],"bffs_ignore":[]})
+            target.write_text(target.read_text().replace('[629]=true','[900]=true'),encoding="utf-8")
+            with self.assertRaises(ValueError):
+                familiar_metadata(source)
+
     def test_black_feather_metadata_is_standard_repentance(self) -> None:
         from eid_context import black_feather_metadata
         with tempfile.TemporaryDirectory() as directory:

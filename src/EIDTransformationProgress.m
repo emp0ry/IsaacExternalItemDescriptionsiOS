@@ -199,6 +199,30 @@ static NSInteger EIDNativeFormIDForTransformation(NSInteger transformation) {
     return MAX(self.probe.superBumActive ? self.required : 0, count);
 }
 
+- (NSInteger)progressForTransformation:(NSInteger)transformation playerIndex:(NSInteger)playerIndex {
+    if (playerIndex<0) return [self progressForTransformation:transformation];
+    NSArray *players = self.probe.descriptionState[@"players"];
+    NSDictionary *selected = nil;
+    for (NSDictionary *player in players)
+        if ([player[@"index"] integerValue]==playerIndex) { selected=player; break; }
+    if (!selected) return -1;
+    NSInteger nativeForm = EIDNativeFormIDForTransformation(transformation), live=0;
+    NSDictionary *counts = selected[@"collectible_counts"];
+    if (![counts isKindOfClass:NSDictionary.class]) return -1;
+    NSCountedSet *actives = [[NSCountedSet alloc] initWithArray:selected[@"active_ids"] ?: @[]];
+    for (NSNumber *item in self.collectiblesByTransformation[@(transformation)])
+        live += MAX([counts[item.stringValue] integerValue],(NSInteger)[actives countForObject:item]);
+    if (nativeForm!=NSNotFound) {
+        NSArray *forms = selected[@"forms"];
+        if (![forms isKindOfClass:NSArray.class] || nativeForm<0 || (NSUInteger)nativeForm>=forms.count) return -1;
+        return MAX(live,[forms[(NSUInteger)nativeForm] integerValue]);
+    }
+    if (transformation!=11) return -1;
+    // Super Bum's familiar-owner layout has not been established for co-op.
+    // Keep the existing verified single-player merge check, not a shared flag.
+    return players.count==1 ? MAX(live,self.probe.superBumActive ? self.required : 0) : -1;
+}
+
 - (NSString *)progressSignatureForPickups:(NSArray<EIDPickupIdentity *> *)pickups {
     EIDPickupIdentity *pickup = pickups.firstObject;
     if (!pickup) return @"";

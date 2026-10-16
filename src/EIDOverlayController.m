@@ -5,6 +5,7 @@
 #import "EIDTransformationProgress.h"
 #import "EIDGameHost.h"
 #import "EIDDescriptionInteraction.h"
+#include "EIDLivePedestalPolicy.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -125,6 +126,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, strong) UILabel *settingsVerticalPositionLabel;
 @property(nonatomic, strong) UISlider *settingsVerticalPositionSlider;
 @property(nonatomic, strong) NSTimer *timer;
+@property(nonatomic, strong) CADisplayLink *pedestalDisplayLink;
 @property(nonatomic, copy) NSArray<EIDPickupIdentity *> *lastPickups;
 @property(nonatomic, strong) UIImage *cardAtlas;
 @property(nonatomic, copy) NSArray *cardAtlasFrames;
@@ -138,6 +140,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic) NSUInteger consecutiveMenuScans;
 @property(nonatomic, strong) EIDPickupIdentity *selectedInventoryItem;
 @property(nonatomic, copy) NSString *inventorySignature;
+@property(nonatomic) NSInteger inventoryPlayerIndex;
+@property(nonatomic) NSUInteger inventoryRun;
+@property(nonatomic, strong) NSMutableDictionary<NSString *,EIDPickupIdentity *> *inventoryRows;
 @property(nonatomic, copy) NSString *transformationProgressSignature;
 @property(nonatomic) BOOL pauseUIActive;
 @property(nonatomic) BOOL descriptionNeedsRefresh;
@@ -161,6 +166,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         _lastPickups = @[];
         _pocketIconCache = [NSMutableDictionary dictionary];
         _collectibleCycleSelections = [NSMutableDictionary dictionary];
+        _inventoryRows = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -190,6 +196,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                                                    selector:@selector(tick:)
                                                    userInfo:nil
                                                     repeats:YES];
+        self.pedestalDisplayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(tickLivePedestal:)];
+        [self.pedestalDisplayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     });
 }
 
@@ -463,6 +471,22 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     [self updateSettingsControls];
 }
 
+- (void)tickLivePedestal:(CADisplayLink *)link {
+    (void)link;
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
+        !self.rootView.superview || self.menuMode || !self.probe.gameplayActive ||
+        self.selectedInventoryItem || !self.settingsCard.hidden || !self.inventoryCard.hidden) return;
+    EIDPickupIdentity *source = self.lastPickups.firstObject;
+    if (source.variant != 100 || ![source.pickupContext[@"pedestal"] boolValue] ||
+        !EIDLivePedestalShouldTrack([source.pickupContext[@"live_cycle_count"] intValue])) return;
+    EIDPickupIdentity *fresh = [self.probe resolvedLivePedestalIdentity:source];
+    if ([fresh isEqual:source]) return;
+    if (fresh) fresh = [self.probe resolvedSpindownIdentity:fresh];
+    self.lastPickups = fresh ? @[fresh] : @[];
+    [self renderPickups:self.lastPickups];
+    // Keep the usual scanner's pending inventory/context refresh intact.
+}
+
 - (void)tick:(NSTimer *)timer {
     (void)timer;
     [self attachOverlayIfNeeded];
@@ -475,15 +499,26 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         NSArray<EIDPickupIdentity *> *rawPickups = [self.probe currentDescribablePickups];
         dispatch_async(dispatch_get_main_queue(), ^{
             NSMutableArray<EIDPickupIdentity *> *pickups = [NSMutableArray array];
-            for (EIDPickupIdentity *identity in rawPickups)
-                [pickups addObject:[self.probe resolvedSpindownIdentity:[self.probe resolvedPillIdentity:identity]]];
+            for (EIDPickupIdentity *identity in rawPickups) {
+                // Never let a delayed background result overwrite the current
+                // frame's Binge Eater/Soul of Isaac pedestal identity.
+                EIDPickupIdentity *fresh = [self.probe resolvedLivePedestalIdentity:identity];
+                if (fresh) [pickups addObject:[self.probe resolvedSpindownIdentity:[self.probe resolvedPillIdentity:fresh]]];
+            }
             self.scanInProgress = NO;
             [self updateMenuModeForGameplay:self.probe.gameplayActive];
             BOOL paused = self.probe.gameplayActive && self.probe.pauseStateAvailable &&
                 self.probe.paused;
             [self updatePauseInventoryForPaused:paused];
-            if (paused && self.selectedInventoryItem.rawPillSubtype) {
-                EIDPickupIdentity *selected = [self.probe resolvedPillIdentity:self.selectedInventoryItem];
+            if (paused && self.selectedInventoryItem) {
+                EIDPickupIdentity *selected = nil, *old = self.selectedInventoryItem;
+                NSArray *entries = [[[self.probe currentInventoryItems] arrayByAddingObjectsFromArray:[self.probe currentSmeltedTrinkets]]
+                    arrayByAddingObjectsFromArray:[self.probe currentVoidedItems]];
+                for (EIDPickupIdentity *entry in entries)
+                    if (entry.playerIndex==old.playerIndex &&
+                        (old.rawPillSubtype ? entry.rawPillSubtype==old.rawPillSubtype :
+                            entry.variant==old.variant && entry.subtype==old.subtype) &&
+                        [entry.pickupContext[@"void_absorbed"] boolValue]==[old.pickupContext[@"void_absorbed"] boolValue]) { selected=entry; break; }
                 if (![selected isEqual:self.selectedInventoryItem]) {
                     self.selectedInventoryItem = selected;
                     self.descriptionNeedsRefresh = YES;
@@ -638,17 +673,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (NSString *)inventorySignatureForItems:(NSArray<EIDPickupIdentity *> *)items {
     NSMutableString *signature = [NSMutableString string];
     for (EIDPickupIdentity *item in items) {
-        [signature appendFormat:@"%ld:%ld,", (long)item.variant, (long)item.subtype];
+        [signature appendFormat:@"%ld:%ld:%ld:%@,",(long)item.playerIndex,(long)item.variant,(long)item.subtype,
+            item.pickupContext[@"inventory_copies"] ?: @1];
     }
-    for (EIDPickupIdentity *item in [self.probe currentSmeltedTrinkets]) {
-        [signature appendFormat:@"smelted=%ld,",(long)item.subtype];
-    }
-    EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
-    tracker.probe = self.probe;
-    for (NSNumber *identifier in tracker.allTransformationIdentifiers) {
-        [signature appendFormat:@"t%@=%ld,", identifier,
-         (long)[tracker progressForTransformation:identifier.integerValue]];
-    }
+    for (EIDPickupIdentity *item in [[self.probe currentSmeltedTrinkets] arrayByAddingObjectsFromArray:[self.probe currentVoidedItems]])
+        [signature appendFormat:@"extra=%ld:%ld:%@,",(long)item.playerIndex,(long)item.subtype,item.pickupContext];
+    for (NSDictionary *player in self.probe.descriptionState[@"players"])
+        [signature appendFormat:@"player=%@:%@:%@,",player[@"index"],player[@"type"],player[@"forms"]];
+    [signature appendFormat:@"selected=%ld:run=%lu:",(long)self.inventoryPlayerIndex,(unsigned long)self.probe.runCounter];
     [signature appendFormat:@"lang=%@", self.store.languageCode];
     return signature;
 }
@@ -694,11 +726,18 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     NSString *name = description.name.length ? description.name
         : [NSString stringWithFormat:@"%@ %ld", [self kindNameForVariant:identity.variant],
            (long)shownSubtype];
-    [row setTitle:[NSString stringWithFormat:@"%@  [%ld]", name, (long)shownSubtype]
+    NSInteger copies = [identity.pickupContext[@"inventory_copies"] integerValue];
+    NSString *quantity = identity.variant==EIDPickupVariantCollectible && copies>1
+        ? [NSString stringWithFormat:@" ×%ld",(long)copies] : @"";
+    [row setTitle:[NSString stringWithFormat:@"%@%@  [%ld]", name, quantity, (long)shownSubtype]
          forState:UIControlStateNormal];
+    if ([identity.pickupContext[@"void_absorbed"] boolValue])
+        [row setTitle:[NSString stringWithFormat:@"%@  [%ld] · Void ×%@",name,(long)shownSubtype,
+            identity.pickupContext[@"void_copies"] ?: @1] forState:UIControlStateNormal];
     [row setImage:[self inventoryIconForIdentity:identity] forState:UIControlStateNormal];
-    row.accessibilityIdentifier = [NSString stringWithFormat:@"%ld:%ld",
-                                   (long)identity.variant, (long)identity.subtype];
+    row.accessibilityIdentifier = [NSString stringWithFormat:@"%ld:%ld:%ld:%d",
+        (long)identity.playerIndex,(long)identity.variant,(long)identity.subtype,[identity.pickupContext[@"void_absorbed"] boolValue]];
+    self.inventoryRows[row.accessibilityIdentifier] = identity;
     [row addTarget:self action:@selector(selectInventoryIdentity:)
   forControlEvents:UIControlEventTouchUpInside];
     [self.inventoryScrollView addSubview:row];
@@ -706,16 +745,30 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 
 - (void)rebuildInventoryContentsIfNeeded:(BOOL)force {
+    NSArray *players = self.probe.descriptionState[@"players"];
+    if (self.inventoryRun!=self.probe.runCounter) {
+        self.inventoryRun=self.probe.runCounter;
+        self.inventoryPlayerIndex=0;
+    }
+    NSDictionary *selectedPlayer = nil;
+    for (NSDictionary *player in players)
+        if ([player[@"index"] integerValue]==self.inventoryPlayerIndex) selectedPlayer=player;
+    if (!selectedPlayer && players.count) {
+        selectedPlayer=players.firstObject;
+        self.inventoryPlayerIndex=[selectedPlayer[@"index"] integerValue];
+    }
     NSArray<EIDPickupIdentity *> *items = [self.probe currentInventoryItems];
     NSString *signature = [self inventorySignatureForItems:items];
     if (!force && [signature isEqualToString:self.inventorySignature]) return;
     self.inventorySignature = signature;
+    [self.inventoryRows removeAllObjects];
     [self.inventoryScrollView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
 
     NSMutableArray<EIDPickupIdentity *> *collectibles = [NSMutableArray array];
     NSMutableArray<EIDPickupIdentity *> *trinkets = [NSMutableArray array];
     NSMutableArray<EIDPickupIdentity *> *pockets = [NSMutableArray array];
     for (EIDPickupIdentity *item in items) {
+        if (item.playerIndex!=self.inventoryPlayerIndex) continue;
         if (item.variant == EIDPickupVariantCollectible) [collectibles addObject:item];
         else if (item.variant == EIDPickupVariantTrinket) [trinkets addObject:item];
         else [pockets addObject:item];
@@ -724,10 +777,24 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     BOOL russian = [self.store.languageCode isEqualToString:@"ru"];
     CGFloat width = self.inventoryScrollView.bounds.size.width;
     CGFloat y = 0;
+    if (players.count>1) {
+        UIButton *selector = [UIButton buttonWithType:UIButtonTypeSystem];
+        selector.frame=CGRectMake(2,y,width-4,34);
+        [selector setTitle:[self inventoryPlayerTitle:selectedPlayer] forState:UIControlStateNormal];
+        selector.contentHorizontalAlignment=UIControlContentHorizontalAlignmentLeft;
+        [selector addTarget:self action:@selector(chooseInventoryPlayer:) forControlEvents:UIControlEventTouchUpInside];
+        [self.inventoryScrollView addSubview:selector]; y+=39;
+    }
+    NSMutableArray *smelted = [NSMutableArray array], *voided = [NSMutableArray array];
+    for (EIDPickupIdentity *item in [self.probe currentSmeltedTrinkets])
+        if (item.playerIndex==self.inventoryPlayerIndex) [smelted addObject:item];
+    for (EIDPickupIdentity *item in [self.probe currentVoidedItems])
+        if (item.playerIndex==self.inventoryPlayerIndex) [voided addObject:item];
     NSArray<NSDictionary *> *sections = @[
         @{@"title": russian ? @"Предметы" : @"Collectibles", @"items": collectibles},
         @{@"title": russian ? @"Брелоки" : @"Trinkets", @"items": trinkets},
-        @{@"title": russian ? @"Проглоченные брелоки" : @"Smelted trinkets", @"items": [self.probe currentSmeltedTrinkets]},
+        @{@"title": russian ? @"Проглоченные брелоки" : @"Smelted trinkets", @"items": smelted},
+        @{@"title": russian ? @"Поглощено Void" : @"Absorbed by Void", @"items": voided},
         @{@"title": russian ? @"Карты, руны и таблетки" : @"Cards, runes & pills",
           @"items": pockets},
     ];
@@ -746,7 +813,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                             y:&y width:width];
     for (NSNumber *identifier in tracker.allTransformationIdentifiers) {
         NSInteger transformation = identifier.integerValue;
-        NSInteger progress = [tracker progressForTransformation:transformation];
+        NSInteger progress = [tracker progressForTransformation:transformation playerIndex:self.inventoryPlayerIndex];
+        if (progress<0) continue;
         UILabel *row = [[UILabel alloc] initWithFrame:CGRectMake(2, y, width - 4, 30)];
         row.backgroundColor = [UIColor colorWithWhite:1 alpha:0.075];
         row.layer.cornerRadius = 6;
@@ -785,22 +853,49 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 
 - (void)selectInventoryIdentity:(UIButton *)sender {
-    NSArray<NSString *> *parts = [sender.accessibilityIdentifier componentsSeparatedByString:@":"];
-    if (parts.count != 2) return;
-    NSInteger variant = parts[0].integerValue;
-    NSInteger subtype = parts[1].integerValue;
-    if (variant <= 0 || subtype <= 0) return;
-    EIDPickupIdentity *identity = [[EIDPickupIdentity alloc] initWithVariant:variant
-                                                                    subtype:subtype];
-    for (EIDPickupIdentity *entry in [self.probe currentInventoryItems]) {
-        if (entry.variant == variant && entry.subtype == subtype) { identity = entry; break; }
-    }
+    EIDPickupIdentity *identity = self.inventoryRows[sender.accessibilityIdentifier];
+    if (!identity || identity.playerIndex!=self.inventoryPlayerIndex) return;
     self.selectedInventoryItem = identity;
     self.inventoryDiceSelection = 0;
     [self clearCollectibleCycleControls];
     self.inventoryCard.hidden = YES;
     [self renderPickups:@[identity]];
     EIDLog(@"pause inventory selected %@", identity);
+}
+
+- (NSString *)inventoryPlayerTitle:(NSDictionary *)player {
+    NSInteger index=[player[@"index"] integerValue], type=[player[@"type"] integerValue];
+    NSArray *birthright=self.store.contextData[@"birthright"][@(type).stringValue];
+    NSString *name=birthright.count ? birthright[0] : @"";
+    return [NSString stringWithFormat:@"P%ld · %@ ▾",(long)index+1,name];
+}
+
+- (void)chooseInventoryPlayer:(UIButton *)sender {
+    UIWindow *window=[self gameWindow];
+    UIViewController *presenter=[self topViewControllerFrom:window.rootViewController];
+    if (!presenter || !self.probe.paused) return;
+    BOOL russian=[self.store.languageCode isEqualToString:@"ru"];
+    UIAlertController *picker=[UIAlertController alertControllerWithTitle:russian ? @"Игрок" : @"Player"
+        message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    __weak typeof(self) weakSelf=self;
+    for (NSDictionary *player in self.probe.descriptionState[@"players"]) {
+        NSInteger index=[player[@"index"] integerValue];
+        [picker addAction:[UIAlertAction actionWithTitle:[self inventoryPlayerTitle:player] style:UIAlertActionStyleDefault
+            handler:^(__unused UIAlertAction *action) {
+                EIDOverlayController *strongSelf=weakSelf;
+                if (!strongSelf || !strongSelf.probe.paused) return;
+                strongSelf.inventoryPlayerIndex=index;
+                strongSelf.selectedInventoryItem=nil;
+                [strongSelf clearCollectibleCycleControls];
+                strongSelf.inventorySignature=nil;
+                [strongSelf rebuildInventoryContentsIfNeeded:YES];
+                strongSelf.inventoryScrollView.contentOffset=CGPointZero;
+            }]];
+    }
+    [picker addAction:[UIAlertAction actionWithTitle:russian ? @"Отмена" : @"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    picker.popoverPresentationController.sourceView=sender;
+    picker.popoverPresentationController.sourceRect=sender.bounds;
+    [presenter presentViewController:picker animated:YES completion:nil];
 }
 
 - (void)toggleSettings:(UIButton *)sender {
@@ -974,6 +1069,11 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (EIDPickupIdentity *)prepareCollectibleCycleIdentity:(EIDPickupIdentity *)identity {
     if (!identity) { [self clearCollectibleCycleControls]; return nil; }
     if (self.selectedInventoryItem) {
+        if ([self inventoryDescriptionActive] && self.selectedInventoryItem.variant == EIDPickupVariantCollectible &&
+            self.selectedInventoryItem.subtype == 710) {
+            [self clearCollectibleCycleControls];
+            return [self.probe resolvedCraftingIdentity:self.selectedInventoryItem];
+        }
         if (![self inventoryDicePreviewActive]) { [self clearCollectibleCycleControls]; return identity; }
         if (self.inventoryDiceSelection > EIDDInfinityPreviewCount) self.inventoryDiceSelection = 0;
         self.descriptionCycleKind = EIDDescriptionCycleInventoryDice;

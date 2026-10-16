@@ -19,6 +19,7 @@
 static NSString *const EIDScaleKey=@"IsaacEIDScale",*const EIDTransparencyKey=@"IsaacEIDTransparency",*const EIDShowNameKey=@"IsaacEIDShowItemName",*const EIDShowIconKey=@"IsaacEIDShowItemIcon",*const EIDShowQualityKey=@"IsaacEIDShowQuality",*const EIDShowDescriptionKey=@"IsaacEIDShowItemDescription";
 static NSString *const EIDBackgroundKey = @"IsaacEIDBackgroundEnabled";
 static NSString *const EIDBackgroundOpacityKey = @"IsaacEIDBackgroundOpacity";
+static NSString *const EIDOutcomesKey = @"IsaacEIDOutcomePredictions";
 static UIColor *EIDObjNameColor(void){return [UIColor colorWithRed:.8 green:.3 blue:.8 alpha:1];}
 static UIColor *EIDTransformationColor(void){return [UIColor colorWithRed:.42 green:.64 blue:1 alpha:1];}
 static NSArray<NSString*> *EIDResourceRoots(void){NSMutableArray*roots=[NSMutableArray array];NSString*main=NSBundle.mainBundle.bundlePath;[roots addObjectsFromArray:@[[main stringByAppendingPathComponent:@"Frameworks/IsaacEID.bundle"],[main stringByAppendingPathComponent:@"IsaacEID.bundle"],[main stringByAppendingPathComponent:@"Frameworks/IsaacExternalItemDescriptions.framework/Resources/IsaacEID.bundle"],[main stringByAppendingPathComponent:@"Frameworks/IsaacExternalItemDescriptions.framework/IsaacEID.bundle"],[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/IsaacExternalItemDescriptions"],@"/var/jb/Library/Application Support/IsaacExternalItemDescriptions",@"/Library/Application Support/IsaacExternalItemDescriptions"]];NSBundle*framework=[NSBundle bundleForClass:NSClassFromString(@"EIDOverlayController")?:NSObject.class];if(framework.bundlePath.length){[roots addObject:[framework.bundlePath stringByAppendingPathComponent:@"Resources/IsaacEID.bundle"]];[roots addObject:[framework.bundlePath stringByAppendingPathComponent:@"IsaacEID.bundle"]];[roots addObject:framework.bundlePath];}return roots;}
@@ -226,6 +227,10 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     pickup = [probe resolvedInventoryPreviewIdentity:pickup blackFeatherMetadata:store.contextData[@"black_feather_metadata"] ?: @{}];
     pickup = [(EIDOverlayController *)self prepareCollectibleCycleIdentity:pickup];
     if (!pickup) { [self eid_parity_renderPickups:@[]]; return; }
+    BOOL inventory = [self valueForKey:@"selectedInventoryItem"] != nil;
+    if (inventory) pickup = [probe resolvedCurrentEffectIdentity:pickup];
+    BOOL outcomesEnabled = [NSUserDefaults.standardUserDefaults boolForKey:EIDOutcomesKey];
+    pickup = [probe resolvedOutcomeIdentity:pickup insideInventory:inventory enabled:outcomesEnabled];
     EIDDescription *item = [store descriptionForPickupVariant:pickup.variant subtype:pickup.subtype];
     if (!item) { [self eid_parity_renderPickups:pickups]; return; }
     NSInteger playerType = pickup.playerType >= 0 ? pickup.playerType : probe.primaryPlayerType;
@@ -236,6 +241,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     context[@"player_index"] = @(pickup.playerIndex >= 0 ? pickup.playerIndex : 0);
     if (pickup.rawPillSubtype) context[@"pill_modifiers"] = @(pickup.pillModifiers);
     context[@"inside_item_reminder"] = @([self valueForKey:@"selectedInventoryItem"] != nil);
+    context[@"rng_predictions_enabled"] = @(outcomesEnabled);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     CGFloat scale = [defaults objectForKey:EIDScaleKey] ? [defaults doubleForKey:EIDScaleKey] : 1;
     scale = MIN(1.8, MAX(.5, scale));
@@ -281,6 +287,9 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
             ? @[] : [tracker transformationsForVariant:pickup.variant subtype:pickup.subtype];
         for (NSNumber *transformation in transformations) {
             NSInteger identifier = transformation.integerValue;
+            NSInteger count = pickup.playerIndex>=0 ? [tracker progressForTransformation:identifier playerIndex:pickup.playerIndex]
+                : [tracker progressForTransformation:identifier];
+            if (count<0) continue;
             [output appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:Attrs(transformFont,UIColor.whiteColor,scale)]];
             NSAttributedString *icon = Attachment([[EIDTransformData shared] iconForID:identifier],14.0,scale,-2.2);
             if (icon) {
@@ -289,7 +298,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
             }
             NSString *progress = [NSString stringWithFormat:@"%@ (%ld/%ld)",
                 [tracker localizedNameForTransformation:identifier],
-                (long)[tracker progressForTransformation:identifier],
+                (long)count,
                 (long)(tracker.required > 0 ? tracker.required : 3)];
             [output appendAttributedString:[[NSAttributedString alloc] initWithString:progress attributes:Attrs(transformFont,EIDTransformationColor(),scale)]];
         }
@@ -297,6 +306,14 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     }
     if (showDetail) {
         NSSet *owned = [probe currentOwnedItemKeys];
+        if (inventory) {
+            owned = [NSSet set];
+            for (NSDictionary *player in context[@"live_state"][@"players"])
+                if ([player[@"index"] isEqual:context[@"player_index"]] && [player[@"owned"] isKindOfClass:NSArray.class]) {
+                    owned = [NSSet setWithArray:player[@"owned"]];
+                    break;
+                }
+        }
         NSString *detail = EIDContextDescriptionWithOwnedItems(item.detail, pickup.variant, pickup.subtype,
             playerType, probe.gameDifficulty, owned, context);
         detail = EIDDynamicDescription(detail,pickup.variant,pickup.subtype,probe.gameDifficulty,owned,context);
@@ -364,7 +381,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     [card addSubview:scroll];
 
     UIView *section = [[UIView alloc] initWithFrame:
-        CGRectMake(18, 198, scroll.bounds.size.width - 36, 270)];
+        CGRectMake(18, 198, scroll.bounds.size.width - 36, 306)];
     section.tag = 0xE1D5;
     section.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     [scroll addSubview:section];
@@ -434,8 +451,19 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     [backgroundSlider addTarget:self action:@selector(eid_parity_slider:) forControlEvents:UIControlEventValueChanged];
     [section addSubview:backgroundSlider];
 
+    UIButton *outcomesButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    outcomesButton.frame = CGRectMake(0,246,section.bounds.size.width,28);
+    outcomesButton.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+    outcomesButton.backgroundColor = [UIColor colorWithWhite:1 alpha:.12];
+    outcomesButton.layer.cornerRadius = 6;
+    [outcomesButton setTitle:@"RNG predictions (spoilers)" forState:UIControlStateNormal];
+    [outcomesButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    outcomesButton.accessibilityIdentifier = EIDOutcomesKey;
+    [outcomesButton addTarget:self action:@selector(eid_parity_toggle:) forControlEvents:UIControlEventTouchUpInside];
+    [section addSubview:outcomesButton];
+
     UILabel *hint = [[UILabel alloc] initWithFrame:
-        CGRectMake(0, 246, section.bounds.size.width, 20)];
+        CGRectMake(0, 282, section.bounds.size.width, 20)];
     hint.text = @"EID layout · quality · transformations · inline icons";
     hint.textColor = [UIColor colorWithWhite:.72 alpha:1];
     hint.font = [UIFont systemFontOfSize:9.5];
@@ -444,15 +472,16 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
 
     if (credits) {
         credits.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        credits.frame = CGRectMake(18, 481, scroll.bounds.size.width - 36, 54);
+        credits.frame = CGRectMake(18, 517, scroll.bounds.size.width - 36, 54);
     }
-    scroll.contentSize = CGSizeMake(scroll.bounds.size.width, 547);
+    scroll.contentSize = CGSizeMake(scroll.bounds.size.width, 583);
     [self eid_parity_refreshButtons];
 }
 - (void)eid_parity_toggle:(UIButton *)button {
     NSString *key = button.accessibilityIdentifier;
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    BOOL enabled = [defaults objectForKey:key] ? [defaults boolForKey:key] : ![key isEqualToString:EIDBackgroundKey];
+    BOOL enabled = [defaults objectForKey:key] ? [defaults boolForKey:key] :
+        ![key isEqualToString:EIDBackgroundKey] && ![key isEqualToString:EIDOutcomesKey];
     [defaults setBool:!enabled forKey:key];
     [self eid_parity_refreshButtons];
     [self applyDescriptionBackground];
@@ -483,7 +512,8 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
         if (![view isKindOfClass:UIButton.class]) continue;
         UIButton *button = (UIButton *)view;
         NSString *key = button.accessibilityIdentifier;
-        BOOL enabled = [defaults objectForKey:key] ? [defaults boolForKey:key] : ![key isEqualToString:EIDBackgroundKey];
+        BOOL enabled = [defaults objectForKey:key] ? [defaults boolForKey:key] :
+            ![key isEqualToString:EIDBackgroundKey] && ![key isEqualToString:EIDOutcomesKey];
         NSString *base = [[button titleForState:UIControlStateNormal] stringByReplacingOccurrencesOfString:@"✓ " withString:@""];
         [button setTitle:enabled ? [@"✓ " stringByAppendingString:base] : base forState:UIControlStateNormal];
         button.alpha = enabled ? 1 : .5;

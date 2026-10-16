@@ -1,5 +1,18 @@
 # Test matrix
 
+## v0.11.0 release validation (2026-10-16)
+
+| Area | Result |
+| --- | --- |
+| Pocket-active reference / Bag of Crafting | Host decoder tests passed; user confirmed the corrected inventory and cached-result preview on device |
+| Binge Eater, familiar conditionals | Host 20-language context tests passed; user confirmed gameplay checks |
+| Short pedestal-cycle refresh | User confirmed Binge Eater description tracks the visible item after the fix; bounded-read architecture guards retained |
+| Void, Purity, Modeling Clay and personal inventories | Native field baselines inspected read-only; host bounds/context tests passed; user reported the other changes working without a separate result for every scenario |
+| Physical duplicate quantities | Native-table/active-slot merge and refresh guards host-tested; installed for user visual verification, not independently confirmed in-game |
+| Optional RNG previews | Copied native RNG sequences, Car Battery behavior and opt-in gating host-tested; individual device scenarios are in the [outcome checklist](testing-outcome-predictions.md) |
+| Strict ARM64 build, signature and portable dependencies | Passed locally before publication; release workflow repeats checks for all distributions |
+| Co-op merged Super Bum owner / every loading mode | Not exhaustively verified; unverified personal Super Bum counters omitted in co-op |
+
 ## v0.10.1 release validation (2026-10-16)
 
 | Area | Result |

@@ -150,6 +150,105 @@ static NSString *ChargeSynergies(NSString *detail, NSInteger variant, NSInteger 
     return detail;
 }
 
+static NSSet<NSString *> *CurrentSynergyOwned(NSSet<NSString *> *fallback, NSInteger type, NSDictionary *context) {
+    NSArray *players = context[@"live_state"][@"players"];
+    if (!players.count) return fallback;
+    BOOL reminder = [context[@"inside_item_reminder"] boolValue];
+    NSMutableSet *owned = [NSMutableSet set];
+    for (NSDictionary *player in players) {
+        BOOL selected = context[@"player_index"] ? [player[@"index"] isEqual:context[@"player_index"]]
+            : [player[@"type"] integerValue] == type;
+        if (reminder && !selected) continue;
+        if ([player[@"owned"] isKindOfClass:NSArray.class]) [owned addObjectsFromArray:player[@"owned"]];
+        if (reminder && selected) break;
+    }
+    // An unreadable/missing selected player must not reuse aggregated ownership
+    // from a previous scan or borrow a co-op partner's effects in EID Items.
+    return owned.copy;
+}
+
+static NSString *ItemCondition(NSString *detail, id entry, NSString *owner, NSString *color, NSDictionary *context) {
+    if (!entry) return detail;
+    NSString *name = context[@"item_names"][owner];
+    if (![name isKindOfClass:NSString.class]) name = @"";
+    if ([[entry description] containsString:@"{1}"] && !name.length) return detail;
+    return ApplyStyled(detail,WithBulletpoint(entry,[@"Item" stringByAppendingString:owner]),name,1,color);
+}
+
+static NSString *FoodSynergies(NSString *detail, NSInteger variant, NSInteger subtype,
+    NSInteger playerType, NSSet<NSString *> *owned, NSDictionary *context) {
+    if (variant != 100 || ![owned containsObject:@"5.100.664"]) return detail;
+    id buff = context[@"binge_eater"][@(subtype).stringValue];
+    if (!buff) return detail;
+    // Health adaptation can leave a food-only "No effect for The Lost" line.
+    // Its health remains useless, but the Binge Eater stats are useful: do not
+    // describe the entire item as ineffective once those bonuses are present.
+    NSString *noEffect = Apply(@"",context[@"conditionals"][@"No Effect"],PlayerName(playerType,context),1);
+    if (noEffect.length && [detail isEqualToString:noEffect]) detail = @"";
+    detail = ItemCondition(detail,buff,@"5.100.664",nil,context);
+    return ItemCondition(detail,context[@"conditionals"][@"Binge Eater Healing"],@"5.100.664",nil,context);
+}
+
+static NSString *FamiliarSynergies(NSString *detail, NSInteger variant, NSInteger subtype,
+    NSSet<NSString *> *owned, NSDictionary *context) {
+    NSDictionary *metadata = context[@"familiar_metadata"], *texts = context[@"BFFSSynergies"];
+    NSDictionary *conditions = context[@"conditionals"];
+    NSString *target = [NSString stringWithFormat:@"5.%ld.%ld",(long)variant,(long)subtype];
+    BOOL bffs = [owned containsObject:@"5.100.247"], hive = [owned containsObject:@"5.100.248"];
+    BOOL bffsTarget = variant == 100 || (variant == 300 && subtype == 96) ||
+        (variant == 350 && [@[@54,@57,@142,@176,@182,@186] containsObject:@(subtype)]);
+    BOOL applied = NO;
+    if (bffs && bffsTarget && [metadata[@"bffs_ignore"] isKindOfClass:NSArray.class] &&
+        ![metadata[@"bffs_ignore"] containsObject:@(subtype)]) {
+        NSString *key = variant == 100 && [metadata[@"no_synergy"] containsObject:@(subtype)] ? @"No Effect" : target;
+        if (texts[key]) {
+            detail = ItemCondition(detail,texts[key],@"5.100.247",@"BlinkPink",context);
+            applied = YES;
+        }
+    }
+    // The original shared uniqueID prevents doubling the same familiar twice
+    // when both upgrades are owned. Blue flies/spiders retain their base item
+    // descriptions unless the upstream familiar table explicitly changes one.
+    if (!applied && hive && variant == 100 && [metadata[@"hive_mind"] containsObject:@(subtype)]) {
+        NSString *key = [metadata[@"no_synergy"] containsObject:@(subtype)] ? @"No Effect" : target;
+        detail = ItemCondition(detail,texts[key],@"5.100.248",@"BlinkBlue",context);
+    }
+    if (variant == 100 && (subtype == 247 || subtype == 248)) {
+        NSString *other = subtype == 247 ? @"5.100.248" : @"5.100.247";
+        if ([owned containsObject:other])
+            detail = ItemCondition(detail,conditions[@"No Effect (Familiars)"],other,nil,context);
+        if (![context[@"inside_item_reminder"] boolValue]) {
+            for (NSNumber *item in metadata[@"pedestal_whitelist"]) {
+                if (subtype == 248 && ![metadata[@"hive_mind"] containsObject:item]) continue;
+                NSString *key = [@"5.100." stringByAppendingString:item.stringValue];
+                if ([owned containsObject:key] && texts[key]) {
+                    detail = ItemCondition(detail,texts[key],key,nil,context);
+                    break; // Match the original's single familiar pedestal hint.
+                }
+            }
+            if (subtype == 247) for (NSNumber *item in metadata[@"no_synergy"]) {
+                NSString *key = [@"5.100." stringByAppendingString:item.stringValue];
+                if ([owned containsObject:key]) {
+                    detail = ItemCondition(detail,conditions[@"No Effect"],key,nil,context);
+                    break;
+                }
+            }
+        }
+    }
+    if (variant == 100 && [@[@584,@685,@702,@728] containsObject:@(subtype)] &&
+        [owned containsObject:@"5.350.141"])
+        detail = ItemCondition(detail,conditions[@"No Effect From"],@"5.350.141",nil,context);
+    if (variant == 350 && subtype == 141) {
+        for (NSNumber *item in @[@584,@685,@702,@728]) {
+            NSString *key = [@"5.100." stringByAppendingString:item.stringValue];
+            if ([owned containsObject:key]) detail = ItemCondition(detail,conditions[@"No Effect From"],key,nil,context);
+        }
+        for (NSString *key in @[@"5.100.713",@"5.350.176"])
+            if ([owned containsObject:key]) detail = ItemCondition(detail,conditions[@"Lullaby Clots"],key,nil,context);
+    }
+    return detail;
+}
+
 NSString *EIDContextDescription(NSString *detail, NSInteger variant, NSInteger subtype,
                                NSInteger playerType, NSInteger difficulty, NSDictionary *context) {
     return EIDContextDescriptionWithOwnedItems(detail, variant, subtype, playerType,
@@ -358,6 +457,9 @@ NSString *EIDContextDescriptionWithOwnedItems(NSString *detail, NSInteger varian
         if (uniqueID.length) [uniqueIDs addObject:uniqueID];
         if (!weapon) [applied addObject:specific];
     }
+    NSSet *synergyOwned = CurrentSynergyOwned(ownedItems,playerType,context);
+    detail = FoodSynergies(detail,variant,subtype,playerType,synergyOwned,context);
+    detail = FamiliarSynergies(detail,variant,subtype,synergyOwned,context);
     detail = ChargeSynergies(detail,variant,subtype,ownedItems,context);
     detail = PillSynergies(detail,variant,subtype,ownedItems,context);
     if (![context[@"inside_item_reminder"] boolValue]) {

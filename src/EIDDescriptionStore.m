@@ -446,7 +446,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
     NSMutableDictionary *context = [NSMutableDictionary dictionary];
     for (NSString *key in @[@"conditionals", @"heart_replacements", @"birthright", @"greed_no_effect_notes",
                             @"car_battery", @"tarot_cloth", @"stat_names", @"pickup_names",
-                            @"pandora_floor_lines", @"context_strings", @"BFFSSynergies", @"book_of_belial",
+                            @"pandora_floor_lines", @"context_strings", @"BFFSSynergies", @"binge_eater", @"purity_boosts", @"book_of_belial",
                             @"wisp_texts", @"wisp_extras", @"tear_flags", @"golden_trinket_effects",
                             @"golden_trinket_overrides", @"tarot_cloth_blank_card", @"abyss_descriptions"]) {
         NSMutableDictionary *entries = [NSMutableDictionary dictionary];
@@ -460,7 +460,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
         context[@"car_battery_metadata"] = root[@"car_battery_metadata"];
     if ([root[@"pill_metadata"] isKindOfClass:NSDictionary.class])
         context[@"pill_metadata"] = root[@"pill_metadata"];
-    for (NSString *key in @[@"luck_formulas",@"golden_trinket_data",@"black_feather_metadata"])
+    for (NSString *key in @[@"luck_formulas",@"golden_trinket_data",@"black_feather_metadata",@"familiar_metadata"])
         if ([root[key] isKindOfClass:NSDictionary.class]) context[key] = root[key];
     context[@"golden_full_replace_ids"] = [language[@"golden_trinket_effects"] allKeys] ?: @[];
     NSMutableDictionary *itemNames = [NSMutableDictionary dictionary];

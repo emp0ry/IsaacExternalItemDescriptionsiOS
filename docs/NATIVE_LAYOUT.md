@@ -9,6 +9,34 @@ revalidated for every new UUID.
 
 ## Read-only dynamic description fields
 
+### Current effects and personal inventory (2026-10-16)
+
+| Field | Offset | Independent native references |
+| --- | --- | --- |
+| Void absorbed actives | `Player + 0x1b78` int32 vector | UseVoid `0x10058bf50`; HasVoidedCollectible `0x100508b30`; PlayerData copy `0x1005501cc` |
+| Purity current boost | `Player + 0x1da4` int32, 0..3 | Stat evaluation `0x1004f1b28` and siblings; selection writes `0x100502e2c`, `0x10050c460` |
+| Temporary effects | `Player + 0x18d8`; vector at +8, disabled byte +0x21 | Read-only HasCollectibleEffect `0x1006fdc90` |
+| Modeling Clay current item | `Player + 0x2730` int32 | New-room clear `0x10054c998`; applied result write `0x10054ce8c`; GetCollectibleNum `0x1004ffa40`; PlayerData copy `0x10054ffac` |
+
+The effects predicate accepts metadata types 1, 3 or 4 and ID 407, exactly as
+the native getter does. Purity's saved choice alone is not evidence of an active
+aura. Clay reads only the already-applied room result; no RNG or selection
+function is invoked. Void spans are bounded to 1024 IDs, copied twice and
+revalidated; duplicates are retained. Effect lists and current fields are
+bounds/type checked and unavailable state suppresses additional information.
+
+A temporary read-only task probe on the development phone confirmed a live
+Tainted Cain player, empty Void span, neutral cached fields and valid native
+effect records. This baseline confirms structure access, not acceptance of
+nonzero Purity/Clay/Void behavior; those still require the gameplay scenarios.
+The probe is not part of the product or repository and is removed after use.
+
+Inventory entries now carry their original native player vector index/type.
+Physical actives are read from all four 28-byte records, never inferred from
+raw pocket references. The UI selects a player before listing items. Per-player
+PlayerForm arrays and current counts are separate from the older aggregate
+compatibility API; merged Super Bum ownership is not guessed in co-op.
+
 All fields below are for the UUID above, and are bounds/type checked before use:
 
 | Field | Offset | Native reference |
@@ -27,6 +55,55 @@ All fields below are for the UUID above, and are bounds/type checked before use:
 | Current dimension | `Game + 0x21560` (int32) | Tainted Cain pickup guard `0x100720a84`; Death Certificate is dimension 2 |
 | Room-type pool maps | `ItemPool + 0x920` normal / `+0x998` Greed (int32 arrays) | `GetPoolForRoom` at `0x100877a3c`, indexed by room type |
 | Non-quest-item suppression | `Player + 0x284c` (byte) | `HasCollectible` guard `0x1004eebe0`; checked before reporting effective Belial |
+| Active-item slots | `Player + 0x1964`, four records, stride `0x1c` | `GetCollectibleNum` reads all four IDs at `0x1004ff7b0`; `RemoveActiveItem` resolves pocket references at `0x100505b6c` |
+| Bag ingredients | `Player + 0x2690`, eight bytes | Native ingredient append/shift at `0x100554f70`; values 1–29, trailing zeroes mark empty slots |
+| Bag cached result | `Player + 0x2698` (int32) | Filled by `0x100555140`; consumed by crafting at `0x100528cfc` and `0x10058a3c0`; also read by the native HUD at `0x1006e5c1c` |
+
+The four eight-byte pocket entries contain `{value, type}`. Type 0 stores a
+pill color, type 1 a card/rune ID, and type 2 **ActiveSlot + 1**, not an item ID.
+Resolve a nonzero type-2 value through the corresponding active-item record.
+The raw pocket array and active IDs are copied twice; changing/invalid snapshots
+fail closed. This shared decoder is used both by pause inventory and personal
+owned-item conditions. Genuine Spoon Bender ownership is not filtered out.
+
+The crafting preview only reads the already calculated native result. No call
+to the recipe calculator or item-use path is made. Main-thread resolution
+requires a live paused player who actually owns Bag of Crafting, validates a
+stable 12-byte ingredients/result snapshot, and only substitutes a result when
+all eight ingredients are present and its ID is 1–732. The background context
+includes bag contents so changing ingredients invalidates a selected preview.
+No preview enters inventory counts, transformation history or save state.
+
+## Optional outcome predictions
+
+For the supported UUID only:
+
+- Crooked Penny's branch starts at `0x10058623c`. It advances collectible RNG
+  entry 485 (`Player[0x1bb0] + 485 * 16`) using shifts `(5,9,7)`. The new value
+  is XORed with `Room[0x8]->DecorationSeed` at `+0x64`; zero becomes one. A
+  separate stack RNG uses shifts `(1,11,6)`, and an even result is heads.
+  Tails advances the original collectible stream once more for the consolation
+  penny (`0x100586384`). Car Battery's second activation must continue that
+  original stream, not the mixed stack RNG. No native RNG method is called.
+- Eternal D6 at `0x100582340` reads the pickup's **current RNG seed `+0x3d8`**,
+  not the stable InitSeed/cycle key at `+0x3e8`. The copied seed uses table index
+  44, `(5,27,25)`. Native `RandomFloat` casts the roll to single precision and
+  multiplies by float bits `0x2f7fffff`; the vanish comparison is `<= 0.25f`.
+  Reproduce that rounding, including boundary seeds 8, 41, 74, 107, 140 and 173.
+  The current upstream PC path `(5,27,8)` must not be substituted here.
+- The read-only `CanReroll` getter at `0x1007180d8` and the native state guard
+  using pickup `+0x55c/+0x570` prevent claims about ineligible pedestals.
+  Vtable, alive state, identity, InitSeed, run session, blind sprite state and
+  level curses are revalidated on the main thread before publishing a result.
+- D Infinity's real per-active-slot mode is signed int16 at `record + 0x1a`;
+  mode 3 is Eternal D6. Browsing hypothetical dice in EID Items is not an actual
+  mode change and does not enable pedestal predictions for another die.
+
+These previews validate native instruction signatures but never invoke the
+item-use, reroll, pool-draw or RNG functions. Future Eternal D6 counts and its
+second Car Battery reroll are deliberately not inferred: morphing reruns pickup
+initialization and price handling, which can advance the pickup RNG. The UI
+labels this limit instead of promising a safe full double activation.
 
 `HasCollectible(59)` at `0x1004eed80` returns true for Judas/Black Judas (types
 3/12) with Birthright (619), independently of a raw inventory count of 59.

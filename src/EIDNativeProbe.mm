@@ -1,4 +1,7 @@
 #import "EIDNativeProbe.h"
+#include "EIDLivePedestalPolicy.h"
+#include "EIDCurrentEffectsPolicy.hpp"
+#include "EIDInventoryCountPolicy.hpp"
 #import "EIDLogger.h"
 #include "EIDPickupPolicy.hpp"
 #include "EIDNativeContextPolicy.hpp"
@@ -8,6 +11,8 @@
 #include "EIDRepeatPolicy.hpp"
 #include "EIDInventoryPreviewPolicy.hpp"
 #include "EIDCollectibleCyclePolicy.hpp"
+#include "EIDPocketInventoryPolicy.hpp"
+#include "EIDOutcomePredictionPolicy.hpp"
 
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
@@ -215,6 +220,7 @@ constexpr size_t kPickupCollectibleCycleCountOffset = 0x604;
 // Morph at 0x100718a3c preserves this seed during a cycle switch (keepSeed=1).
 // +0x3d8 is the mutable pickup RNG record, not a stable identity key.
 constexpr size_t kPickupCycleSeedOffset = 0x3e8;
+constexpr size_t kPickupCurrentRNGOffset = 0x3d8;
 constexpr size_t kPickupPriceOffset = 0x564;
 // Live-verified on the supported iOS build: an ordinary floor card has 0 here,
 // while an Options? shop card had 2. +0x570 belongs to a different field and
@@ -223,6 +229,20 @@ constexpr size_t kPickupOptionsIndexOffset = 0x56c;
 constexpr size_t kCranePrizeCollectibleOffset = 0x570;
 constexpr size_t kPlayerPocketItemsOffset = 0x1c10;
 constexpr size_t kPlayerPocketItemCount = 4;
+constexpr size_t kPlayerActiveItemsOffset = 0x1964;
+constexpr size_t kPlayerActiveItemStride = 28;
+// Void use iterates int32 IDs here (0x10058bf50); PlayerData copies the vector
+// at 0x1005501cc. The native HasVoidedCollectible query uses the same span.
+constexpr size_t kPlayerVoidActivesOffset = 0x1b78;
+// Native stat evaluation reads the current Purity boost, not a future RNG roll.
+constexpr size_t kPlayerPurityBoostOffset = 0x1da4;
+constexpr size_t kPlayerTemporaryEffectsOffset = 0x18d8;
+// New-room logic clears/replaces this cached Modeling Clay item at
+// 0x10054c998 / 0x10054ce8c; GetCollectibleNum reads it at 0x1004ffa40.
+constexpr size_t kPlayerModelingClayOffset = 0x2730;
+// Add-to-bag caches the result at 0x100555140; both crafting paths consume
+// that ID (0x100528cfc, 0x10058a3c0). The preceding eight bytes are ingredients.
+constexpr size_t kPlayerCraftingBagOffset = 0x2690;
 // Wild Card's UseCard(80) branch at 0x100543b40 reads this tagged union:
 // byte type (0 pill, 1 card, 2 active, 0xff empty), int32 ID, int32 extra.
 // PlayerData serialization at 0x100550044 preserves it at +0x6b8..+0x6c0.
@@ -329,6 +349,7 @@ struct VMPickup {
     int32_t flipID = 0;
     vm_address_t address = 0;
     uint32_t cycleSeed = 0;
+    uint32_t outcomeSeed = 0;
 };
 
 struct VMPlayer {
@@ -337,10 +358,7 @@ struct VMPlayer {
     float y = 0;
 };
 
-struct VMPlayerPocketItem {
-    int32_t id = 0;
-    uint32_t type = 0;
-};
+using VMPlayerPocketItem = EIDPocketInventoryPolicy::Pocket;
 
 static_assert(sizeof(VMPlayerPocketItem) == 8, "Unexpected native pocket-item layout");
 
@@ -507,19 +525,31 @@ static bool ResolvePlayersFromGame(const ScanContext& context, NSUInteger& vecto
 static bool ReadPlayerPocketItems(
     vm_address_t playerAddress,
     std::array<VMPlayerPocketItem, kPlayerPocketItemCount>& items) {
-    if (!ReadOwnTaskMemory(playerAddress + kPlayerPocketItemsOffset,
-                           items.data(), sizeof(items))) return false;
+    std::array<VMPlayerPocketItem,kPlayerPocketItemCount> raw{}, confirmation{};
+    std::array<int32_t,kPlayerPocketItemCount> actives{}, activeConfirmation{};
+    if (!ReadOwnTaskMemory(playerAddress+kPlayerPocketItemsOffset,raw.data(),sizeof(raw))) return false;
+    for (size_t slot = 0; slot < actives.size(); ++slot)
+        if (!ReadOwnTaskMemory(playerAddress+kPlayerActiveItemsOffset+slot*kPlayerActiveItemStride,
+                               &actives[slot],sizeof(int32_t))) return false;
+    if (!ReadOwnTaskMemory(playerAddress+kPlayerPocketItemsOffset,confirmation.data(),sizeof(confirmation)) ||
+        memcmp(raw.data(),confirmation.data(),sizeof(raw))) return false;
+    for (size_t slot = 0; slot < actives.size(); ++slot)
+        if (!ReadOwnTaskMemory(playerAddress+kPlayerActiveItemsOffset+slot*kPlayerActiveItemStride,
+                               &activeConfirmation[slot],sizeof(int32_t))) return false;
+    return actives == activeConfirmation && EIDPocketInventoryPolicy::Resolve(raw,actives,items);
+}
 
-    // Entity_Player::GetCard/GetPill in the supported ARM64 executable read four
-    // consecutive { int32 id, uint32 type } entries here. Reject the whole read if
-    // any entry is inconsistent, rather than treating unrelated memory as inventory.
-    for (const VMPlayerPocketItem& item : items) {
-        if (item.type > 2 || item.id < 0) return false;
-        if (item.type == 0 && item.id > 0xffff) return false;
-        if (item.type == 1 && item.id > 97) return false;
-        if (item.type == 2 && item.id > 4096) return false;
-    }
-    return true;
+static NSDictionary *ReadCraftingBag(vm_address_t player) {
+    EIDPocketInventoryPolicy::CraftingBag bag{}, confirmation{};
+    size_t count = 0;
+    if (!ReadOwnTaskMemory(player+kPlayerCraftingBagOffset,&bag,sizeof(bag)) ||
+        !EIDPocketInventoryPolicy::ValidateBag(bag,count) ||
+        !ReadOwnTaskMemory(player+kPlayerCraftingBagOffset,&confirmation,sizeof(confirmation)) ||
+        memcmp(&bag,&confirmation,sizeof(bag))) return nil;
+    NSMutableArray *ingredients = [NSMutableArray array];
+    for (size_t index = 0; index < count; ++index) [ingredients addObject:@(bag.ingredients[index])];
+    return @{@"validated":@YES,@"count":@(count),@"result":@(EIDPocketInventoryPolicy::CraftingResult(bag)),
+             @"ingredients":ingredients.copy};
 }
 
 static bool ReadPlayerCanFly(vm_address_t playerAddress, bool& canFly) {
@@ -692,6 +722,82 @@ static NSDictionary *ReadRepeatState(vm_address_t address) {
     return state.copy;
 }
 
+static bool ReadCollectibleRNG(vm_address_t player, size_t item, EIDPredictionPolicy::RNG& rng) {
+    RemotePointerVector span{}, after{};
+    EIDPredictionPolicy::RNG confirmation{};
+    if (item > kMaximumCollectibleID ||
+        !ReadOwnTaskMemory(player+0x1bb0,&span,sizeof(span)) || !span.begin || span.begin%4 ||
+        span.end < span.begin || span.capacity < span.end || (span.end-span.begin)%sizeof(rng) ||
+        (span.capacity-span.begin)%sizeof(rng) || (span.capacity-span.begin)/sizeof(rng) > 4096 ||
+        (span.end-span.begin)/sizeof(rng) <= item ||
+        !ReadOwnTaskMemory(span.begin+item*sizeof(rng),&rng,sizeof(rng)) || !EIDPredictionPolicy::Valid(rng) ||
+        !ReadOwnTaskMemory(span.begin+item*sizeof(rng),&confirmation,sizeof(confirmation)) ||
+        memcmp(&rng,&confirmation,sizeof(rng)) ||
+        !ReadOwnTaskMemory(player+0x1bb0,&after,sizeof(after))) return false;
+    return span.begin == after.begin && span.end == after.end && span.capacity == after.capacity;
+}
+
+static bool ReadCurrentRoomAddress(vm_address_t& roomAddress);
+static bool ReadRoomDecorationSeed(uint32_t& seed) {
+    vm_address_t room = 0;
+    uintptr_t descriptor = 0;
+    // Crooked Penny's native branch reads Room[8]->DecorationSeed (+0x64).
+    return ReadCurrentRoomAddress(room) &&
+        ReadOwnTaskMemory(room+kRoomDescriptorOffset,&descriptor,sizeof(descriptor)) && descriptor &&
+        ReadOwnTaskMemory(descriptor+0x64,&seed,sizeof(seed));
+}
+
+static bool ReadPlayerActiveIDs(vm_address_t player, std::array<int32_t,4>& ids) {
+    std::array<int32_t,4> confirmation{};
+    for (size_t i=0; i<ids.size(); ++i)
+        if (!ReadOwnTaskMemory(player+kPlayerActiveItemsOffset+i*kPlayerActiveItemStride,&ids[i],sizeof(ids[i])) ||
+            ids[i] < 0 || ids[i] > (int32_t)kMaximumCollectibleID) return false;
+    for (size_t i=0; i<ids.size(); ++i)
+        if (!ReadOwnTaskMemory(player+kPlayerActiveItemsOffset+i*kPlayerActiveItemStride,&confirmation[i],sizeof(confirmation[i]))) return false;
+    return ids == confirmation;
+}
+
+static NSArray *ReadVoidedActives(vm_address_t player) {
+    RemotePointerVector span{}, confirmation{};
+    if (!ReadOwnTaskMemory(player+kPlayerVoidActivesOffset,&span,sizeof(span)) ||
+        !EIDCurrentEffectsPolicy::ValidSpan(span.begin,span.end,span.capacity,4,1024)) return nil;
+    std::vector<int32_t> ids((span.end-span.begin)/4), second(ids.size());
+    if (!ids.empty() && (!ReadOwnTaskMemory(span.begin,ids.data(),ids.size()*4) ||
+        !ReadOwnTaskMemory(span.begin,second.data(),second.size()*4) || ids != second)) return nil;
+    if (!ReadOwnTaskMemory(player+kPlayerVoidActivesOffset,&confirmation,sizeof(confirmation)) ||
+        memcmp(&span,&confirmation,sizeof(span)) || !EIDCurrentEffectsPolicy::ValidVoidIDs(ids)) return nil;
+    NSMutableArray *result = [NSMutableArray array];
+    for (int32_t id : ids) if (id != 477) [result addObject:@(id)]; // Void itself is skipped by the native effect.
+    return result.copy;
+}
+
+static NSDictionary *ReadPurityState(vm_address_t player) {
+    int32_t boost=-1, second=-1; uint8_t disabled=0xff, disabledAgain=0xff;
+    RemotePointerVector effects{}, confirmation{};
+    if (!ReadOwnTaskMemory(player+kPlayerPurityBoostOffset,&boost,sizeof(boost)) ||
+        !ReadOwnTaskMemory(player+kPlayerTemporaryEffectsOffset+0x21,&disabled,1) ||
+        !EIDCurrentEffectsPolicy::ValidPurity(boost,disabled) ||
+        !ReadOwnTaskMemory(player+kPlayerTemporaryEffectsOffset+8,&effects,sizeof(effects)) ||
+        !EIDCurrentEffectsPolicy::ValidSpan(effects.begin,effects.end,effects.capacity,16,1024)) return nil;
+    BOOL active = NO;
+    // Exact read-only HasCollectibleEffect predicate from 0x1006fdc90:
+    // metadata type 1, 3 or 4, ID 407, with effects not disabled.
+    for (uintptr_t at=effects.begin; at<effects.end; at+=16) {
+        uintptr_t metadata=0; int32_t def[2]{};
+        if (!ReadOwnTaskMemory(at,&metadata,sizeof(metadata)) ||
+            !ReadOwnTaskMemory(metadata,def,sizeof(def)) || def[0]<0 || def[0]>4) return nil;
+        if ((def[0]==1 || def[0]==3 || def[0]==4) && def[1]==407) active=YES;
+    }
+    if (!ReadOwnTaskMemory(player+kPlayerPurityBoostOffset,&second,sizeof(second)) || second!=boost ||
+        !ReadOwnTaskMemory(player+kPlayerTemporaryEffectsOffset+0x21,&disabledAgain,1) || disabledAgain!=disabled ||
+        !ReadOwnTaskMemory(player+kPlayerTemporaryEffectsOffset+8,&confirmation,sizeof(confirmation)) ||
+        memcmp(&effects,&confirmation,sizeof(effects))) return nil;
+    return @{@"validated":@YES,@"active":@(active && !disabled),@"boost":@(boost)};
+}
+
+static bool ReadPlayerTransformationCounters(vm_address_t address,
+    std::array<int32_t,kNativeTransformationCount>& counters);
+
 static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
     int32_t type = -1;
     if (!ReadOwnTaskMemory(address+kPlayerTypeOffset,&type,sizeof(type)) || type < 0 || type > 40) return nil;
@@ -719,7 +825,8 @@ static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
         player[@"has_passive_belial"] = @(EIDNativeContextPolicy::HasPassiveBelial(type,counts[619],counts[59],disabled != 0));
     }
     uint64_t smeltedSignature = 0;
-    if (countsReadable && ReadPlayerTrinkets(address,trinkets) &&
+    std::array<int32_t,4> actives{};
+    if (countsReadable && ReadPlayerActiveIDs(address,actives) && ReadPlayerTrinkets(address,trinkets) &&
         ReadPlayerPocketItems(address,pockets) && ReadSmeltedTrinkets(address,swallowed,&smeltedSignature)) {
         player[@"smelted_signature"] = @(smeltedSignature);
         player[@"trinket_slots"] = @[@(trinkets[0]),@(trinkets[1])];
@@ -732,11 +839,61 @@ static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
             [owned addObject:[NSString stringWithFormat:@"5.350.%d",item & 0x7fff]];
         for (const auto& pocket : pockets) if (pocket.type == 2 && pocket.id > 0)
             [owned addObject:[NSString stringWithFormat:@"5.100.%d",pocket.id]];
+        NSMutableArray *activeIDs = [NSMutableArray array];
+        for (int32_t id : actives) if (id) {
+            [activeIDs addObject:@(id)];
+            [owned addObject:[NSString stringWithFormat:@"5.100.%d",id]];
+        }
+        player[@"active_ids"] = activeIDs.copy;
         NSMutableArray *cards = [NSMutableArray array];
         for (const auto& pocket : pockets) if (pocket.type == 1 && pocket.id > 0 && pocket.id <= 97)
             [cards addObject:@(pocket.id)];
         player[@"pocket_cards"] = cards.copy;
         player[@"owned"] = [owned.allObjects sortedArrayUsingSelector:@selector(compare:)];
+        std::array<int32_t,kNativeTransformationCount> forms{};
+        if (ReadPlayerTransformationCounters(address,forms)) {
+            NSMutableArray *values = [NSMutableArray array];
+            for (int32_t value : forms) [values addObject:@(value)];
+            player[@"forms"] = values.copy;
+        }
+        if ([owned containsObject:@"5.100.477"]) {
+            NSArray *voided = ReadVoidedActives(address);
+            if (voided) player[@"void_actives"] = voided;
+        }
+        if ([owned containsObject:@"5.100.407"]) {
+            NSDictionary *purity = ReadPurityState(address);
+            if (purity) player[@"purity"] = purity;
+        }
+        if ([owned containsObject:@"5.350.166"]) {
+            int32_t clay=-1, again=-1;
+            if (ReadOwnTaskMemory(address+kPlayerModelingClayOffset,&clay,sizeof(clay)) &&
+                EIDCurrentEffectsPolicy::ValidClay(clay) &&
+                ReadOwnTaskMemory(address+kPlayerModelingClayOffset,&again,sizeof(again)) && clay==again)
+                player[@"modeling_clay"] = @{@"validated":@YES,@"result":@(clay)};
+        }
+        if ([NSUserDefaults.standardUserDefaults boolForKey:@"IsaacEIDOutcomePredictions"] &&
+            [owned containsObject:@"5.100.485"]) {
+            EIDPredictionPolicy::RNG rng{};
+            uint32_t decoration = 0;
+            if (ReadCollectibleRNG(address,485,rng) && ReadRoomDecorationSeed(decoration))
+                player[@"outcome_signature"] = @[@(rng.seed),@(decoration)];
+        }
+        if ([NSUserDefaults.standardUserDefaults boolForKey:@"IsaacEIDOutcomePredictions"] &&
+            [owned containsObject:@"5.100.489"]) {
+            NSMutableArray *modes = [NSMutableArray array];
+            for (size_t slot = 0; slot < kPlayerPocketItemCount; ++slot) {
+                int32_t active = 0; int16_t mode = -1;
+                uintptr_t record = address+kPlayerActiveItemsOffset+slot*kPlayerActiveItemStride;
+                if (ReadOwnTaskMemory(record,&active,sizeof(active)) && active == 489 &&
+                    ReadOwnTaskMemory(record+0x1a,&mode,sizeof(mode)) && mode >= 0 && mode < 10)
+                    [modes addObject:@[@(slot),@(mode)]];
+            }
+            player[@"outcome_dice_modes"] = modes.copy;
+        }
+        if ([owned containsObject:@"5.100.710"]) {
+            NSDictionary *bag = ReadCraftingBag(address);
+            if (bag) player[@"crafting_bag"] = bag;
+        }
     }
     return player.copy;
 }
@@ -1056,7 +1213,7 @@ static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype
                         float x, float y, bool hasPosition,
                         bool isShopItem = false, int32_t optionsPickupIndex = 0,
                         int32_t rawPillSubtype = 0, int32_t flipID = 0,
-                        vm_address_t address = 0, uint32_t cycleSeed = 0) {
+                        vm_address_t address = 0, uint32_t cycleSeed = 0, uint32_t outcomeSeed = 0) {
     if (!IsDescribableVariant(variant) || subtype <= 0 || subtype > 65535) return;
     // Subtype zero and out-of-range tarot IDs are unknown/hidden card identities.
     if (variant == EIDPickupVariantCard && subtype > 97) return;
@@ -1064,7 +1221,7 @@ static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype
     // and proximity must choose the actual nearest entity rather than the first copy.
     if (result.pickupCount < result.pickups.size()) {
         result.pickups[result.pickupCount++] = {
-            variant, subtype, x, y, hasPosition, isShopItem, optionsPickupIndex, rawPillSubtype, flipID,address,cycleSeed
+            variant, subtype, x, y, hasPosition, isShopItem, optionsPickupIndex, rawPillSubtype, flipID,address,cycleSeed,outcomeSeed
         };
     }
 }
@@ -1211,13 +1368,15 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
                         if (ReadOwnTaskMemory(alternate+0x23,&hidden,sizeof(hidden)) && !hidden) flipID = alternateIdentity[2];
                     }
                     if (displayVariant == 100 && !displaySubtype && flipID) { displaySubtype = flipID; flipID = 0; }
-                    uint32_t cycleSeed = 0;
+                    uint32_t cycleSeed = 0, outcomeSeed = 0;
                     if (identity[1] == 100 && offset+kPickupCycleSeedOffset+sizeof(cycleSeed) <= size)
                         memcpy(&cycleSeed,bytes+offset+kPickupCycleSeedOffset,sizeof(cycleSeed));
+                    if (identity[1] == 100 && offset+kPickupCurrentRNGOffset+sizeof(outcomeSeed) <= size)
+                        memcpy(&outcomeSeed,bytes+offset+kPickupCurrentRNGOffset,sizeof(outcomeSeed));
                     AddVMPickup(result, displayVariant, displaySubtype, x, y,
                                 positionAvailable, price != 0, optionsPickupIndex,
                                 identity[1] == EIDPickupVariantPill ? identity[2] : 0,flipID,
-                                identity[1] == 100 ? referenceAddress : 0,cycleSeed);
+                                identity[1] == 100 ? referenceAddress : 0,cycleSeed,outcomeSeed);
                 } else if (visibility == PickupVisibility::Blind) {
                     result.blindPickupCount++;
                 } else {
@@ -1513,6 +1672,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 @property(nonatomic, copy) NSDictionary *lastSpindownLogSnapshot;
 @property(nonatomic, copy) NSDictionary *lastRepeatLogSnapshot;
 @property(nonatomic, copy) NSDictionary *lastInventoryPreviewLogSnapshot;
+@property(nonatomic, copy) NSDictionary *lastOutcomeLogSnapshot;
 @property(nonatomic, copy) NSDictionary *lastCollectibleCycleLogSnapshot;
 @property(nonatomic) vm_address_t pickupRegionAddress;
 @property(nonatomic) vm_size_t pickupRegionSize;
@@ -1778,42 +1938,49 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
     NSMutableArray<EIDPickupIdentity *> *items = [NSMutableArray array];
     NSMutableArray<EIDPickupIdentity *> *smelted = [NSMutableArray array];
-    NSMutableSet *smeltedKeys = [NSMutableSet set];
     BOOL smeltedReadable = YES;
-    NSMutableSet<NSString *> *seen = [NSMutableSet set];
-    void (^addIdentity)(NSInteger, NSInteger) = ^(NSInteger variant, NSInteger subtype) {
-        if (subtype <= 0) return;
-        NSString *key = [NSString stringWithFormat:@"%ld:%ld", (long)variant, (long)subtype];
-        if ([seen containsObject:key]) return;
-        [seen addObject:key];
-        [items addObject:[[EIDPickupIdentity alloc] initWithVariant:variant subtype:subtype]];
-    };
-
-    NSArray<NSNumber *> *collectibles = [self.ownedCollectibleCounts.allKeys
-        sortedArrayUsingSelector:@selector(compare:)];
-    for (NSNumber *identifier in collectibles) {
-        addIdentity(EIDPickupVariantCollectible, identifier.integerValue);
-    }
-
     BOOL readable = YES;
     for (size_t playerIndex = 0; playerIndex < players.playerCount; ++playerIndex) {
         vm_address_t playerAddress = players.players[playerIndex].address;
+        int32_t type=-1;
+        std::array<int32_t,kMaximumCollectibleID+1> counts{};
+        std::array<int32_t,4> activeIDs{};
         std::array<int32_t, kPlayerTrinketSlotCount> trinkets{};
-        if (!ReadPlayerTrinkets(playerAddress, trinkets)) {
+        if (!ReadOwnTaskMemory(playerAddress+kPlayerTypeOffset,&type,sizeof(type)) || type<0 || type>40 ||
+            !ReadPlayerCollectibleCounts(playerAddress,counts) || !ReadPlayerActiveIDs(playerAddress,activeIDs) ||
+            !ReadPlayerTrinkets(playerAddress, trinkets)) {
             readable = NO;
             break;
         }
+        NSMutableSet<NSString *> *seen = [NSMutableSet set];
+        std::array<int32_t,kMaximumCollectibleID+1> collectibleCopies{};
+        for (size_t id=1; id<counts.size(); ++id) {
+            const size_t activeSlots = std::count(activeIDs.begin(),activeIDs.end(),(int32_t)id);
+            collectibleCopies[id] = EIDInventoryCountPolicy::PhysicalCopies(counts[id],activeSlots);
+        }
+        void (^addIdentity)(NSInteger,NSInteger) = ^(NSInteger variant,NSInteger subtype) {
+            if (subtype<=0) return;
+            NSString *key = [NSString stringWithFormat:@"%ld:%ld",(long)variant,(long)subtype];
+            if ([seen containsObject:key]) return;
+            [seen addObject:key];
+            NSMutableDictionary *context = [@{@"inventory_run":@(self.runCounter)} mutableCopy];
+            if (variant==EIDPickupVariantCollectible && (size_t)subtype<=kMaximumCollectibleID)
+                context[@"inventory_copies"] = @(std::max(1,collectibleCopies[subtype]));
+            [items addObject:[[EIDPickupIdentity alloc] initWithVariant:variant subtype:subtype
+                playerType:type playerIndex:(NSInteger)playerIndex rawPillSubtype:0 pillModifiers:-1
+                pickupContext:context]];
+        };
+        for (size_t id=1; id<counts.size(); ++id) if (counts[id]) addIdentity(100,(NSInteger)id);
+        for (int32_t id : activeIDs) if (id) addIdentity(100,id);
         for (int32_t trinket : trinkets) {
             if ((trinket & 0x7fff) != 0) addIdentity(EIDPickupVariantTrinket, trinket);
         }
         std::vector<int32_t> swallowed;
         if (!ReadSmeltedTrinkets(playerAddress,swallowed)) smeltedReadable = NO;
         for (int32_t trinket : swallowed) {
-            NSString *key = @(trinket).stringValue;
-            if (![smeltedKeys containsObject:key]) {
-                [smeltedKeys addObject:key];
-                [smelted addObject:[[EIDPickupIdentity alloc] initWithVariant:EIDPickupVariantTrinket subtype:trinket]];
-            }
+            [smelted addObject:[[EIDPickupIdentity alloc] initWithVariant:350 subtype:trinket
+                playerType:type playerIndex:(NSInteger)playerIndex rawPillSubtype:0 pillModifiers:-1
+                pickupContext:@{@"inventory_run":@(self.runCounter)}]];
         }
 
         std::array<VMPlayerPocketItem, kPlayerPocketItemCount> pockets{};
@@ -1831,10 +1998,9 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
                 int32_t variant = EIDPickupVariantPill;
                 int32_t subtype = 0;
                 if (ResolvePillPresentation(pocket.id, variant, subtype)) {
-                    int32_t type = -1;
-                    ReadOwnTaskMemory(playerAddress+kPlayerTypeOffset,&type,sizeof(type));
                     [items addObject:[[EIDPickupIdentity alloc] initWithVariant:variant subtype:subtype
-                        playerType:type playerIndex:(NSInteger)playerIndex rawPillSubtype:pocket.id]];
+                        playerType:type playerIndex:(NSInteger)playerIndex rawPillSubtype:pocket.id pillModifiers:-1
+                        pickupContext:@{@"inventory_run":@(self.runCounter)}]];
                 }
             }
         }
@@ -1858,8 +2024,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     self.inventoryStateAvailable = YES;
     self.loggedUnreadableInventory = NO;
     if (changed || swallowedChanged) {
-        EIDLog(@"native pause inventory changed: %lu entries, %lu smelted trinkets %@",
-               (unsigned long)snapshot.count, (unsigned long)self.smeltedTrinketItems.count,
+        EIDLog(@"native pause inventory changed: %lu entries %@, %lu smelted trinkets %@",
+               (unsigned long)snapshot.count,snapshot,(unsigned long)self.smeltedTrinketItems.count,
                smeltedReadable ? self.smeltedTrinketItems : @"unavailable");
     }
 }
@@ -1922,6 +2088,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
             }
             NSArray *previousPlayers = self.descriptionState[@"players"];
             NSDictionary *previous = index < previousPlayers.count ? previousPlayers[index] : nil;
+            for (NSString *key in @[@"purity",@"modeling_clay",@"void_actives"])
+                if (player[key] && ![player[key] isEqual:previous[key]])
+                    EIDLog(@"native current effect: player %lu %@ %@ (read only)",(unsigned long)index,key,
+                        [key isEqualToString:@"void_actives"] ? @([player[key] count]) : player[key]);
             if (player[@"has_passive_belial"] && ![player[@"has_passive_belial"] isEqual:previous[@"has_passive_belial"]])
                 EIDLog(@"native passive Belial: player %lu type %@ enabled %@",(unsigned long)index,
                     player[@"type"],player[@"has_passive_belial"]);
@@ -2242,6 +2412,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
                                    sizeof(contextType)) || contextType < 0 || contextType > 40) {
                 contextType = -1;
             }
+            vm_address_t nativeRoom = 0;
+            ReadCurrentRoomAddress(nativeRoom);
             [pickups addObject:[[EIDPickupIdentity alloc] initWithVariant:closest->variant
                                                                   subtype:closest->subtype
                                                                playerType:contextType playerIndex:closestPlayerIndex
@@ -2250,7 +2422,9 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
                                                                 @"shop":@(closest->isShopItem),@"options":@(closest->optionsPickupIndex),
                                                                 @"flip_id":@(closest->flipID),
                                                                 @"native_address":@(closest->address),
-                                                                @"native_seed":@(closest->cycleSeed),@"native_run":@(self.runCounter)}]];
+                                                                @"native_seed":@(closest->cycleSeed),@"native_run":@(self.runCounter),
+                                                                @"native_room":@(nativeRoom),
+                                                                @"outcome_seed":@(closest->outcomeSeed)}]];
         }
     }
     if (!pickups.count && !playerResult.playerCount) {
@@ -2367,6 +2541,60 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     return finish();
 }
 
+- (EIDPickupIdentity *)resolvedLivePedestalIdentity:(EIDPickupIdentity *)identity {
+    if (identity.variant != 100 || ![identity.pickupContext[@"pedestal"] boolValue]) return identity;
+    NSDictionary *previous = identity.pickupContext;
+    if (!self.supportedBuild || !NSThread.isMainThread || !self.gameplayActive ||
+        [previous[@"native_run"] unsignedIntegerValue] != self.runCounter) return nil;
+    uintptr_t address = [previous[@"native_address"] unsignedLongLongValue];
+    uint32_t seed = [previous[@"native_seed"] unsignedIntValue], curses = 0;
+    vm_address_t room = 0;
+    if (!address || !seed || !ReadCurrentRoomAddress(room) ||
+        room != [previous[@"native_room"] unsignedLongLongValue] ||
+        !ReadCurrentCurseMask(curses) || (curses & kCurseOfTheBlind)) return nil;
+    // Read only the one selected object, not a heap region or player inventory.
+    // Morph updates its ID, artwork and cycle queue on Isaac's main thread.
+    std::array<uint8_t,0x618> bytes{};
+    if (!ReadOwnTaskMemory(address,bytes.data(),bytes.size())) return nil;
+    uintptr_t vtable = 0, alternate = 0;
+    int32_t native[3]{}, count = 0, price = 0, options = 0;
+    uint32_t currentSeed = 0, outcomeSeed = 0;
+    memcpy(&vtable,bytes.data(),sizeof(vtable));
+    memcpy(native,bytes.data()+kEntityTypeOffset,sizeof(native));
+    memcpy(&currentSeed,bytes.data()+kPickupCycleSeedOffset,sizeof(currentSeed));
+    const uint8_t *active = bytes.data()+kEntityStateOffset;
+    if (!IsCandidateVTable(self.scanContext.pickupVTables,self.scanContext.pickupVTableCount,vtable) ||
+        native[0] != 5 || native[1] != 100 || currentSeed != seed ||
+        !active[0] || !active[2] || active[3] ||
+        PickupVisibilityState(bytes.data(),bytes.size()) != PickupVisibility::Visible) return nil;
+    memcpy(&count,bytes.data()+kPickupCollectibleCycleCountOffset,sizeof(count));
+    memcpy(&price,bytes.data()+kPickupPriceOffset,sizeof(price));
+    memcpy(&options,bytes.data()+kPickupOptionsIndexOffset,sizeof(options));
+    memcpy(&outcomeSeed,bytes.data()+kPickupCurrentRNGOffset,sizeof(outcomeSeed));
+    memcpy(&alternate,bytes.data()+0x610,sizeof(alternate));
+    if (options < 0 || options > 4096) return nil;
+    int32_t flip = 0, saved[3]{}; uint8_t hidden = 1;
+    if (alternate && ReadOwnTaskMemory(alternate,saved,sizeof(saved)) && saved[0] == 5 && saved[1] == 100 &&
+        saved[2] >= 1 && saved[2] <= 732 && ReadOwnTaskMemory(alternate+0x23,&hidden,sizeof(hidden)) && !hidden)
+        flip = saved[2];
+    int32_t displayID = EIDLivePedestalSubtype(native[2],flip);
+    if (!displayID) return nil;
+    NSMutableDictionary *context = previous.mutableCopy;
+    context[@"live_cycle_count"] = @(count >= 0 && count <= 8 ? count : 0);
+    context[@"shop"] = @(price != 0);
+    context[@"options"] = @(options);
+    context[@"flip_id"] = @(native[2] ? flip : 0);
+    context[@"outcome_seed"] = @(outcomeSeed);
+    if (displayID != identity.subtype) {
+        // Derived predictions belong to the former ID, not the next food/item.
+        for (NSString *key in @[@"spindown",@"collectible_cycle",@"crown_overview",@"crown_selection",@"eternal_d6"])
+            [context removeObjectForKey:key];
+    }
+    return [[EIDPickupIdentity alloc] initWithVariant:100 subtype:displayID
+        playerType:identity.playerType playerIndex:identity.playerIndex rawPillSubtype:0
+        pillModifiers:identity.pillModifiers pickupContext:context];
+}
+
 - (EIDPickupIdentity *)resolvedCollectibleCycleIdentity:(EIDPickupIdentity *)identity {
     if (identity.variant != 100 || ![identity.pickupContext[@"pedestal"] boolValue]) return identity;
     NSMutableDictionary *context = identity.pickupContext.mutableCopy;
@@ -2421,6 +2649,164 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     if (![cycle isEqual:self.lastCollectibleCycleLogSnapshot]) {
         self.lastCollectibleCycleLogSnapshot = cycle;
         EIDLog(@"native collectible cycle: %lu unique items %@",(unsigned long)identifiers.count,identifiers);
+    }
+    return finish();
+}
+
+- (EIDPickupIdentity *)resolvedOutcomeIdentity:(EIDPickupIdentity *)identity
+                             insideInventory:(BOOL)insideInventory enabled:(BOOL)enabled {
+    NSMutableDictionary *context = identity.pickupContext.mutableCopy;
+    [context removeObjectForKey:@"crooked_penny"];
+    [context removeObjectForKey:@"eternal_d6"];
+    auto finish = [&]() -> EIDPickupIdentity * {
+        NSDictionary *outcome = context[@"crooked_penny"] ?: context[@"eternal_d6"];
+        if (outcome) {
+            NSDictionary *snapshot = @{@"run":@(self.runCounter),@"item":@(identity.subtype),
+                @"player":@(identity.playerIndex),@"outcome":outcome};
+            if (![snapshot isEqual:self.lastOutcomeLogSnapshot]) {
+                self.lastOutcomeLogSnapshot = snapshot;
+                EIDLog(@"native %@ prediction (copied state only): %@",
+                    context[@"crooked_penny"] ? @"Crooked Penny" : @"Eternal D6",outcome);
+            }
+        }
+        return [[EIDPickupIdentity alloc] initWithVariant:identity.variant subtype:identity.subtype
+            playerType:identity.playerType playerIndex:identity.playerIndex
+            rawPillSubtype:identity.rawPillSubtype pillModifiers:identity.pillModifiers pickupContext:context];
+    };
+    if (!enabled || identity.variant != 100 || !self.supportedBuild || !NSThread.isMainThread ||
+        !self.gameplayActive || [context[@"crafting_result"] boolValue]) return finish();
+    BOOL penny = insideInventory && identity.subtype == 485;
+    BOOL pedestal = !insideInventory && [context[@"pedestal"] boolValue];
+    if (!penny && !pedestal) return finish();
+    const mach_header_64 *header = IsaacExecutableHeader(nullptr);
+    vm_address_t game = 0;
+    VMRegionResult players;
+    if (!header || !ReadGameObjectAddress(game) || self.playerVectorOffset == NSUIntegerMax ||
+        !ReadPlayerVector(self.scanContext,game+self.playerVectorOffset,false,players)) return finish();
+    size_t index = identity.playerIndex >= 0 ? (size_t)identity.playerIndex : 0;
+    if (index >= players.playerCount) return finish();
+    uintptr_t image = reinterpret_cast<uintptr_t>(header), player = players.players[index].address;
+    // Validate the exact read-only getter and native outcome branches. Never
+    // call UseActiveItem, RandomInt/Float, RNG::Next, reroll or item-pool draws.
+    for (const auto& check : std::array<std::array<uint32_t,2>,7>{{
+        {{0x4eeb74,0xd10183ff}},{{0x582340,0xb943db41}},{{0x582348,0x52800582}},
+        {{0x582368,0x54000329}},{{0x586290,0x5283ca09}},{{0x5862b4,0xb9406508}},
+        {{0x5862c8,0x52800082}}}}) {
+        uint32_t opcode = 0;
+        if (!ReadOwnTaskMemory(image+check[0],&opcode,sizeof(opcode)) || opcode != check[1]) return finish();
+    }
+    using HasCollectible = bool (*)(uintptr_t,uint32_t,bool);
+    HasCollectible has = reinterpret_cast<HasCollectible>(image+kPlayerHasCollectibleOffset);
+    BOOL battery = has(player,356,false);
+    if (penny) {
+        EIDPredictionPolicy::RNG rng{};
+        uint32_t decoration = 0;
+        if (!has(player,485,false) || !ReadCollectibleRNG(player,485,rng) ||
+            !ReadRoomDecorationSeed(decoration)) return finish();
+        auto prediction = EIDOutcomePredictionPolicy::CrookedPenny(rng.seed,decoration,battery);
+        NSMutableArray *outcomes = [NSMutableArray array];
+        for (unsigned i = 0; i < prediction.count; ++i) [outcomes addObject:@(prediction.heads[i])];
+        context[@"crooked_penny"] = @{@"validated":@YES,@"battery":@(battery),@"heads":outcomes.copy};
+    } else {
+        uint32_t curses = 0;
+        uintptr_t address = [context[@"native_address"] unsignedLongLongValue];
+        uint32_t seed = [context[@"native_seed"] unsignedIntValue];
+        if (!address || !seed || [context[@"native_run"] unsignedIntegerValue] != self.runCounter ||
+            !ReadCurrentCurseMask(curses) || (curses & kCurseOfTheBlind)) return finish();
+        BOOL eternal = has(player,609,false);
+        if (!eternal && has(player,489,false)) {
+            for (size_t slot = 0; slot < kPlayerPocketItemCount; ++slot) {
+                int32_t active = 0; int16_t mode = -1;
+                uintptr_t record = player+kPlayerActiveItemsOffset+slot*kPlayerActiveItemStride;
+                if (ReadOwnTaskMemory(record,&active,sizeof(active)) && active == 489 &&
+                    ReadOwnTaskMemory(record+0x1a,&mode,sizeof(mode)) && mode == 3) eternal = YES;
+            }
+        }
+        if (!eternal) return finish();
+        std::array<uint8_t,kPickupCollectibleCycleCountOffset+sizeof(int32_t)> bytes{};
+        uintptr_t table = 0; int32_t native[3]{}, rerollState = 0, questState = 0; uint32_t init = 0, current = 0;
+        if (!ReadOwnTaskMemory(address,bytes.data(),bytes.size())) return finish();
+        memcpy(&table,bytes.data(),sizeof(table));
+        memcpy(native,bytes.data()+kEntityTypeOffset,sizeof(native));
+        memcpy(&init,bytes.data()+kPickupCycleSeedOffset,sizeof(init));
+        memcpy(&current,bytes.data()+kPickupCurrentRNGOffset,sizeof(current));
+        memcpy(&rerollState,bytes.data()+0x55c,sizeof(rerollState));
+        memcpy(&questState,bytes.data()+0x570,sizeof(questState));
+        const uint8_t *active = bytes.data()+kEntityStateOffset;
+        if (!IsCandidateVTable(self.scanContext.pickupVTables,self.scanContext.pickupVTableCount,table) ||
+            native[0] != 5 || native[1] != 100 || native[2] != identity.subtype || init != seed ||
+            !active[0] || !active[2] || active[3] ||
+            PickupVisibilityState(bytes.data(),bytes.size()) != PickupVisibility::Visible ||
+            (rerollState != 0 && questState >= 0)) return finish();
+        uint32_t queryOpcode = 0;
+        if (!ReadOwnTaskMemory(image+0x7180d8,&queryOpcode,sizeof(queryOpcode)) || queryOpcode != 0xa9be4ff4) return finish();
+        using CanReroll = bool (*)(uintptr_t);
+        if (!reinterpret_cast<CanReroll>(image+0x7180d8)(address)) return finish();
+        auto result = EIDOutcomePredictionPolicy::EternalD6(current);
+        if (result == EIDOutcomePredictionPolicy::EternalResult::Unknown) return finish();
+        context[@"eternal_d6"] = @{@"validated":@YES,@"battery":@(battery),
+            @"vanishes":@(result == EIDOutcomePredictionPolicy::EternalResult::Vanish)};
+    }
+    return finish();
+}
+
+- (EIDPickupIdentity *)resolvedCurrentEffectIdentity:(EIDPickupIdentity *)identity {
+    if (identity.variant!=350 || (identity.subtype & 0x7fff)!=166 || !self.supportedBuild ||
+        !NSThread.isMainThread || !self.gameplayActive || !self.paused || identity.playerIndex<0) return identity;
+    vm_address_t game=0; VMRegionResult players;
+    if (!ReadGameObjectAddress(game) || self.playerVectorOffset==NSUIntegerMax ||
+        !ReadPlayerVector(self.scanContext,game+self.playerVectorOffset,false,players) ||
+        (size_t)identity.playerIndex>=players.playerCount) return identity;
+    NSDictionary *player = ReadDescriptionPlayer(players.players[(size_t)identity.playerIndex].address);
+    NSDictionary *clay = player[@"modeling_clay"];
+    NSInteger result = [clay[@"result"] integerValue];
+    if (![player[@"owned"] containsObject:@"5.350.166"] || ![clay[@"validated"] boolValue] || result<1 || result>732) return identity;
+    NSMutableDictionary *context = identity.pickupContext.mutableCopy;
+    context[@"current_effect"] = @{@"source_variant":@350,@"source_id":@166,@"result":@(result),@"validated":@YES};
+    return [[EIDPickupIdentity alloc] initWithVariant:100 subtype:result playerType:[player[@"type"] integerValue]
+        playerIndex:identity.playerIndex rawPillSubtype:0 pillModifiers:identity.pillModifiers pickupContext:context];
+}
+
+- (EIDPickupIdentity *)resolvedCraftingIdentity:(EIDPickupIdentity *)identity {
+    if (identity.variant != EIDPickupVariantCollectible || identity.subtype != 710) return identity;
+    NSMutableDictionary *context = identity.pickupContext.mutableCopy;
+    // Do not carry floor-only or stale preview data into a hypothetical item.
+    for (NSString *key in @[@"pedestal",@"collectible_cycle",@"crown_overview",@"crown_selection",
+                            @"spindown",@"flip_id",@"crafting_bag",@"crafting_result"])
+        [context removeObjectForKey:key];
+    NSInteger displayID = 710, playerType = identity.playerType, playerIndex = identity.playerIndex;
+    auto finish = [&]() -> EIDPickupIdentity * {
+        return [[EIDPickupIdentity alloc] initWithVariant:EIDPickupVariantCollectible subtype:displayID
+            playerType:playerType playerIndex:playerIndex rawPillSubtype:0
+            pillModifiers:identity.pillModifiers pickupContext:context];
+    };
+    if (!self.supportedBuild || !NSThread.isMainThread || !self.gameplayActive ||
+        !self.pauseStateAvailable || !self.paused) return finish();
+    vm_address_t game = 0;
+    VMRegionResult players;
+    if (!ReadGameObjectAddress(game) || self.playerVectorOffset == NSUIntegerMax ||
+        !ReadPlayerVector(self.scanContext,game+self.playerVectorOffset,false,players)) return finish();
+    for (size_t index = 0; index < players.playerCount; ++index) {
+        if (identity.playerIndex >= 0 && identity.playerIndex != (NSInteger)index) continue;
+        NSDictionary *player = ReadDescriptionPlayer(players.players[index].address);
+        if (![player[@"owned"] containsObject:@"5.100.710"]) continue;
+        NSDictionary *bag = player[@"crafting_bag"];
+        if (!bag) continue;
+        context[@"crafting_bag"] = bag;
+        playerType = [player[@"type"] integerValue];
+        playerIndex = (NSInteger)index;
+        NSInteger result = [bag[@"result"] integerValue];
+        if ([bag[@"count"] integerValue] == 8 && result > 0 && result <= 732) {
+            displayID = result;
+            context[@"crafting_result"] = @YES;
+        }
+        NSDictionary *snapshot = @{@"run":@(self.runCounter),@"kind":@"crafting_bag",@"index":@(index),@"bag":bag};
+        if (![snapshot isEqual:self.lastInventoryPreviewLogSnapshot]) {
+            self.lastInventoryPreviewLogSnapshot = snapshot;
+            EIDLog(@"native Bag of Crafting preview: player %lu, %@/8, result %@ (read only)",
+                (unsigned long)index,bag[@"count"],bag[@"result"]);
+        }
+        break;
     }
     return finish();
 }
@@ -2660,6 +3046,23 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
 
 - (NSArray<EIDPickupIdentity *> *)currentSmeltedTrinkets {
     return self.inventoryStateAvailable ? self.smeltedTrinketItems : @[];
+}
+
+- (NSArray<EIDPickupIdentity *> *)currentVoidedItems {
+    if (!self.inventoryStateAvailable) return @[];
+    NSMutableArray *items = [NSMutableArray array];
+    for (NSDictionary *player in self.descriptionState[@"players"]) {
+        if (![player[@"owned"] containsObject:@"5.100.477"]) continue;
+        NSCountedSet *voided = [[NSCountedSet alloc] initWithArray:player[@"void_actives"] ?: @[]];
+        for (NSNumber *item in [[voided allObjects] sortedArrayUsingSelector:@selector(compare:)]) {
+            if (![self.activeCollectibleIDs containsObject:item]) continue;
+            [items addObject:[[EIDPickupIdentity alloc] initWithVariant:100 subtype:item.integerValue
+                playerType:[player[@"type"] integerValue] playerIndex:[player[@"index"] integerValue]
+                rawPillSubtype:0 pillModifiers:-1 pickupContext:@{@"inventory_run":@(self.runCounter),
+                    @"void_absorbed":@YES,@"void_copies":@([voided countForObject:item])}]];
+        }
+    }
+    return items.copy;
 }
 
 - (NSSet<NSString *> *)currentOwnedItemKeys {

@@ -124,7 +124,7 @@ test:
 	python3 "$(PROJECT_ROOT)/tests/test_import_eid_assets.py"
 	python3 "$(PROJECT_ROOT)/tests/test_bundled_descriptions.py"
 	python3 "$(PROJECT_ROOT)/tests/test_documentation.py"
-	python3 -m py_compile "$(PROJECT_ROOT)/tools/import-eid.py" "$(PROJECT_ROOT)/tools/eid_context.py" "$(PROJECT_ROOT)/tools/import-eid-assets.py" "$(PROJECT_ROOT)/tools/macho-add-dylib.py"
+	python3 -m py_compile "$(PROJECT_ROOT)/tools/import-eid.py" "$(PROJECT_ROOT)/tools/eid_context.py" "$(PROJECT_ROOT)/tools/eid_outcome_strings.py" "$(PROJECT_ROOT)/tools/import-eid-assets.py" "$(PROJECT_ROOT)/tools/macho-add-dylib.py"
 	zsh -n "$(PROJECT_ROOT)/tools/patch-ipa.sh"
 
 release:

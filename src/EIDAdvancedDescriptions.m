@@ -339,6 +339,114 @@ static NSString *Prediction(NSString *detail, NSInteger variant, NSInteger item,
     return detail;
 }
 
+static NSString *OutcomePreview(NSString *detail, NSInteger variant, NSInteger item, NSDictionary *context) {
+    if (variant != 100 || ![context[@"rng_predictions_enabled"] boolValue]) return detail;
+    NSDictionary *texts = context[@"context_strings"];
+    NSDictionary *penny = context[@"pickup_context"][@"crooked_penny"];
+    if (item == 485 && [context[@"inside_item_reminder"] boolValue] &&
+        [penny isKindOfClass:NSDictionary.class] && [penny[@"validated"] boolValue]) {
+        NSArray *heads = penny[@"heads"];
+        NSUInteger count = [penny[@"battery"] boolValue] ? 2 : 1;
+        if (![heads isKindOfClass:NSArray.class] || heads.count != count) return detail;
+        for (NSUInteger i = 0; i < count; ++i) {
+            if (![heads[i] isKindOfClass:NSNumber.class] ||
+                ([heads[i] doubleValue] != 0 && [heads[i] doubleValue] != 1)) return detail;
+            NSString *text = Text(texts[[heads[i] boolValue] ? @"CrookedPennyHeads" : @"CrookedPennyTails"]);
+            if (!text.length) return detail;
+        }
+        for (NSUInteger i = 0; i < count; ++i) {
+            BOOL success = [heads[i] boolValue];
+            detail = Append(detail,[NSString stringWithFormat:@"{{Collectible%@}} %@%@{{CR}}",
+                i ? @356 : @485,success ? @"{{ColorLime}}" : @"{{ColorError}}",
+                Text(texts[success ? @"CrookedPennyHeads" : @"CrookedPennyTails"])]);
+        }
+    }
+    NSDictionary *eternal = context[@"pickup_context"][@"eternal_d6"];
+    if (![context[@"inside_item_reminder"] boolValue] && [context[@"pickup_context"][@"pedestal"] boolValue] &&
+        [eternal isKindOfClass:NSDictionary.class] && [eternal[@"validated"] boolValue] &&
+        [eternal[@"vanishes"] isKindOfClass:NSNumber.class] &&
+        ([eternal[@"vanishes"] doubleValue] == 0 || [eternal[@"vanishes"] doubleValue] == 1)) {
+        BOOL vanishes = [eternal[@"vanishes"] boolValue];
+        NSString *text = Text(texts[vanishes ? @"spindownError" : @"EternalD6Survives"]);
+        NSString *label = Text(texts[@"EternalD6Next"]);
+        if (!text.length || !label.length) return detail;
+        label = [label stringByReplacingOccurrencesOfString:@"{1}" withString:text];
+        detail = Append(detail,[NSString stringWithFormat:@"{{Collectible609}} %@%@{{CR}}",
+            vanishes ? @"{{ColorError}}" : @"{{ColorLime}}",label]);
+        if ([eternal[@"battery"] boolValue]) {
+            NSString *warning = Text(texts[@"EternalD6FirstOnly"]);
+            if (warning.length) detail = Append(detail,[@"{{Collectible356}} " stringByAppendingString:warning]);
+        }
+    }
+    return detail;
+}
+
+static NSString *CraftingPreview(NSString *detail, NSInteger variant, NSInteger item, NSDictionary *context) {
+    NSDictionary *bag = context[@"pickup_context"][@"crafting_bag"];
+    if (variant != 100 || ![context[@"inside_item_reminder"] boolValue] ||
+        ![bag isKindOfClass:NSDictionary.class] || ![bag[@"validated"] boolValue]) return detail;
+    NSNumber *count = bag[@"count"], *result = bag[@"result"];
+    NSArray *ingredients = bag[@"ingredients"];
+    if (![count isKindOfClass:NSNumber.class] || count.integerValue < 0 || count.integerValue > 8 ||
+        ![ingredients isKindOfClass:NSArray.class] || ingredients.count != count.unsignedIntegerValue) return detail;
+    NSMutableString *line = [NSMutableString stringWithFormat:@"{{Collectible710}} %ld/8",(long)count.integerValue];
+    for (NSNumber *ingredient in ingredients) {
+        if (![ingredient isKindOfClass:NSNumber.class] || ingredient.integerValue < 1 || ingredient.integerValue > 29) return detail;
+        [line appendFormat:@" {{Crafting%@}}",ingredient];
+    }
+    if ([context[@"pickup_context"][@"crafting_result"] boolValue]) {
+        if (count.integerValue != 8 || ![result isKindOfClass:NSNumber.class] ||
+            result.integerValue != item || item < 1 || item > 732) return detail;
+        NSString *name = Text(context[@"item_names"][Key(100,item)]);
+        if (!name.length) return detail;
+        [line appendFormat:@" → {{Collectible%ld}} %@",(long)item,name];
+    } else if (item != 710) return detail;
+    return [line stringByAppendingFormat:@"#%@",detail];
+}
+
+static NSString *CurrentInventoryEffects(NSString *detail, NSInteger variant, NSInteger item, NSDictionary *context) {
+    if (![context[@"inside_item_reminder"] boolValue]) return detail;
+    NSDictionary *player = SelectedPlayer(context), *pickup = context[@"pickup_context"];
+    NSArray *owned = player[@"owned"];
+    if (variant==100 && item==407 && [owned containsObject:@"5.100.407"]) {
+        NSDictionary *purity = player[@"purity"];
+        NSInteger boost = [purity[@"boost"] integerValue];
+        if ([purity[@"validated"] boolValue] && [purity[@"boost"] isKindOfClass:NSNumber.class] && boost>=0 && boost<=3) {
+            NSString *text = [purity[@"active"] boolValue] ? Text(context[@"purity_boosts"][@(boost).stringValue])
+                : Text(context[@"context_strings"][@"CurrentEffectInactive"]);
+            if (text.length) detail = Append(detail,[@"{{Collectible407}} {{ColorLime}}" stringByAppendingFormat:@"%@{{CR}}",text]);
+        }
+    }
+    if (variant==100 && item==477 && [owned containsObject:@"5.100.477"]) {
+        NSArray *ids = player[@"void_actives"];
+        if ([ids isKindOfClass:NSArray.class] && ids.count<=1024) {
+            for (id value in ids)
+                if (![value isKindOfClass:NSNumber.class] || [value integerValue]<1 || [value integerValue]>732) return detail;
+            NSCountedSet *unique = [[NSCountedSet alloc] initWithArray:ids];
+            for (NSNumber *idValue in [[unique allObjects] sortedArrayUsingSelector:@selector(compare:)]) {
+                if (![idValue isKindOfClass:NSNumber.class] || idValue.integerValue<1 || idValue.integerValue>732 ||
+                    ![context[@"native_metadata"][@"active_ids"] containsObject:idValue]) continue;
+                NSString *name = Text(context[@"item_names"][Key(100,idValue.integerValue)]);
+                if (!name.length) continue;
+                NSString *copies = [unique countForObject:idValue]>1 ? [NSString stringWithFormat:@" ×%lu",(unsigned long)[unique countForObject:idValue]] : @"";
+                detail = Append(detail,[NSString stringWithFormat:@"{{Collectible477}} → {{Collectible%@}} %@%@",idValue,name,copies]);
+            }
+        }
+    }
+    NSDictionary *effect = pickup[@"current_effect"];
+    if (variant==100 && [effect[@"validated"] boolValue] && [effect[@"source_variant"] integerValue]==350 &&
+        [effect[@"source_id"] integerValue]==166 && [effect[@"result"] integerValue]==item &&
+        [owned containsObject:@"5.350.166"]) {
+        NSString *source = Text(context[@"item_names"][@"5.350.166"]);
+        NSString *name = Text(context[@"item_names"][Key(100,item)]);
+        if (source.length && name.length) detail = [NSString stringWithFormat:@"{{Trinket166}} %@ → {{Collectible%ld}} %@#%@",source,(long)item,name,detail];
+    }
+    if ([pickup[@"void_absorbed"] boolValue] && variant==100 && [owned containsObject:@"5.100.477"] &&
+        [player[@"void_actives"] containsObject:@(item)] && [context[@"native_metadata"][@"active_ids"] containsObject:@(item)])
+        detail = [NSString stringWithFormat:@"{{Collectible477}} → {{Collectible%ld}} %@#%@",(long)item,Text(context[@"item_names"][Key(100,item)]),detail];
+    return detail;
+}
+
 static NSArray *CollectibleCycleItems(NSDictionary *context) {
     NSArray *items = context[@"pickup_context"][@"collectible_cycle"][@"items"];
     if (![items isKindOfClass:NSArray.class] || items.count < 5 || items.count > 9 ||
@@ -403,5 +511,8 @@ NSString *EIDAdvancedDescription(NSString *detail, NSInteger variant, NSInteger 
         }
     }
     detail = Prediction(detail,variant,subtype,owned,context);
+    detail = CraftingPreview(detail,variant,subtype,context);
+    detail = OutcomePreview(detail,variant,subtype,context);
+    detail = CurrentInventoryEffects(detail,variant,subtype,context);
     return variant == 100 ? CollectibleCycleToggle(detail,context) : detail;
 }

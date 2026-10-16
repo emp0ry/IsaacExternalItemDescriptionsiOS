@@ -2,7 +2,7 @@
 
 static NSMutableDictionary *AdvancedContext(NSDictionary *database, NSString *code) {
     NSMutableDictionary *context = [NSMutableDictionary dictionary];
-    for (NSString *key in @[@"golden_trinket_effects",@"golden_trinket_overrides",@"tarot_cloth_blank_card",@"context_strings",@"stat_names",@"abyss_descriptions"]) {
+    for (NSString *key in @[@"golden_trinket_effects",@"golden_trinket_overrides",@"tarot_cloth_blank_card",@"context_strings",@"stat_names",@"abyss_descriptions",@"purity_boosts"]) {
         NSMutableDictionary *entries = [database[@"languages"][@"en_us"][key] mutableCopy] ?: [NSMutableDictionary dictionary];
         [entries addEntriesFromDictionary:database[@"languages"][code][key] ?: @{}];
         context[key] = entries;
@@ -13,7 +13,7 @@ static NSMutableDictionary *AdvancedContext(NSDictionary *database, NSString *co
     context[@"player_index"] = @0;
     NSMutableDictionary *names = [NSMutableDictionary dictionary], *details = [NSMutableDictionary dictionary];
     for (NSString *language in @[@"en_us",code]) {
-        NSDictionary *prefixes = @{@"collectibles":@"5.100.",@"cards":@"5.300.",@"pills":@"5.70.",@"horsepills":@"5.1070."};
+        NSDictionary *prefixes = @{@"collectibles":@"5.100.",@"trinkets":@"5.350.",@"cards":@"5.300.",@"pills":@"5.70.",@"horsepills":@"5.1070."};
         for (NSString *category in prefixes) {
             for (NSString *identifier in database[@"languages"][language][category]) {
                 NSDictionary *entry = database[@"languages"][language][category][identifier];
@@ -25,7 +25,7 @@ static NSMutableDictionary *AdvancedContext(NSDictionary *database, NSString *co
     }
     context[@"item_names"] = names; context[@"item_details"] = details;
     context[@"native_metadata"] = @{@"collectible_ids":@[@1,@2,@3,@4,@5,@6,@7,@8,@9,@10,@668,@669,@670],
-        @"hidden_ids":@[@8],@"no_greed_ids":@[@7],@"no_challenge_ids":@[@6],@"active_ids":@[@34,@477],
+        @"hidden_ids":@[@8],@"no_greed_ids":@[@7],@"no_challenge_ids":@[@6],@"active_ids":@[@33,@34,@78,@477],
         @"mimic_charges":@{@"300:5":@{@"active":@286,@"cost":@6},
             @"300:32":@{@"active":@263,@"cost":@2},@"70:10":@{@"active":@348,@"cost":@4}}};
     context[@"live_state"] = @{@"players":@[@{@"index":@0,@"type":@0,@"luck":@5}]};
@@ -36,6 +36,64 @@ void TestAdvancedDescriptions(NSDictionary *database) {
     NSSet *none = [NSSet set];
     for (NSString *code in database[@"languages"]) {
         NSMutableDictionary *context = AdvancedContext(database,code);
+        context[@"inside_item_reminder"] = @YES;
+        for (NSNumber *boost in @[@0,@1,@2,@3]) {
+            context[@"live_state"] = @{@"players":@[@{@"index":@0,@"type":@0,@"owned":@[@"5.100.407"],
+                @"purity":@{@"validated":@YES,@"active":@YES,@"boost":boost}}]};
+            NSString *text=EIDAdvancedDescription(@"Base",100,407,0,none,context);
+            NSCAssert([text containsString:context[@"purity_boosts"][boost.stringValue]], @"Purity uses the selected native boost (%@ %@)",code,boost);
+        }
+        context[@"live_state"] = @{@"players":@[@{@"index":@0,@"owned":@[@"5.100.407"],
+            @"purity":@{@"validated":@YES,@"active":@NO,@"boost":@2}}]};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,407,0,none,context) containsString:context[@"context_strings"][@"CurrentEffectInactive"]],
+            @"Inactive Purity never claims a cached stat is applied");
+        context[@"inside_item_reminder"] = @NO;
+        NSCAssert([EIDAdvancedDescription(@"Base",100,407,0,none,context) isEqual:@"Base"], @"An uncollected Purity pedestal does not predict a boost");
+        context[@"inside_item_reminder"] = @YES;
+        context[@"live_state"] = @{@"players":@[
+            @{@"index":@0,@"type":@0,@"owned":@[]},
+            @{@"index":@1,@"type":@0,@"owned":@[@"5.100.477"],@"void_actives":@[@78,@78,@33]}]};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,477,0,none,context) isEqual:@"Base"], @"Void absorption does not leak from a same-character partner");
+        context[@"player_index"] = @1;
+        NSString *voided=EIDAdvancedDescription(@"Base",100,477,0,none,context);
+        NSCAssert([voided containsString:@"{{Collectible78}}"] && [voided containsString:@"×2"] &&
+            [voided containsString:context[@"item_names"][@"5.100.33"]], @"Native Void list includes duplicates and localized active names");
+        context[@"pickup_context"] = @{@"void_absorbed":@YES};
+        NSCAssert([EIDAdvancedDescription(@"Active detail",100,78,0,none,context) hasPrefix:@"{{Collectible477}} →"], @"An absorbed active's full description is inspectable");
+        context[@"player_index"] = @0;
+        context[@"live_state"] = @{@"players":@[@{@"index":@0,@"owned":@[@"5.350.166"],
+            @"modeling_clay":@{@"validated":@YES,@"result":@3}}]};
+        context[@"pickup_context"] = @{@"current_effect":@{@"validated":@YES,@"source_variant":@350,@"source_id":@166,@"result":@3}};
+        NSString *clay=EIDAdvancedDescription(@"Spoon detail",100,3,0,none,context);
+        NSCAssert([clay containsString:@"{{Trinket166}}"] && [clay containsString:context[@"item_names"][@"5.100.3"]] &&
+            [clay hasSuffix:@"Spoon detail"], @"Modeling Clay shows its current item and source without changing ownership");
+        context[@"live_state"] = @{@"players":@[@{@"index":@0,@"owned":@[]}]};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,3,0,none,context) isEqual:@"Base"], @"Removed Modeling Clay clears the source effect annotation");
+        context=AdvancedContext(database,code);
+        context[@"inside_item_reminder"] = @YES;
+        context[@"pickup_context"] = @{@"crooked_penny":@{@"validated":@YES,@"battery":@YES,@"heads":@[@YES,@NO]}};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,485,0,none,context) isEqual:@"Base"], @"Outcome previews are opt-in");
+        context[@"rng_predictions_enabled"] = @YES;
+        NSString *penny = EIDAdvancedDescription(@"Base",100,485,0,none,context);
+        NSCAssert([penny containsString:context[@"context_strings"][@"CrookedPennyHeads"]] &&
+            [penny containsString:context[@"context_strings"][@"CrookedPennyTails"]] &&
+            [penny containsString:@"{{Collectible356}}"], @"Car Battery shows both localized Penny activations: %@",code);
+        NSCAssert([EIDAdvancedDescription(@"Base",100,25,0,none,context) isEqual:@"Base"], @"Penny prediction never attaches to other items");
+        context[@"inside_item_reminder"] = @NO;
+        NSCAssert([EIDAdvancedDescription(@"Base",100,485,0,none,context) isEqual:@"Base"], @"Penny is a personal inventory reminder");
+        context[@"pickup_context"] = @{@"pedestal":@YES,@"eternal_d6":@{@"validated":@YES,@"vanishes":@NO,@"battery":@NO}};
+        NSString *eternal = EIDAdvancedDescription(@"Base",100,25,0,none,context);
+        NSCAssert([eternal containsString:context[@"context_strings"][@"EternalD6Survives"]] &&
+            [eternal containsString:@"{{Collectible609}}"] && ![eternal containsString:@"{1}"], @"Eternal D6 localizes the next reroll without a fictitious future count: %@",code);
+        context[@"pickup_context"] = @{@"pedestal":@YES,@"eternal_d6":@{@"validated":@YES,@"vanishes":@YES,@"battery":@YES}};
+        eternal = EIDAdvancedDescription(@"Base",100,25,0,none,context);
+        NSCAssert([eternal containsString:context[@"context_strings"][@"spindownError"]] &&
+            [eternal containsString:context[@"context_strings"][@"EternalD6FirstOnly"]], @"Eternal D6 clearly scopes a battery prediction to the first reroll: %@",code);
+        context[@"inside_item_reminder"] = @YES;
+        NSCAssert([EIDAdvancedDescription(@"Base",100,25,0,none,context) isEqual:@"Base"], @"No Eternal D6 prediction on already owned items");
+        context[@"rng_predictions_enabled"] = @NO;
+        context[@"inside_item_reminder"] = @NO;
+        context[@"pickup_context"] = @{};
         for (NSDictionary *effect in @[
             @{@"index":@0,@"variant":@100,@"id":@34,@"color":@0},
             @{@"index":@0,@"variant":@300,@"id":@19,@"color":@0},
@@ -186,6 +244,26 @@ void TestAdvancedDescriptions(NSDictionary *database) {
         NSCAssert([EIDAdvancedDescription(@"Base",100,10,0,dice,context) isEqual:@"Base"], @"Fresh removal clears stale ownership immediately");
         context[@"pickup_context"] = @{@"spindown":@{@"validated":@NO}};
         NSCAssert([EIDAdvancedDescription(@"Base",100,10,0,dice,context) isEqual:@"Base"], @"An unavailable native eligibility query never claims everything is unlocked");
+        context[@"inside_item_reminder"] = @YES;
+        NSDictionary *fullBag = @{@"validated":@YES,@"count":@8,@"result":@25,
+            @"ingredients":@[@1,@1,@1,@1,@1,@1,@1,@1]};
+        context[@"pickup_context"] = @{@"crafting_bag":fullBag,@"crafting_result":@YES};
+        NSString *crafted = EIDAdvancedDescription(@"Result description",100,25,0,none,context);
+        NSCAssert([crafted containsString:@"{{Collectible710}} 8/8"] &&
+            [crafted containsString:@"{{Crafting1}}"] && [crafted containsString:@"→ {{Collectible25}}"] &&
+            [crafted containsString:context[@"item_names"][@"5.100.25"]] &&
+            [crafted hasSuffix:@"#Result description"], @"The full bag preview preserves the result's localized description: %@",code);
+        context[@"inside_item_reminder"] = @NO;
+        NSCAssert(![EIDAdvancedDescription(@"Base",100,25,0,none,context) containsString:@"8/8"], @"Bag result never replaces a floor pickup");
+        context[@"inside_item_reminder"] = @YES;
+        context[@"pickup_context"] = @{@"crafting_bag":@{@"validated":@YES,@"count":@2,@"result":@0,@"ingredients":@[@1,@2]}};
+        NSString *partialBag = EIDAdvancedDescription(@"Bag description",100,710,0,none,context);
+        NSCAssert([partialBag hasPrefix:@"{{Collectible710}} 2/8"] && ![partialBag containsString:@"→"], @"Incomplete bags show progress, never a guessed recipe");
+        context[@"pickup_context"] = @{@"crafting_bag":fullBag,@"crafting_result":@YES};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,26,0,none,context) isEqual:@"Base"], @"Mismatched result never becomes another item's recipe");
+        context[@"pickup_context"] = @{@"crafting_bag":@{@"validated":@YES,@"count":@8,@"result":@25,@"ingredients":@[@1]}};
+        NSCAssert([EIDAdvancedDescription(@"Base",100,710,0,none,context) isEqual:@"Base"], @"Malformed bag metadata fails closed");
+        context[@"inside_item_reminder"] = @NO;
         context[@"pickup_context"] = @{};
         for (NSArray *test in @[@[@300,@5,@286,@6],@[@300,@32,@263,@2],@[@70,@10,@348,@4],@[@1070,@10,@348,@4]]) {
             NSString *key = [NSString stringWithFormat:@"5.100.%@",test[2]];

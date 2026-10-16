@@ -43,7 +43,7 @@ The importer includes upstream `ConditionalDescs`, Repentance `repConditions`,
 adapter applies static character rules from the reference source, translated
 health-type replacements, and static Greed/Greedier rules. Pickup descriptions
 use the closest native player's character type; the pause inventory uses the
-primary player. Invalid native context preserves the base description.
+selected native player. Invalid native context preserves the base description.
 
 Exported Birthright entries are keyed by the native `PlayerType` enum (`0...40`),
 not Lua's array index (`1...41`). The importer subtracts one specifically for
@@ -61,8 +61,8 @@ Player-wide conditions examine the validated native player list; closest-player
 rules retain that distinction and append localized "Different effect for ..."
 annotations for other character types. Personal inventory snapshots are indexed
 by native player, so same-character co-op players do not exchange ownership
-conditions. Pause descriptions use the primary player's personal owned-item set;
-the inventory list itself remains the existing aggregated view. This is not a
+conditions. Pause descriptions and the inventory list use the selected native
+player's personal state, with a picker for Jacob/Esau and co-op. This is not a
 complete reimplementation of every original co-op UI or twin/subplayer rule.
 
 Tainted Cain's salvage descriptions use the actual room pool mapping, personal
@@ -72,6 +72,14 @@ Certificate dimension (2), and the native excluded room index (-12) preserve
 ordinary descriptions. Missing native context also preserves the description.
 Salvage pedestals do not show collectible transformation progress. No seeded
 prediction of the individual random salvage drops is claimed.
+
+The pause-inventory Bag of Crafting entry now reads the native cached outcome
+for its actual eight ingredients and shows that item's localized description.
+Partial bags show ingredient progress, never a guessed output. Viewing does not
+craft or add the output to ownership. This is separate from the original EID's
+full recipe-search/available-room-pickup helper, which remains unimplemented.
+Pocket actives are resolved through `ActiveSlot + 1` references, preventing slot
+3 from being misrepresented as Spoon Bender in the list and conditional state.
 
 Book of Virtues uses upstream's standard-Repentance XML wisp table, localized
 special effects and flags, the current absolute stage, and the original wisp/ring
@@ -84,7 +92,9 @@ virtual ownership for Judas/Black Judas with Birthright even when raw count 59
 is zero. The read-only adapter evaluates that verified branch per player, honors
 the native non-quest-item suppression flag, and does not insert a phantom item
 into the pause inventory. Missing flag/count context suppresses the synergy.
-Void-absorbed actives remain unavailable. All new adapters are read-only.
+Void's native absorbed-active list is now separately inspectable; it is not
+universally substituted for physical ownership in every synergy adapter.
+All new adapters are read-only.
 
 Stat icon aliases such as `Damage` are resolved to their original `DamageREP`
 frames when importing assets. The renderer also resolves these aliases for older
@@ -131,11 +141,46 @@ override item updates an unchanged floor pickup's description.
 
 This covers the original weapon-override block, not all EID item synergies.
 The current native inventory exposes owned collectibles, pocket actives,
-equipped trinkets, and smelted regular/golden trinkets. Void-absorbed actives are
-not separately tracked yet. Outside pause inventory, owned items are aggregated across native
-players; the existing pause inventory also remains an aggregated view.
+equipped trinkets, and smelted regular/golden trinkets. Void-absorbed actives use
+their own inventory section. Outside pause inventory, applicable any-player
+conditions aggregate ownership; the pause inventory selects a native player.
+
+## Current effects and personal inventories
+
+Purity reads its native boost field and live temporary-effect presence, including
+disabled/inactive state. It never advances RNG or predicts the next aura.
+Modeling Clay reads the current room's cached item only while inspecting the
+owned trinket. No-effect rooms retain its ordinary description. Void reads the
+persisted native int32 active-ID vector with bounded stable reads. Duplicate
+copies are retained; consumed single-use items follow the game's own list.
+Absorbed actives are clickable but not physically owned collectibles.
+Void converts absorbed passives into stats; those are not entries in its
+persisted active-ability list.
+
+Pause rows carry native player index/type for collectibles, all four active
+slots, pockets and swallowed trinkets. Same IDs belonging to different players
+remain separate. Row selection does not search a combined list by item ID alone.
+PlayerForm counters and current collectible/active counts are personal too.
+Repeated physical collectibles use one row with a live `×N` quantity. Raw
+counts and actual active-slot occurrences are merged without counting the same
+copy twice, and quantity changes invalidate the inventory list signature.
+Super Bum's unverified merged-familiar ownership is omitted in co-op rather
+than attributed to the wrong player. See [device checks](testing-current-effects.md).
 
 ## Charge-item conditionals
+
+The optional **RNG predictions (spoilers)** setting follows upstream's opt-in
+approach to revealing outcomes, but uses this executable's verified native
+branches. Crooked Penny displays heads/tails in its pause-inventory description,
+including both Car Battery activations. Eternal D6 annotates a visible rerollable
+pedestal with the next individual reroll's result; D Infinity's actual mode is
+recognized. With Car Battery, the Eternal D6 label explicitly says first of two
+rerolls only. No exact remaining-reroll count or second Eternal D6 outcome is
+claimed. Native pedestal initialization/price handling can advance RNG after
+morphing, so a desktop formula cannot establish those future states reliably.
+All calculations operate on private copies, without executing an effect or
+native RNG method. The setting defaults to off; malformed state suppresses the
+prediction. See [device scenarios](testing-outcome-predictions.md).
 
 `carBattery`, its `repCarBattery` overrides, `tarotClothBuffs`, and the effective
 Repentance no-synergy/Car Battery pedestal lists are imported from upstream.
@@ -151,6 +196,33 @@ visible there. Native active-item metadata limits charge modifications to
 actual actives; missing inventory/metadata never invents a synergy.
 
 ## Native dynamic context
+
+### Food and familiar conditionals
+
+Short native pedestal cycles (Binge Eater / Soul of Isaac) follow the current
+validated ID on the main thread, independently of the five-item Crown browser.
+A display-link callback reads only the selected short-cycle object and redraws
+only when its identity/context changes. The normal background heap/inventory
+scan remains at 250 ms, and its results are revalidated before rendering so a
+delayed scan cannot repaint the previous food/item. Run/room/seed, object state,
+Curse of the Blind and sprite visibility are checked; removed/hidden/stale
+objects are suppressed. No timing guess, native effect call or touch/window
+change is used.
+
+The standard-Repentance `bingeEaterBuffs` table supplies all eight food bonuses;
+the original healing conditional also handles Tainted Bethany's blood charges.
+The effective BFFS no-synergy, pedestal whitelist, Hive Mind and ignore lists
+are imported with Repentance overrides, never Repentance+ patches. Familiar
+number replacements share the original BFFS unique ID, so owning both upgrades
+does not double the same bonus twice. Soul of Bethany and supported familiar
+trinkets use their upstream-specific entries. Forgotten Lullaby includes clot
+sources and the original wisp/Gello exceptions in both directions, alongside
+the existing Lilith/Tainted Lilith character conditions.
+
+Floor conditions use current any-player ownership; the pause item reminder
+uses only its selected player's snapshot. Empty/unreadable fresh ownership does
+not fall back to a stale aggregate. No new offsets, game hooks, RNG predictions
+or native mutating calls are introduced. See [device scenarios](testing-food-familiars.md).
 
 The native reader validates the floor and each player's speed, fire delay,
 damage, range, consumable counts, and character-specific charge pool. Unknown

@@ -19,7 +19,33 @@ Download the current files from [GitHub Releases](https://github.com/emp0ry/Isaa
 
 A standalone `IsaacExternalItemDescriptions.dylib`, `descriptions.json`, and `SHA256SUMS` are also provided. No Isaac IPA or copyrighted game bundle is distributed.
 
-### What's new in v0.10.1
+### What's new in v0.11.0
+
+- **Pocket actives fixed:** EID Items resolves the real active slot instead of
+  treating its internal reference as an item ID. Tainted Cain no longer gets a
+  phantom Spoon Bender.
+- **Bag of Crafting:** inspect the bag's ingredients and, at 8/8, its actual
+  cached result with a full description. Viewing the preview never crafts.
+- **Food and familiar synergies:** Binge Eater food bonuses, supported BFFS! /
+  Hive Mind adjustments and Forgotten Lullaby exceptions follow original EID.
+  Short pedestal cycles now follow the currently visible item without the
+  previous half-cycle's description.
+- **Current effects:** inspect Void's absorbed actives, Purity's current bonus
+  or inactive state, and Modeling Clay's already-applied item.
+- **Personal inventories:** switch between native players in EID Items. Their
+  items, pockets, swallowed trinkets and transformation counters remain separate.
+  Repeated collectibles show a live quantity such as **Brimstone ×3**.
+- **Optional RNG previews:** a new setting, off by default, enables Crooked
+  Penny's next result and Eternal D6's next individual pedestal-reroll outcome.
+  Car Battery's second Eternal D6 outcome is not predicted.
+
+Read the [complete v0.11.0 release notes](docs/RELEASE_NOTES_v0.11.0.md),
+[crafting checks](docs/testing-crafting-preview.md),
+[food/familiar checks](docs/testing-food-familiars.md),
+[current-effect/player checks](docs/testing-current-effects.md), and
+[optional outcome checks](docs/testing-outcome-predictions.md).
+
+### Previous update: v0.10.1
 
 - **Readable pause descriptions:** selecting an item in **EID Items** always
   gives it a dark background, even when Background is disabled. The temporary
@@ -85,12 +111,17 @@ The overlay tracks the player's position and displays the nearest eligible objec
 - Puberty/Adult and other identified pill transformations use the persisted counters, including horse pills. Unknown pills never expose transformation information.
 - Transformation counters retain the actual count after completion, so progress can display `4/3` and higher.
 - Static character-specific EID rules adjust descriptions for the nearest player, including Lost/Keeper no-effect and lethal-use warnings, health-type replacements, and Birthright effects.
-- Additional character context includes Eye Drops, Tainted Samson/Uranus, Keeper/IV Bag, tainted Clicker, Dead Cat, and Lilith/Tainted Lilith BFFS! effects. Co-op differences are annotated and pause ownership checks use the primary player's inventory.
+- Additional character context includes Eye Drops, Tainted Samson/Uranus, Keeper/IV Bag, tainted Clicker, Dead Cat, and Lilith/Tainted Lilith BFFS! effects. Co-op differences are annotated and pause ownership checks use the selected player's inventory.
 - Tainted Cain pedestals show salvage information with room-pool rewards, Birthright and trinket bonuses, while protecting quest items and special contexts.
 - Book of Virtues previews wisp stats and special effects; Judas' passive Birthright Book of Belial adds active-item bonuses.
 - Greed and Greedier use upstream mode-specific descriptions and room-to-wave wording where supported.
 - Weapon descriptions warn when an owned item overrides a pickup's effect, and in the reverse direction when the pickup would override an owned item. Repentance weapon priorities and special synergies follow original EID, including Dr. Fetus/Trisagion, Epic Fetus, Brimstone, Mom's Knife, Tech X, C Section, Spirit Sword, and Azazel's native weapon.
 - Car Battery and Tarot Cloth apply original Repentance conditional descriptions, including numeric effect changes, special behavior, and no-synergy active items.
+- Binge Eater adds each food's extra stats, temporary damage, speed penalty and healing changes. BFFS! / Hive Mind adjust supported familiar descriptions without stacking their shared bonus; Forgotten Lullaby includes clot support and no-effect exceptions. Upgrade-pedestal hints use current ownership and are suppressed in EID Items.
+- Binge Eater and other short pedestal cycles follow the currently displayed item with a bounded main-thread read, without speeding up the full memory scan or replacing Glitched Crown's inspection browser.
+- EID Items has a player selector for Jacob/Esau and native co-op players. Collectibles, equipped/swallowed trinkets, pocket items and native transformation counters are scoped to that player rather than combined.
+- Duplicate collectibles appear once with their current quantity, such as `Brimstone ×3`. Counts update after gaining or removing copies; Void-absorbed actives remain separate. Void converts passive items into stats, so those do not belong in its absorbed-actives list.
+- Void's already-absorbed actives appear in their own inspectable inventory section, including duplicate counts, using the game's persisted native list. Purity shows its currently active bonus (or inactive state); Modeling Clay displays its already-applied item's description. These do not predict future RNG outcomes.
 - Golden trinkets and Mom's Box use upstream's per-trinket multipliers, custom replacements, and translated bonus text; changed values are highlighted in gold.
 - Luck-sensitive effects show the current player's actual proc chance using the original standard-Repentance formulas and native Luck value.
 - Spindown Dice previews three uses using the same native availability check as the iOS effect. Locked, run-restricted, missing and hidden IDs are skipped completely; only actual eligible results are displayed. The chain accounts for Car Battery, stops at Dad's Note, and shows item disappearance. Unlocks are checked separately from collection-page ownership.
@@ -129,6 +160,7 @@ The **EID ⚙** button appears in the bottom-right corner while Isaac is in a me
 - Independent Name, Icon, Quality, and Description visibility
 - Position reset controls
 - A scrollable layout that keeps every control usable on smaller displays
+- Optional **RNG predictions (spoilers)**, off by default
 - Dataset/build information and original EID credits
 
 The default overlay position is 140 px from the left and 50 px from the top.
@@ -142,10 +174,12 @@ that this fixes the stuck joystick on the affected LiveContainer device.
 
 While a run is paused, an **EID Items** button appears in the top-left corner and
 the **EID ⚙** settings button becomes available in the bottom-right corner.
-It opens a scrollable browser containing the player's current collectibles,
-active item, trinkets, held cards and runes, identified pills, and progress for
-all transformations. Selecting an item closes the browser and renders its full
-EID description. The button and browser disappear as soon as gameplay resumes.
+It opens a scrollable browser containing the selected player's collectibles
+(with duplicate quantities), actual active slots, equipped/swallowed trinkets,
+held cards and runes, identified pills, Void-absorbed actives, and transformation
+progress. A player picker keeps Jacob/Esau and native co-op inventories separate.
+Selecting an item closes the browser and renders its full EID description.
+The button and browser disappear as soon as gameplay resumes.
 
 Selected descriptions always have a dark, content-sized backdrop over the light
 pause screen. The temporary backdrop has a minimum opacity of 72%, even when
@@ -157,6 +191,39 @@ advance from the overview (`0/10 ›`) through D1, D4, D6, Eternal D6, D7, D8, D
 D12, D20 and D100, then back to the overview. Each page uses its own localized
 description, icon, quality and charge indicator. Browsing never switches the
 actual active item, uses it or spends charge.
+
+Select **Bag of Crafting** to inspect its current ingredients (`N/8`). When all
+eight slots are filled and Isaac has prepared a result, the same selection opens
+that item's full localized description, icon and quality, with the bag's
+ingredients above it. This reads the game's cached result; it does not craft,
+spend ingredients, change RNG or add the previewed item to your inventory.
+Incomplete/unavailable recipes never display a guessed result. Recipe search
+and suggestions using pickups outside the bag are not implemented.
+
+Pocket actives resolve through their native active-slot references, not by
+treating the slot number as a collectible ID. Tainted Cain's bag therefore does
+not insert a phantom Spoon Bender into **EID Items** or ownership conditions.
+See [crafting-preview checks](docs/testing-crafting-preview.md).
+
+### Optional next-outcome predictions
+
+Enable **RNG predictions (spoilers)** in EID settings to inspect the following:
+
+- **Eternal D6:** a visible, rerollable pedestal shows whether the next individual
+  reroll will replace it or make it disappear. D Infinity's actual Eternal D6
+  mode is also recognized. With Car Battery the text explicitly covers only
+  the first reroll (`1/2`); the second reroll and future-use counts are not
+  claimed, because the resulting pedestal can advance its own RNG differently.
+- **Crooked Penny:** select the owned active in paused **EID Items** to see the
+  next heads/tails result. Car Battery shows both native activations separately.
+  The second result uses the real collectible stream, including its additional
+  advance after a failed activation, not the temporary room-mixed RNG.
+
+Predictions copy current native state. Viewing or refreshing them never uses
+items, advances game RNG, spends charge, crafts or edits a save. Unknown/blind
+pedestals and unavailable native state fail closed. No running Windows/desktop
+EID RNG algorithm is assumed to match this iOS executable. See
+[device checks and native limitations](docs/testing-outcome-predictions.md).
 
 ## Screenshots
 
@@ -286,9 +353,9 @@ Verified offsets and their validation are documented in [Native layout](docs/NAT
 - The in-game overlay currently presents the nearest supported description rather than every object in the room simultaneously.
 - Direct embedding requires modifying and signing the application. Re-signing can change the bundle identifier, application container, Keychain groups, and App Store receipt behavior.
 - The project does not alter StoreKit, DLC ownership, receipts, or purchase checks.
-- Contextual descriptions cover the documented Repentance rules, not every upstream EID synergy. Void-absorbed actives and complete twin/subplayer presentation are not implemented.
-- Pause-inventory entries remain aggregated in co-op, while personal conditional ownership is scoped to the primary player. Book of Virtues pedestal previews include all owned actives rather than only the selected primary slot.
-- Tainted Cain and Tainted Lilith context is implemented and covered by host tests, but gameplay verification is pending because those characters are not unlocked on the test account. See [character acceptance checks](docs/CHARACTER_CONTEXT_TESTING.md).
+- Contextual descriptions cover the documented Repentance rules, not every upstream EID synergy. Arbitrary spawned subplayers and all desktop co-op filtering rules are not claimed. Super Bum's merged familiar ownership is not verified per player in co-op, so its personal counter is omitted there rather than borrowed from a partner.
+- Void's native active list is inspectable, but absorbed actives are not universally treated as physically held items by every synergy adapter. Book of Virtues pedestal previews include all owned actives rather than only the selected primary slot.
+- Some character-context gameplay acceptance remains pending; Bag of Crafting and its pocket-active fix have been confirmed on device. See [remaining character checks](docs/CHARACTER_CONTEXT_TESTING.md) and [current effect/player checks](docs/testing-current-effects.md).
 
 ## Credits and legal
 

@@ -6,9 +6,14 @@
 #include "EIDRepeatPolicy.hpp"
 #include "EIDInventoryPreviewPolicy.hpp"
 #include "EIDCollectibleCyclePolicy.hpp"
+#include "EIDLivePedestalPolicy.h"
 #include "EIDHostReadinessPolicy.hpp"
 #include "EIDArtworkBounds.h"
 #include "EIDDescriptionInteraction.h"
+#include "EIDPocketInventoryPolicy.hpp"
+#include "EIDOutcomePredictionPolicy.hpp"
+#include "EIDCurrentEffectsPolicy.hpp"
+#include "EIDInventoryCountPolicy.hpp"
 
 #include <array>
 #include <cassert>
@@ -16,6 +21,114 @@
 using namespace EIDPickupPolicy;
 
 int main() {
+    {
+        using namespace EIDInventoryCountPolicy;
+        assert(PhysicalCopies(0,0) == 0);
+        assert(PhysicalCopies(1,0) == 1);
+        assert(PhysicalCopies(3,0) == 3); // Stacked passives, e.g. Brimstone.
+        assert(PhysicalCopies(2,0) == 2); // Removing a copy updates the count.
+        assert(PhysicalCopies(0,1) == 1); // Pocket/held active absent from table.
+        assert(PhysicalCopies(0,2) == 2);
+        assert(PhysicalCopies(1,1) == 1); // Never double-count overlapping data.
+        assert(PhysicalCopies(2,2) == 2);
+        assert(PhysicalCopies(1,2) == 2);
+        assert(PhysicalCopies(3,1) == 3);
+        assert(PhysicalCopies(999,4) == 999);
+        assert(PhysicalCopies(-1,0) == 0 && PhysicalCopies(1000,0) == 0);
+        assert(PhysicalCopies(1,5) == 0);
+        const std::array<int32_t,2> players{{3,1}};
+        assert(PhysicalCopies(players[0],0) == 3 && PhysicalCopies(players[1],0) == 1);
+    }
+    {
+        using namespace EIDCurrentEffectsPolicy;
+        assert(ValidSpan(0,0,0,4,1024));
+        assert(ValidSpan(0x1000,0x100c,0x1010,4,1024));
+        assert(!ValidSpan(0,4,8,4,1024) && !ValidSpan(0x1000,0x1002,0x1004,4,1024));
+        assert(!ValidSpan(0x1000,0x1004,0x1000,4,1024));
+        assert(!ValidSpan(0x1000,0x5010,0x5010,16,1024));
+        assert(ValidVoidIDs({}) && ValidVoidIDs({33,78,78,477}));
+        assert(!ValidVoidIDs({0}) && !ValidVoidIDs({733}) && !ValidVoidIDs({-1}));
+        assert(!ValidVoidIDs(std::vector<int32_t>(1025,33)));
+        for (int32_t boost=0;boost<4;++boost) assert(ValidPurity(boost,0) && ValidPurity(boost,1));
+        assert(!ValidPurity(4,0) && !ValidPurity(-1,0) && !ValidPurity(0,2));
+        assert(ValidClay(0) && ValidClay(732) && !ValidClay(-1) && !ValidClay(733));
+    }
+    {
+        using namespace EIDOutcomePredictionPolicy;
+        assert(CrookedPenny(0,123,true).count == 0);
+        const auto noBattery = CrookedPenny(1,0,false);
+        assert(noBattery.count == 1 && !noBattery.heads[0] && noBattery.nextSeed == 0x42045);
+        const auto battery = CrookedPenny(1,0,true);
+        assert(battery.count == 2 && !battery.heads[0] && battery.heads[1] && battery.nextSeed == 0x08168259);
+        const auto success = CrookedPenny(123456789,0x12345678,true);
+        assert(success.heads[0] && success.heads[1] && success.nextSeed == 0x14d9d9e9);
+        const auto mixedZero = CrookedPenny(1,Shift(1,5,9,7),true);
+        assert(!mixedZero.heads[0] && !mixedZero.heads[1] && mixedZero.nextSeed == 0xa572d50b);
+        const auto large = CrookedPenny(0xffffffff,123,true);
+        assert(!large.heads[0] && large.heads[1] && large.nextSeed == 0xfde5db39);
+        // Repeated native-style single activations must equal a Car Battery
+        // preview, retaining the original stream rather than the mixed RNG.
+        for (uint32_t seed = 1; seed < 10000; seed += 7) {
+            const uint32_t original = seed, room = seed*0x9e3779b9u;
+            auto first = CrookedPenny(seed,room,false);
+            auto second = CrookedPenny(first.nextSeed,room,false);
+            auto doubleUse = CrookedPenny(seed,room,true);
+            assert(doubleUse.heads[0] == first.heads[0] && doubleUse.heads[1] == second.heads[0]);
+            assert(doubleUse.nextSeed == second.nextSeed && seed == original);
+        }
+        assert(EternalD6(0) == EternalResult::Unknown);
+        assert(EternalD6(1) == EternalResult::Vanish);
+        assert(EternalD6(123456789) == EternalResult::Reroll);
+        assert(EternalD6(0xffffffff) == EternalResult::Reroll);
+        // Native float rounding accounts for the upstream special-case seeds
+        // without inventing a different shift path for this executable.
+        for (uint32_t seed : {8,41,74,107,140,173}) assert(EternalD6(seed) == EternalResult::Vanish);
+        assert(EternalVanishRoll(0x40000000));
+        assert(EternalVanishRoll(0x40000080));
+        assert(EternalVanishRoll(0x400000a8));
+        assert(!EternalVanishRoll(0x400000c0));
+        assert(!EternalVanishRoll(0xffffffff));
+    }
+    {
+        using namespace EIDPocketInventoryPolicy;
+        std::array<Pocket,Slots> raw{{{3,2},{41,1},{2050,0},{0,0}}}, decoded{};
+        std::array<int32_t,Slots> actives{{0,0,710,0}};
+        assert(Resolve(raw,actives,decoded));
+        assert(decoded[0].id == 710 && decoded[0].type == 2); // Not Spoon Bender (3).
+        assert(decoded[1].id == 41 && decoded[1].type == 1); // Rune remains a rune.
+        assert(decoded[2].id == 2050 && decoded[2].type == 0); // Horse-pill color retained.
+        assert(raw[0].id == 3 && actives[2] == 710); // Never mutate native inputs.
+        for (int slot = 1; slot <= 4; ++slot) {
+            raw[0] = {slot,2}; actives = {34,489,710,711};
+            assert(Resolve(raw,actives,decoded) && decoded[0].id == actives[static_cast<size_t>(slot-1)]);
+        }
+        raw[0] = {3,2}; actives[2] = 0;
+        assert(Resolve(raw,actives,decoded) && decoded[0].id == 0); // Empty/stale reference not item 3.
+        raw[0] = {710,2}; assert(!Resolve(raw,actives,decoded)); // Not a direct collectible ID.
+        raw[0] = {-1,2}; assert(!Resolve(raw,actives,decoded));
+        raw[0] = {5,2}; assert(!Resolve(raw,actives,decoded));
+        raw[0] = {98,1}; assert(!Resolve(raw,actives,decoded));
+        raw[0] = {3,2}; actives[2] = 733; assert(!Resolve(raw,actives,decoded));
+        raw[0] = {3,3}; assert(!Resolve(raw,actives,decoded));
+        CraftingBag bag{{},0}; size_t count = 9;
+        assert(ValidateBag(bag,count) && count == 0 && CraftingResult(bag) == 0);
+        for (size_t i = 0; i < 8; ++i) {
+            bag.ingredients[i] = static_cast<uint8_t>(i+1);
+            assert(ValidateBag(bag,count) && count == i+1 && CraftingResult(bag) == 0);
+        }
+        bag.result = 25;
+        assert(ValidateBag(bag,count) && count == 8 && CraftingResult(bag) == 25);
+        const auto before = bag;
+        assert(CraftingResult(bag) == 25 && bag.ingredients == before.ingredients && bag.result == before.result);
+        bag.ingredients[7] = 0;
+        assert(!ValidateBag(bag,count) && CraftingResult(bag) == 0); // Stale result, incomplete bag.
+        bag.result = 0; bag.ingredients[1] = 0;
+        assert(!ValidateBag(bag,count)); // Sparse/corrupt ingredient state.
+        bag = {{1,2,3,4,5,6,7,30},25}; assert(!ValidateBag(bag,count));
+        bag = {{29,29,29,29,29,29,29,29},732}; assert(CraftingResult(bag) == 732);
+        bag.result = 733; assert(CraftingResult(bag) == 0);
+        bag.result = -1; assert(CraftingResult(bag) == 0);
+    }
     {
         assert(EIDDInfinityPreviewID(0) == 489);
         const int expected[] = {476,284,105,609,437,406,285,386,166,283};
@@ -46,6 +159,15 @@ int main() {
         assert(EIDDescriptionFittedWidth(390,NAN,110,27,0,1) == 0);
     }
     {
+        assert(EIDLivePedestalShouldTrack(1)); // Binge Eater: current + one food.
+        assert(EIDLivePedestalShouldTrack(2) && EIDLivePedestalShouldTrack(3));
+        assert(!EIDLivePedestalShouldTrack(-1) && !EIDLivePedestalShouldTrack(0));
+        assert(!EIDLivePedestalShouldTrack(4) && !EIDLivePedestalShouldTrack(8));
+        assert(EIDLivePedestalSubtype(118,25) == 118); // Never display the queued food.
+        assert(EIDLivePedestalSubtype(25,118) == 25); // Follow the actual next frame.
+        assert(EIDLivePedestalSubtype(0,118) == 118); // Visible Flip ghost.
+        assert(EIDLivePedestalSubtype(0,0) == 0 && EIDLivePedestalSubtype(733,25) == 0);
+        assert(EIDLivePedestalSubtype(-1,25) == 0 && EIDLivePedestalSubtype(0,733) == 0);
         using namespace EIDCollectibleCyclePolicy;
         std::vector<int32_t> original{25,2,118,689,1}, normalized;
         std::array<int32_t,MaximumAlternates> queue{};

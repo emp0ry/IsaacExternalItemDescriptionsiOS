@@ -18,6 +18,47 @@ LANGUAGES = {
 
 
 class BundledDescriptionsTests(unittest.TestCase):
+    def test_current_purity_bonuses_are_standard_repentance(self) -> None:
+        english=self.payload["languages"]["en_us"]["purity_boosts"]
+        self.assertEqual(set(english),{"0","1","2","3"})
+        for key,number in (("0","+4"),("1","+2"),("2","+0.5"),("3","+3")):
+            self.assertIn(number,english[key])
+        russian=self.payload["languages"]["ru"]
+        self.assertIn("скорострельности",russian["purity_boosts"]["1"])
+        self.assertIn("следующей комнаты",russian["context_strings"]["CurrentEffectInactive"])
+
+    def test_food_and_familiar_context_matches_repentance_reference(self) -> None:
+        english = self.payload["languages"]["en_us"]
+        self.assertEqual(set(english["binge_eater"]), {"22","23","24","25","26","346","456","707"})
+        self.assertIn("+2.5",english["binge_eater"]["25"])
+        self.assertEqual(english["BFFSSynergies"]["5.100.629"],[3,6])
+        self.assertEqual(english["BFFSSynergies"]["5.100.67"],[6,12])
+        metadata = self.payload["familiar_metadata"]
+        for item in (178,276,467,504):
+            self.assertNotIn(item,metadata["no_synergy"])
+        for item in (325,405,567,615,651,697):
+            self.assertIn(item,metadata["no_synergy"])
+        self.assertIn(629,metadata["hive_mind"])
+        self.assertIn(706,metadata["pedestal_whitelist"])
+        for code, data in self.payload["languages"].items():
+            merged = {**english["binge_eater"],**data["binge_eater"]}
+            self.assertEqual(set(merged),set(english["binge_eater"]),code)
+
+    def test_outcome_prediction_translations_and_fallback(self) -> None:
+        languages = self.payload["languages"]
+        english = languages["en_us"]["context_strings"]
+        for code, data in languages.items():
+            merged = {**english, **data["context_strings"]}
+            for key in ("CrookedPennyHeads", "CrookedPennyTails", "EternalD6Next",
+                        "EternalD6Survives", "EternalD6FirstOnly"):
+                self.assertTrue(merged[key], (code, key))
+            self.assertEqual(merged["EternalD6Next"].count("{1}"), 1)
+            self.assertIn("1/2", merged["EternalD6FirstOnly"])
+        russian = languages["ru"]["context_strings"]
+        self.assertEqual(russian["CrookedPennyHeads"], "Орёл")
+        self.assertEqual(russian["CrookedPennyTails"], "Решка")
+        self.assertIn("Следующий", russian["EternalD6Next"])
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.payload = json.loads(DATABASE.read_text(encoding="utf-8"))

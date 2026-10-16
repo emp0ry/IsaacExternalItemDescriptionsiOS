@@ -67,6 +67,7 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups;
 - (NSArray<EIDPickupIdentity *> *)currentInventoryItems;
 - (NSArray<EIDPickupIdentity *> *)currentSmeltedTrinkets;
+- (NSArray<EIDPickupIdentity *> *)currentVoidedItems;
 // Main-thread-only, read-only native GetPillEffect adapter. Revalidates the live
 // player vector; never invokes game code from the background memory scanner.
 - (EIDPickupIdentity *)resolvedPillIdentity:(EIDPickupIdentity *)identity;
@@ -76,6 +77,9 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 // Main-thread-only, read-only native Wild Card / Vurp history. Does not run
 // either effect, consume RNG, or infer use from pocket inventory changes.
 - (EIDPickupIdentity *)resolvedRepeatIdentity:(EIDPickupIdentity *)identity;
+// Main-thread revalidation of the current pedestal, independent of Crown's
+// cycle browser. Returns nil for removed, reused, stale-room or hidden objects.
+- (nullable EIDPickupIdentity *)resolvedLivePedestalIdentity:(EIDPickupIdentity *)identity;
 // Main-thread snapshot of a validated visible pedestal's native collectible
 // cycle. No effect call, RNG advance or temporal sampling is involved.
 - (EIDPickupIdentity *)resolvedCollectibleCycleIdentity:(EIDPickupIdentity *)identity;
@@ -83,6 +87,16 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 // Feather. Metadata contains only the bounded upstream Black Feather ID lists.
 - (EIDPickupIdentity *)resolvedInventoryPreviewIdentity:(EIDPickupIdentity *)identity
                                 blackFeatherMetadata:(NSDictionary *)metadata;
+// Paused inventory only: read the game's already cached Bag of Crafting result.
+// Never calls crafting, modifies ingredients, advances RNG or adds ownership.
+- (EIDPickupIdentity *)resolvedCraftingIdentity:(EIDPickupIdentity *)identity;
+// Current (already applied) Modeling Clay effect in the selected player's
+// pause inventory. Never rolls or applies a temporary effect.
+- (EIDPickupIdentity *)resolvedCurrentEffectIdentity:(EIDPickupIdentity *)identity;
+// Optional, read-only next-outcome previews. Copies RNG state; never calls an
+// item effect or native RNG. Eternal D6 is one reroll, not a future-use count.
+- (EIDPickupIdentity *)resolvedOutcomeIdentity:(EIDPickupIdentity *)identity
+                             insideInventory:(BOOL)insideInventory enabled:(BOOL)enabled;
 // Normalized collectible/trinket identities for conditional descriptions.
 - (NSSet<NSString *> *)currentOwnedItemKeys;
 - (NSInteger)ownedCollectibleCountForID:(NSInteger)collectibleID;

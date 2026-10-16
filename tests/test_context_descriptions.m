@@ -14,6 +14,7 @@ void TestAdvancedDescriptions(NSDictionary *database);
 @property(nonatomic, getter=isSuperBumActive) BOOL superBumActive;
 @property(nonatomic) NSUInteger runCounter;
 @property(nonatomic, copy) NSDictionary *forms;
+@property(nonatomic, copy) NSDictionary *descriptionState;
 @end
 @implementation TestPlayerSnapshot
 - (NSInteger)nativeTransformationCounterForFormID:(NSInteger)form { return [self.forms[@(form)] integerValue]; }
@@ -25,7 +26,7 @@ static NSDictionary *Context(NSDictionary *database, NSString *language) {
     NSMutableDictionary *context = [NSMutableDictionary dictionary];
     for (NSString *key in @[@"conditionals", @"heart_replacements", @"birthright", @"greed_no_effect_notes",
                             @"car_battery", @"tarot_cloth", @"stat_names", @"pickup_names",
-                            @"pandora_floor_lines", @"context_strings", @"BFFSSynergies", @"book_of_belial",
+                            @"pandora_floor_lines", @"context_strings", @"BFFSSynergies", @"binge_eater", @"book_of_belial",
                             @"wisp_texts", @"wisp_extras", @"tear_flags"]) {
         NSMutableDictionary *entries = [database[@"languages"][@"en_us"][key] mutableCopy];
         [entries addEntriesFromDictionary:database[@"languages"][language][key]];
@@ -34,6 +35,7 @@ static NSDictionary *Context(NSDictionary *database, NSString *language) {
     context[@"rules"] = database[@"context_rules"];
     context[@"weapon_rules"] = database[@"weapon_rules"];
     context[@"car_battery_metadata"] = database[@"car_battery_metadata"];
+    context[@"familiar_metadata"] = database[@"familiar_metadata"];
     context[@"pill_metadata"] = database[@"pill_metadata"];
     context[@"character_metadata"] = database[@"character_metadata"];
     context[@"native_metadata"] = @{@"active_ids":@[@33,@34,@35,@78,@133,@135,@164,@297,@584,@636,@653,@713],
@@ -63,6 +65,124 @@ static NSString *PandoraLines(NSString *text) {
         if (trimmed.length) [lines addObject:trimmed];
     }
     return [lines componentsJoinedByString:@"#"];
+}
+
+static void TestFoodAndFamiliars(NSDictionary *database) {
+    NSDictionary *english = Context(database,@"en_us");
+    NSSet *bffs = [NSSet setWithObject:@"5.100.247"], *hive = [NSSet setWithObject:@"5.100.248"];
+    NSSet *both = [NSSet setWithArray:@[@"5.100.247",@"5.100.248"]];
+    NSSet *food = [NSSet setWithObject:@"5.100.664"];
+    NSString *bobby = EIDContextDescriptionWithOwnedItems(@"Deals 3.5 damage, not 13.5",100,8,0,0,bffs,english);
+    NSCAssert([bobby isEqualToString:@"Deals {{BlinkPink}}7{{CR}} damage, not 13.5"],
+        @"BFFS changes one complete damage number without changing a larger decimal");
+    NSCAssert([EIDContextDescriptionWithOwnedItems(@"Deals 3.5 damage",100,8,0,0,hive,english)
+        isEqualToString:@"Deals 3.5 damage"], @"Hive Mind does not boost an unrelated familiar");
+    for (NSSet *owned in @[bffs,hive,both]) {
+        NSString *text = EIDContextDescriptionWithOwnedItems(@"Deals 3 damage",100,629,0,0,owned,english);
+        NSCAssert([text containsString:@"6{{CR}}"] && ![text containsString:@"12{{CR}}"],
+            @"Bot Fly doubles once, even with both upgrades");
+        NSCAssert([text containsString:[owned containsObject:@"5.100.247"] ? @"BlinkPink" : @"BlinkBlue"],
+            @"A shared BFFS uniqueID preserves the original upgrade priority/color");
+    }
+    for (NSNumber *idValue in @[@178,@276,@467,@504]) {
+        NSString *text = EIDContextDescriptionWithOwnedItems(@"Original",100,idValue.integerValue,0,0,bffs,english);
+        NSCAssert(![text containsString:@"No effect from"], @"Repentance removes obsolete AB+ familiar exclusions");
+    }
+    NSString *unaffected = EIDContextDescriptionWithOwnedItems(@"Orbitals",100,10,0,0,bffs,english);
+    NSCAssert([unaffected containsString:@"No effect from BFFS!"], @"No-synergy familiar names the actual upgrade");
+    NSCAssert([EIDContextDescriptionWithOwnedItems(@"Ordinary item",100,1,0,0,bffs,english)
+        isEqualToString:@"Ordinary item"], @"Owning BFFS never annotates arbitrary passives");
+    for (NSString *language in database[@"languages"]) {
+        NSMutableDictionary *context = [Context(database,language) mutableCopy];
+        for (NSNumber *item in @[@22,@23,@24,@25,@26,@346,@456,@707]) {
+            NSString *base = database[@"languages"][language][@"collectibles"][item.stringValue][@"description"]
+                ?: database[@"languages"][@"en_us"][@"collectibles"][item.stringValue][@"description"];
+            NSString *text = EIDContextDescriptionWithOwnedItems(base,100,item.integerValue,0,0,food,context);
+            NSString *firstBuff = [context[@"binge_eater"][item.stringValue] componentsSeparatedByString:@"#"].firstObject;
+            NSCAssert([text containsString:@"{{Item5.100.664}}"] && [text containsString:firstBuff] &&
+                ![text containsString:@"{1}"], @"Each food has localized/fallback Binge Eater stats (%@ %@)",language,item);
+            NSCAssert([EIDContextDescriptionWithOwnedItems(base,100,item.integerValue,0,0,[NSSet set],context)
+                isEqualToString:base], @"Removing Binge Eater restores the base food description");
+        }
+        NSCAssert([EIDContextDescriptionWithOwnedItems(@"Unrelated",100,27,0,0,food,context)
+            isEqualToString:@"Unrelated"], @"Unlisted food/items never inherit Binge Eater stats");
+        for (NSString *target in context[@"BFFSSynergies"]) {
+            NSArray *parts = [target componentsSeparatedByString:@"."];
+            if (parts.count != 3) continue;
+            NSInteger variant = [parts[1] integerValue], item = [parts[2] integerValue];
+            NSString *text = EIDContextDescriptionWithOwnedItems(@"3.5 7 30 75 100",variant,item,0,0,both,context);
+            NSCAssert(![text containsString:@"{1}"] && ![text containsString:@"NameOnly"],
+                @"All familiar conditional templates resolve (%@ %@)",language,target);
+            NSCAssert(!([text containsString:@"BlinkPink"] && [text containsString:@"BlinkBlue"]),
+                @"Familiar buffs never stack duplicate replacement passes");
+        }
+        for (NSNumber *upgrade in @[@247,@248]) {
+            NSString *text = EIDContextDescriptionWithOwnedItems(@"Base",100,upgrade.integerValue,0,0,
+                [NSSet setWithObject:@"5.100.403"],context);
+            if ([context[@"BFFSSynergies"][@"5.100.403"] isKindOfClass:NSString.class])
+                NSCAssert([text containsString:@"{{Item5.100.403}}"], @"Upgrade pedestal previews an owned eligible familiar (%@)",language);
+            context[@"inside_item_reminder"] = @YES;
+            NSCAssert([EIDContextDescriptionWithOwnedItems(@"Base",100,upgrade.integerValue,0,0,
+                [NSSet setWithObject:@"5.100.403"],context) isEqualToString:@"Base"],
+                @"EID Items suppresses upgrade-pedestal-only hints");
+            context[@"inside_item_reminder"] = @NO;
+            text = EIDContextDescriptionWithOwnedItems(@"Base",100,upgrade.integerValue,0,0,both,context);
+            NSCAssert([text containsString:context[@"conditionals"][@"No Effect (Familiars)"]],
+                @"Both upgrade pedestals explain their overlapping familiar bonus");
+        }
+        for (NSNumber *variant in @[@300,@350]) {
+            NSInteger item = variant.intValue == 300 ? 96 : 182;
+            NSString *text = EIDContextDescriptionWithOwnedItems(@"Base",variant.integerValue,item,0,0,bffs,context);
+            NSString *key = [NSString stringWithFormat:@"5.%@.%ld",variant,(long)item];
+            if ([context[@"BFFSSynergies"][key] isKindOfClass:NSString.class])
+                NSCAssert([text containsString:@"{{Item5.100.247}}"], @"Soul stone and wisp trinket BFFS rules are included");
+        }
+        NSString *golden = EIDContextDescriptionWithOwnedItems(@"Deals 3.5 damage",350,54|0x8000,0,0,bffs,context);
+        NSString *normal = EIDContextDescriptionWithOwnedItems(@"Deals 3.5 damage",350,54,0,0,bffs,context);
+        NSCAssert([golden isEqualToString:normal], @"Golden trinket identity selects the same familiar conditional");
+        NSSet *lullaby = [NSSet setWithObject:@"5.350.141"];
+        for (NSNumber *item in @[@584,@685,@702,@728]) {
+            NSString *text = EIDContextDescriptionWithOwnedItems(@"Base",100,item.integerValue,0,0,lullaby,context);
+            NSCAssert([text containsString:context[@"item_names"][@"5.350.141"]] &&
+                [text containsString:@"{{Item5.350.141}}"], @"Lullaby exclusions name the trinket");
+            text = EIDContextDescriptionWithOwnedItems(@"Base",350,141,0,0,
+                [NSSet setWithObject:[@"5.100." stringByAppendingString:item.stringValue]],context);
+            NSCAssert([text containsString:context[@"item_names"][[ @"5.100." stringByAppendingString:item.stringValue]]],
+                @"Lullaby warns about the same unsupported familiar in the reverse direction");
+        }
+        NSString *clots = EIDContextDescriptionWithOwnedItems(@"Base",350,141,0,0,
+            [NSSet setWithArray:@[@"5.100.713",@"5.350.176"]],context);
+        NSCAssert([clots containsString:@"{{Item5.100.713}}"] && [clots containsString:@"{{Item5.350.176}}"],
+            @"Forgotten Lullaby includes clots from Sumptorium and Lil Clot");
+        context[@"player_index"] = @0;
+        context[@"live_state"] = @{@"players":@[
+            @{@"index":@0,@"type":@0,@"owned":@[]},
+            @{@"index":@1,@"type":@0,@"owned":both.allObjects}]};
+        context[@"inside_item_reminder"] = @YES;
+        NSCAssert([EIDContextDescriptionWithOwnedItems(@"3.5",100,8,0,0,both,context) isEqualToString:@"3.5"],
+            @"Same-character co-op partner never lends an upgrade to EID Items");
+        context[@"inside_item_reminder"] = @NO;
+        NSCAssert(![EIDContextDescriptionWithOwnedItems(@"3.5",100,8,0,0,[NSSet set],context) isEqualToString:@"3.5"],
+            @"Floor descriptions follow original EID's any-player ownership rule");
+        context[@"live_state"] = @{@"players":@[@{@"index":@0,@"type":@0,@"owned":@[]}]};
+        NSCAssert([EIDContextDescriptionWithOwnedItems(@"3.5",100,8,0,0,both,context) isEqualToString:@"3.5"],
+            @"Fresh empty ownership overrides a stale aggregate after item removal");
+        NSCAssert([EIDContextDescriptionWithOwnedItems(@"Base",100,25,0,0,food,context) isEqualToString:@"Base"],
+            @"Fresh empty ownership also removes Binge Eater bonuses");
+    }
+    NSString *healing = EIDContextDescriptionWithOwnedItems(@"Heals 1 heart",100,25,0,0,food,english);
+    NSCAssert([healing containsString:@"Heals {{BlinkGreen}}2{{CR}} hearts"], @"Binge Eater doubles food healing");
+    NSString *blood = EIDContextDescriptionWithOwnedItems(@"↑ {{Heart}} +1 Health#{{HealingRed}} Heals 1 heart",100,25,36,0,food,english);
+    NSCAssert([blood containsString:@"+{{BlinkGreen}}6{{CR}} blood charges"], @"Tainted Bethany gets the original six-charge food conversion");
+    for (NSNumber *type in @[@10,@31]) {
+        NSString *item = type.integerValue == 10 ? @"25" : @"707";
+        NSString *base = database[@"languages"][@"en_us"][@"collectibles"][item][@"description"];
+        NSString *text = EIDContextDescriptionWithOwnedItems(base,100,item.integerValue,type.integerValue,0,food,english);
+        NSCAssert([text containsString:@"3.6"] && ![text containsString:@"{{HealingRed}}"] &&
+            ![text containsString:@"No effect"], @"Lost food retains useful Binge Eater stats without claiming health or total uselessness");
+        text = EIDContextDescriptionWithOwnedItems(base,100,item.integerValue,type.integerValue,0,[NSSet set],english);
+        NSCAssert([text containsString:@"No effect"], @"Without Binge Eater, ordinary Lost food health protection remains");
+    }
 }
 
 static void TestPillsAndCollection(NSDictionary *database) {
@@ -159,6 +279,7 @@ int main(int argc, const char *argv[]) {
         NSData *bytes = [NSData dataWithContentsOfFile:@(argv[1])];
         NSDictionary *database = [NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil];
         NSCAssert(database[@"context_rules"], @"Context data is bundled");
+        TestFoodAndFamiliars(database);
         TestPillsAndCollection(database);
         TestAdvancedDescriptions(database);
         for (NSString *token in @[@"Damage",@"Speed",@"Tears",@"Range",@"Shotspeed",@"Luck",
@@ -489,6 +610,15 @@ int main(int argc, const char *argv[]) {
         snapshot.forms = @{@11:@4, @13:@5};
         NSCAssert([tracker progressForTransformation:14] == 4 && [tracker progressForTransformation:15] == 5 &&
             tracker.required == 3, @"Actual counters can display 4/3 and 5/3 without changing the requirement");
+        NSMutableArray *jacobForms=[NSMutableArray array], *esauForms=[NSMutableArray array];
+        for (NSUInteger i=0;i<15;++i) { [jacobForms addObject:i==11 ? @2 : @0]; [esauForms addObject:i==11 ? @4 : @0]; }
+        snapshot.descriptionState=@{@"players":@[
+            @{@"index":@0,@"type":@19,@"forms":jacobForms,@"collectible_counts":@{}},
+            @{@"index":@1,@"type":@20,@"forms":esauForms,@"collectible_counts":@{}}]};
+        NSCAssert([tracker progressForTransformation:14 playerIndex:0]==2 &&
+            [tracker progressForTransformation:14 playerIndex:1]==4, @"Jacob/Esau transformation counters never use the shared maximum");
+        NSCAssert([tracker progressForTransformation:14 playerIndex:2]<0 && [tracker progressForTransformation:11 playerIndex:1]<0,
+            @"Missing players and unverified co-op familiar ownership do not invent progress");
         puts("Context descriptions and pill transformation tests passed");
     }
     return 0;
