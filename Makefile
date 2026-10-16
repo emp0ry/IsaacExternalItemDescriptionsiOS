@@ -39,7 +39,7 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDHeaderTuning.m \
 	$(PROJECT_ROOT)/src/EIDTransformationProgress.m
 
-.PHONY: all dylib descriptions parity-assets stage-release-bundle package livecontainer audit test release clean
+.PHONY: all dylib descriptions parity-assets stage-release-bundle package livecontainer audit check test local-test release clean
 
 all: dylib package
 
@@ -99,13 +99,27 @@ livecontainer: dylib
 	fi
 	mkdir -p "$(PROJECT_ROOT)/packages"; rm -f "$(LIVECONTAINER_ZIP)"
 	/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$(LIVECONTAINER_FRAMEWORK)" "$(LIVECONTAINER_ZIP)"
-	python3 "$(PROJECT_ROOT)/tests/test_livecontainer_package.py" "$(LIVECONTAINER_FRAMEWORK)" "$(LIVECONTAINER_ZIP)"
+	@if test -f "$(PROJECT_ROOT)/tests/test_livecontainer_package.py"; then \
+		python3 "$(PROJECT_ROOT)/tests/test_livecontainer_package.py" "$(LIVECONTAINER_FRAMEWORK)" "$(LIVECONTAINER_ZIP)"; \
+	fi
 
 audit: dylib
 	file "$(DYLIB)"; otool -L "$(DYLIB)"
 	@if nm -u "$(DYLIB)" | rg -i 'substrate|ellekit|libhooker|/var/jb'; then echo "ERROR: jailbreak-only dependency detected"; exit 1; else echo "Portable dependency audit passed"; fi
 
-test:
+check:
+	python3 "$(PROJECT_ROOT)/tools/release-notes.py" "$$(awk '/^Version:/ { print $$2 }' "$(PROJECT_ROOT)/package/control")" > /dev/null
+	python3 -m py_compile "$(PROJECT_ROOT)/tools/import-eid.py" "$(PROJECT_ROOT)/tools/eid_context.py" "$(PROJECT_ROOT)/tools/eid_supplemental.py" "$(PROJECT_ROOT)/tools/eid_outcome_strings.py" "$(PROJECT_ROOT)/tools/import-eid-assets.py" "$(PROJECT_ROOT)/tools/macho-add-dylib.py" "$(PROJECT_ROOT)/tools/release-notes.py"
+	zsh -n "$(PROJECT_ROOT)/tools/patch-ipa.sh"
+
+test: check
+	@if test -f "$(PROJECT_ROOT)/tests/test_pickup_policy.cpp"; then \
+		$(MAKE) local-test; \
+	else \
+		echo "Local-only test suite is not installed; source and release checks passed."; \
+	fi
+
+local-test:
 	mkdir -p "$(PROJECT_ROOT)/build"
 	"$(HOST_CLANGXX)" -isysroot "$(HOST_SDK)" -std=c++17 -Wall -Wextra -Werror -I"$(PROJECT_ROOT)/include" \
 		"$(PROJECT_ROOT)/tests/test_pickup_policy.cpp" -o "$(PROJECT_ROOT)/build/test_pickup_policy"
@@ -124,8 +138,6 @@ test:
 	python3 "$(PROJECT_ROOT)/tests/test_import_eid_assets.py"
 	python3 "$(PROJECT_ROOT)/tests/test_bundled_descriptions.py"
 	python3 "$(PROJECT_ROOT)/tests/test_documentation.py"
-	python3 -m py_compile "$(PROJECT_ROOT)/tools/import-eid.py" "$(PROJECT_ROOT)/tools/eid_context.py" "$(PROJECT_ROOT)/tools/eid_outcome_strings.py" "$(PROJECT_ROOT)/tools/import-eid-assets.py" "$(PROJECT_ROOT)/tools/macho-add-dylib.py"
-	zsh -n "$(PROJECT_ROOT)/tools/patch-ipa.sh"
 
 release:
 	rm -rf "$(DIST)"

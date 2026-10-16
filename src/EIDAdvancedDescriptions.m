@@ -1,4 +1,5 @@
 #import "EIDAdvancedDescriptions.h"
+#import "EIDContextPlayers.h"
 #import "EIDContextDescriptions.h"
 #import "EIDDynamicDescriptions.h"
 #include <math.h>
@@ -477,6 +478,10 @@ NSString *EIDAdvancedDescription(NSString *detail, NSInteger variant, NSInteger 
     NSInteger difficulty, NSSet<NSString *> *owned, NSDictionary *context) {
     NSDictionary *player = SelectedPlayer(context);
     if ([player[@"owned"] isKindOfClass:NSArray.class]) owned = [NSSet setWithArray:player[@"owned"]];
+    // Keep conditional Void abilities separate from the physical inventory.
+    NSMutableDictionary *personalContext = context.mutableCopy;
+    personalContext[@"inside_item_reminder"] = @YES;
+    owned = EIDConditionalOwnedItems(owned,personalContext);
     BOOL overview = variant == 100 && subtype == 689 && [context[@"pickup_context"][@"crown_overview"] boolValue] &&
         CollectibleCycleItems(context) != nil;
     if (overview) {

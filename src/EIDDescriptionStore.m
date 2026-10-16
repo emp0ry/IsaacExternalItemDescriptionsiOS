@@ -389,7 +389,11 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
             [collectibles addObject:@(item.collectibleID)];
             if (item.itemType == EIDCollectibleItemTypeActive) [actives addObject:@(item.collectibleID)];
         }
-    self.nativeMetadata = @{@"active_ids":[actives sortedArrayUsingSelector:@selector(compare:)],
+    NSMutableDictionary *activeDetails = [NSMutableDictionary dictionary];
+    for (EIDDescription *item in self.items.allValues)
+        if (item.pickupVariant == EIDPickupVariantCollectible && item.itemType == EIDCollectibleItemTypeActive)
+            activeDetails[@(item.collectibleID).stringValue] = @{@"max":@(item.maxCharges),@"type":@(item.chargeType)};
+    self.nativeMetadata = @{@"active_ids":[actives sortedArrayUsingSelector:@selector(compare:)], @"active_details":activeDetails.copy,
         @"collectible_ids":collectibles, @"mimic_charges":mimic.copy,
         @"no_greed_ids":noGreed.allObjects, @"no_challenge_ids":noChallenge.allObjects,
         @"hidden_ids":[hidden.allObjects sortedArrayUsingSelector:@selector(compare:)],
@@ -456,6 +460,8 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
     }
     if ([root[@"context_rules"] isKindOfClass:NSArray.class]) context[@"rules"] = root[@"context_rules"];
     if ([root[@"weapon_rules"] isKindOfClass:NSArray.class]) context[@"weapon_rules"] = root[@"weapon_rules"];
+    if ([root[@"supplemental_rules"] isKindOfClass:NSArray.class]) context[@"supplemental_rules"] = root[@"supplemental_rules"];
+    if ([root[@"pocket_active_players"] isKindOfClass:NSDictionary.class]) context[@"pocket_active_players"] = root[@"pocket_active_players"];
     if ([root[@"car_battery_metadata"] isKindOfClass:NSDictionary.class])
         context[@"car_battery_metadata"] = root[@"car_battery_metadata"];
     if ([root[@"pill_metadata"] isKindOfClass:NSDictionary.class])
@@ -486,8 +492,8 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
     if ([root[@"health_amounts"] isKindOfClass:NSDictionary.class]) context[@"health_amounts"] = root[@"health_amounts"];
     if ([root[@"healing_items"] isKindOfClass:NSArray.class]) context[@"healing_items"] = root[@"healing_items"];
     self.contextData = context.copy;
-    EIDLog(@"imported context: %lu weapon rules, language %@; read-only native inventory; %lu Abyss previews",
-        (unsigned long)[context[@"weapon_rules"] count], self.languageCode,
+    EIDLog(@"imported context: %lu weapon rules, %lu supplemental rules, language %@; read-only native inventory; %lu Abyss previews",
+        (unsigned long)[context[@"weapon_rules"] count], (unsigned long)[context[@"supplemental_rules"] count], self.languageCode,
         (unsigned long)[context[@"abyss_descriptions"] count]);
     NSDictionary *languageStrings = [language[@"strings"] isKindOfClass:NSDictionary.class]
         ? language[@"strings"] : nil;
@@ -508,6 +514,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
         @"horsepills": @(EIDPickupVariantHorsePill),
         @"dice": @(EIDPickupVariantDiceRoom),
         @"sacrifice": @(EIDPickupVariantSacrificeRoom),
+        @"sanguine": @(EIDPickupVariantSanguineBond),
     };
     [categories enumerateKeysAndObjectsUsingBlock:^(NSString *category, NSNumber *variantNumber, __unused BOOL *categoryStop) {
         NSMutableDictionary *entries = [NSMutableDictionary dictionary];
@@ -523,8 +530,9 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
             if (subtype <= 0 || (!name.length && !detail.length)) return;
             NSString *descriptionKey = EIDDescriptionKey(variant, subtype);
             EIDDescription *existing = self.items[descriptionKey];
+            EIDDescription *artwork = variant==EIDPickupVariantSanguineBond ? self.items[EIDDescriptionKey(100,692)] : existing;
             self.items[descriptionKey] = [[EIDDescription alloc] initWithPickupVariant:variant subtype:subtype
-                name:name detail:detail iconPath:existing.iconPath quality:existing ? existing.quality : -1
+                name:name detail:detail iconPath:artwork.iconPath quality:existing ? existing.quality : -1
                 itemType:existing ? existing.itemType : EIDCollectibleItemTypeUnknown
                 maxCharges:existing ? existing.maxCharges : 0
                 chargeType:existing ? existing.chargeType : EIDActiveChargeTypeNormal];

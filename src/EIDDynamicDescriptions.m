@@ -120,5 +120,15 @@ NSString *EIDDynamicDescription(NSString *detail, NSInteger variant, NSInteger s
     // Show the prediction on Consolation Prize itself, not every unrelated
     // pedestal after the player acquires it. Ties remain uncertain, as in EID.
     if (subtype == 644) return ConsolationPrize(detail,context);
+    if (subtype == 464 && difficulty>=0 && difficulty<2 && [context[@"inside_item_reminder"] boolValue]) {
+        NSDictionary *glyph = context[@"pickup_context"][@"glyph_balance"];
+        if ([glyph[@"validated"] boolValue]) {
+            NSInteger variant = [glyph[@"variant"] integerValue], sub = [glyph[@"subtype"] integerValue];
+            NSString *key = variant ? [NSString stringWithFormat:@"5.%ld.%ld",(long)variant,(long)sub] : @"5.0";
+            NSString *reward = context[@"pickup_names"][key] ?: context[@"pickup_names"][[NSString stringWithFormat:@"5.%ld",(long)variant]];
+            if ([reward isKindOfClass:NSString.class] && reward.length)
+                return [detail stringByAppendingFormat:@"#{{Collectible464}} → %@",reward];
+        }
+    }
     return detail;
 }

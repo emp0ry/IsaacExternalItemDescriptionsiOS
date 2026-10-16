@@ -1,4 +1,5 @@
 #import "EIDCharacterSynergies.h"
+#import "EIDContextPlayers.h"
 #include <math.h>
 
 static NSString *Template(NSString *text, NSDictionary *variables) {
@@ -149,17 +150,19 @@ NSString *EIDCharacterSynergyDescription(NSString *detail, NSInteger variant, NS
     if (variant != 100) return detail;
     if (EIDUsesSalvageDescription(variant,subtype,playerType,context)) return Salvage(playerType,owned,context) ?: detail;
     if ([context[@"inside_item_reminder"] boolValue]) owned = ClosestOwned(playerType,owned,context);
+    owned = EIDConditionalOwnedItems(owned,context);
     NSArray *activeIDs = context[@"native_metadata"][@"active_ids"];
     BOOL active = [activeIDs containsObject:@(subtype)];
     if (active && HasPassiveBelial(playerType,owned,context))
         detail = Append(detail,context[@"book_of_belial"][@(subtype).stringValue],@"Collectible59");
     if (subtype == 584 && ![context[@"inside_item_reminder"] boolValue]) {
-        NSMutableOrderedSet *actives = [NSMutableOrderedSet orderedSet];
-        for (NSString *key in owned) if ([key hasPrefix:@"5.100."]) {
-            NSNumber *item = @([[key substringFromIndex:6] integerValue]);
-            if ([activeIDs containsObject:item] && item.integerValue != 584) [actives addObject:item];
+        NSMutableArray *actives = [NSMutableArray array];
+        for (NSDictionary *player in EIDRelevantPlayers(context)) {
+            NSArray *slots = player[@"active_slots"];
+            NSNumber *item = slots.count==4 ? slots[0] : nil;
+            if (item && item.integerValue>0 && [activeIDs containsObject:item]) [actives addObject:item];
         }
-        for (NSNumber *item in [actives.array sortedArrayUsingSelector:@selector(compare:)])
+        for (NSNumber *item in actives)
             detail = Append(detail,Wisp(item.integerValue,context),nil);
     } else if (active && [owned containsObject:@"5.100.584"]) detail = Append(detail,Wisp(subtype,context),nil);
     if (EIDUsesSalvageDescription(variant,subtype,23,context)) {

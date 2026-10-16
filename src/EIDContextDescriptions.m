@@ -1,4 +1,5 @@
 #import "EIDContextDescriptions.h"
+#import "EIDContextPlayers.h"
 #include "EIDPillPolicy.h"
 
 static NSString *ReplaceVariables(NSString *text, NSString *name, NSInteger amount) {
@@ -173,6 +174,103 @@ static NSString *ItemCondition(NSString *detail, id entry, NSString *owner, NSSt
     if (![name isKindOfClass:NSString.class]) name = @"";
     if ([[entry description] containsString:@"{1}"] && !name.length) return detail;
     return ApplyStyled(detail,WithBulletpoint(entry,[@"Item" stringByAppendingString:owner]),name,1,color);
+}
+
+static BOOL ChargeMatches(NSInteger item, NSDictionary *params, NSDictionary *context) {
+    NSDictionary *data = context[@"native_metadata"][@"active_details"][@(item).stringValue];
+    if (![data[@"max"] isKindOfClass:NSNumber.class] || ![data[@"type"] isKindOfClass:NSNumber.class]) return NO;
+    for (NSString *key in @[@"max",@"type"])
+        if ([params[key] isKindOfClass:NSNumber.class] && ![params[key] isEqual:data[key]]) return NO;
+    return item>0;
+}
+
+static id WithLineColor(id entry, NSString *color) {
+    if (!color.length) return entry;
+    NSString *(^decorate)(NSString *) = ^NSString *(NSString *line) {
+        NSString *prefix = [NSString stringWithFormat:@"{{%@}}",color];
+        return [NSString stringWithFormat:@"%@%@{{CR}}",prefix,
+            [line stringByReplacingOccurrencesOfString:@"#" withString:[NSString stringWithFormat:@"{{CR}}#%@",prefix]]];
+    };
+    if ([entry isKindOfClass:NSString.class]) return decorate(entry);
+    if (![entry isKindOfClass:NSArray.class]) return entry;
+    NSMutableArray *parts = [entry mutableCopy];
+    if (parts.count%2 && [parts.lastObject isKindOfClass:NSString.class]) parts[parts.count-1]=decorate(parts.lastObject);
+    return parts;
+}
+
+static NSString *SupplementalDescriptions(NSString *detail, NSInteger variant, NSInteger subtype,
+    NSInteger difficulty, NSSet *fallback, NSDictionary *context) {
+    NSSet *owned = EIDConditionalOwnedItems(fallback,context);
+    BOOL reminder = [context[@"inside_item_reminder"] boolValue];
+    NSString *target = [NSString stringWithFormat:@"5.%ld.%ld",(long)variant,(long)subtype];
+    NSString *generic = [NSString stringWithFormat:@"5.%ld",(long)variant];
+    NSMutableSet *printed = [NSMutableSet set], *unique = [NSMutableSet set];
+    NSInteger highest = NSIntegerMin;
+    for (NSDictionary *rule in context[@"supplemental_rules"]) {
+        if (![rule[@"target"] isEqual:target] && ![rule[@"target"] isEqual:generic]) continue;
+        if (reminder && ![rule[@"reminder"] boolValue]) continue;
+        NSInteger layer = [rule[@"layer"] integerValue];
+        if ([rule[@"check_layers"] boolValue] && highest>layer) continue;
+        NSString *owner = rule[@"owned"], *predicate = rule[@"predicate"];
+        NSDictionary *params = rule[@"params"];
+        BOOL matches = owner.length && [owned containsObject:owner];
+        if (predicate.length) {
+            NSDictionary *floor = context[@"live_state"][@"floor"];
+            NSNumber *stage = floor[@"stage"];
+            if ([predicate isEqual:@"restock"]) matches = (difficulty==2 || difficulty==3) || [owned containsObject:@"5.100.376"];
+            else if ([predicate isEqual:@"stage_void"]) matches = stage && stage.integerValue==12;
+            else if ([predicate isEqual:@"stage_shop"]) matches = stage && stage.integerValue==0 && (difficulty==2 || difficulty==3);
+            else if ([predicate isEqual:@"stage_no_treasure"]) matches = stage && stage.integerValue>6;
+            else if ([predicate isEqual:@"target_charge"]) {
+                NSNumber *required = params[@"required"];
+                matches = variant==100 && ChargeMatches(subtype,params,context) &&
+                    (!required || [owned containsObject:[@"5.100." stringByAppendingString:required.stringValue]]);
+                if (matches && required) owner=[@"5.100." stringByAppendingString:required.stringValue];
+            } else {
+                matches = NO;
+                for (NSDictionary *player in EIDRelevantPlayers(context)) {
+                    if ([predicate hasPrefix:@"multiple_"]) {
+                        if ([player[@"owned"] containsObject:@"5.100.534"]) { owner=@"5.100.534"; matches=YES; break; }
+                        NSNumber *kind = context[@"pocket_active_players"][[player[@"type"] stringValue]];
+                        NSArray *slots = player[@"active_slots"];
+                        if (kind && (![predicate isEqual:@"multiple_chargeable_actives"] || kind.integerValue==0) && slots.count==4 && [slots[2] integerValue]>0) {
+                            owner=[@"5.100." stringByAppendingString:[slots[2] stringValue]]; matches=YES; break;
+                        }
+                    } else if ([predicate isEqual:@"player_charge"]) {
+                        NSArray *slots = player[@"active_slots"];
+                        NSUInteger limit = [params[@"check_pocket"] isEqual:@NO] ? 2 : 4;
+                        if (slots.count!=4) continue;
+                        for (NSUInteger slot=0; slot<limit; ++slot) if (ChargeMatches([slots[slot] integerValue],params,context)) {
+                            owner=[@"5.100." stringByAppendingString:[slots[slot] stringValue]]; matches=YES; break;
+                        }
+                        if (matches) break;
+                    }
+                }
+            }
+        }
+        if (!matches) continue;
+        NSString *modifier = rule[@"modifier"];
+        NSString *specific = modifier.length ? [target stringByAppendingFormat:@" (%@)",modifier] : target;
+        NSString *uniqueID = rule[@"unique_id"];
+        NSString *printKey = [specific stringByAppendingFormat:@":%@",owner ?: @""];
+        if ([printed containsObject:printKey] || (uniqueID.length && [unique containsObject:uniqueID])) continue;
+        id entry = [rule[@"no_table"] boolValue] ? context[@"context_strings"][modifier] :
+            (context[@"conditionals"][specific] ?: context[@"conditionals"][modifier.length ? modifier : @(subtype).stringValue]);
+        if (!entry) continue;
+        NSString *variable = rule[@"variable"], *bullet = rule[@"bulletpoint"];
+        if (predicate.length && owner.length && ![predicate isEqual:@"target_charge"]) {
+            variable=[NSString stringWithFormat:@"{{NameOnly%@}}",owner]; bullet=[@"Item" stringByAppendingString:owner];
+        }
+        variable = ResolveItemVariables(variable,context[@"item_names"]);
+        NSString *serialized = [entry description];
+        if (([serialized containsString:@"{1}"] && !variable.length) || [serialized containsString:@"{2}"] || [serialized containsString:@"{3}"]) continue;
+        entry=WithLineColor(entry,rule[@"line_color"]);
+        if (bullet.length) entry=WithBulletpoint(entry,bullet);
+        detail=ApplyStyled(detail,entry,variable,1,rule[@"replace_color"]);
+        highest=MAX(highest,layer); [printed addObject:printKey];
+        if (uniqueID.length) [unique addObject:uniqueID];
+    }
+    return detail;
 }
 
 static NSString *FoodSynergies(NSString *detail, NSInteger variant, NSInteger subtype,
@@ -366,6 +464,7 @@ NSString *EIDContextDescriptionWithOwnedItems(NSString *detail, NSInteger varian
         }
     }
 
+    ownedItems = EIDConditionalOwnedItems(ownedItems,context);
     // Birthright is wholly character-specific in the original mod.
     if (variant == 100 && subtype == 619 && playerEntry.count >= 3 &&
         [playerEntry[2] isKindOfClass:NSString.class]) detail = playerEntry[2];
@@ -458,6 +557,7 @@ NSString *EIDContextDescriptionWithOwnedItems(NSString *detail, NSInteger varian
         if (!weapon) [applied addObject:specific];
     }
     NSSet *synergyOwned = CurrentSynergyOwned(ownedItems,playerType,context);
+    detail = SupplementalDescriptions(detail,variant,subtype,difficulty,synergyOwned,context);
     detail = FoodSynergies(detail,variant,subtype,playerType,synergyOwned,context);
     detail = FamiliarSynergies(detail,variant,subtype,synergyOwned,context);
     detail = ChargeSynergies(detail,variant,subtype,ownedItems,context);

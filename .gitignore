@@ -5,6 +5,7 @@ build/
 dist/
 packages/
 package/stage/
+tests/
 *.ipa
 *.deb
 *.dylib

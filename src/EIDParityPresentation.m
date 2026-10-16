@@ -241,6 +241,8 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     context[@"player_index"] = @(pickup.playerIndex >= 0 ? pickup.playerIndex : 0);
     if (pickup.rawPillSubtype) context[@"pill_modifiers"] = @(pickup.pillModifiers);
     context[@"inside_item_reminder"] = @([self valueForKey:@"selectedInventoryItem"] != nil);
+    pickup = [probe resolvedGlyphIdentity:pickup insideInventory:[context[@"inside_item_reminder"] boolValue]];
+    context[@"pickup_context"] = pickup.pickupContext;
     context[@"rng_predictions_enabled"] = @(outcomesEnabled);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     CGFloat scale = [defaults objectForKey:EIDScaleKey] ? [defaults doubleForKey:EIDScaleKey] : 1;

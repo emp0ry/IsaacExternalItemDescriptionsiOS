@@ -1,5 +1,18 @@
 # Test matrix
 
+## v0.12.0 release validation (2026-10-16)
+
+| Area | Result |
+| --- | --- |
+| Duplicate, charging and supplemental conditionals | Local importer and 20-language context regressions passed; the user confirmed the installed update working |
+| Glyph of Balance and Sanguine Bond | Read-only native adapters, bounded output/grid validation and localized presentation checked; included in the user-accepted build |
+| Void abilities and primary-active wisps | Local ownership isolation and slot-selection checks passed |
+| Personal Super Bum owner | Native familiar owner field verified; local personal-context guards passed; exhaustive live co-op permutations not claimed |
+| Latest device acceptance | User reported all working; this is not exhaustive verification of every character, language or loading mode |
+| Public distribution | Local test suite remains private to the checkout; the universal public workflow verifies source syntax, versions, strict builds, dependencies and package resources |
+
+Older entries below record the state at their release, not the current remaining scope.
+
 ## v0.11.0 release validation (2026-10-16)
 
 | Area | Result |
@@ -9,7 +22,7 @@
 | Short pedestal-cycle refresh | User confirmed Binge Eater description tracks the visible item after the fix; bounded-read architecture guards retained |
 | Void, Purity, Modeling Clay and personal inventories | Native field baselines inspected read-only; host bounds/context tests passed; user reported the other changes working without a separate result for every scenario |
 | Physical duplicate quantities | Native-table/active-slot merge and refresh guards host-tested; installed for user visual verification, not independently confirmed in-game |
-| Optional RNG previews | Copied native RNG sequences, Car Battery behavior and opt-in gating host-tested; individual device scenarios are in the [outcome checklist](testing-outcome-predictions.md) |
+| Optional RNG previews | Copied native RNG sequences, Car Battery behavior and opt-in gating host-tested; individual device scenarios are in the [release history](../CHANGELOG.md) |
 | Strict ARM64 build, signature and portable dependencies | Passed locally before publication; release workflow repeats checks for all distributions |
 | Co-op merged Super Bum owner / every loading mode | Not exhaustively verified; unverified personal Super Bum counters omitted in co-op |
 
@@ -23,7 +36,7 @@
 | Saved gameplay background preferences | Temporary pause policy does not write settings; tests cover disabled backgrounds, minimum pause opacity and configured gameplay opacity |
 | Strict ARM64 build and package checks | Passed locally for standalone, rootless, LiveContainer and embedded formats before publication |
 | Existing Glitched Crown | Native cycle policy tests retained; shared counter control supports the separate pedestal and inventory contexts |
-| Every loading mode, language and visibility setting | Not exhaustively replayed on device; the full acceptance checklist is in [pause-description checks](testing-pause-descriptions.md) |
+| Every loading mode, language and visibility setting | Not exhaustively replayed on device; the full acceptance checklist is in [release history](../CHANGELOG.md) |
 
 ## v0.9.0 release validation (2026-10-16)
 
@@ -55,7 +68,7 @@
 | Native startup/resource/context reads on the development phone | Pass |
 | Latest Judas + Birthright / Guppy's Paw regression | User confirmed corrected tooltip after native virtual-ownership fix |
 | Tainted Cain and Tainted Lilith gameplay acceptance | Pending: characters are not unlocked on the test account; host coverage is not a gameplay result |
-| Every new combination across all loading modes / co-op variants | Not exhaustively gameplay-tested; see [character checks and remaining scope](CHARACTER_CONTEXT_TESTING.md) |
+| Every new combination across all loading modes / co-op variants | Not exhaustively gameplay-tested; see [release history](../CHANGELOG.md) |
 
 ## Established coverage and outstanding checks
 

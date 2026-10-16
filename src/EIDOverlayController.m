@@ -679,7 +679,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     for (EIDPickupIdentity *item in [[self.probe currentSmeltedTrinkets] arrayByAddingObjectsFromArray:[self.probe currentVoidedItems]])
         [signature appendFormat:@"extra=%ld:%ld:%@,",(long)item.playerIndex,(long)item.subtype,item.pickupContext];
     for (NSDictionary *player in self.probe.descriptionState[@"players"])
-        [signature appendFormat:@"player=%@:%@:%@,",player[@"index"],player[@"type"],player[@"forms"]];
+        [signature appendFormat:@"player=%@:%@:%@:%@,",player[@"index"],player[@"type"],player[@"forms"],player[@"super_bum_active"]];
     [signature appendFormat:@"selected=%ld:run=%lu:",(long)self.inventoryPlayerIndex,(unsigned long)self.probe.runCounter];
     [signature appendFormat:@"lang=%@", self.store.languageCode];
     return signature;

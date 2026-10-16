@@ -9,6 +9,35 @@ revalidated for every new UUID.
 
 ## Read-only dynamic description fields
 
+### Additional original conditions (2026-10-16)
+
+- `Player::GlyphOfBalance` at image + `0x554364` is called by native reward
+  selection at `0x10059f034`, with arguments `(player, &variant, &subtype)`.
+  Disassembly through `0x1005546c8` establishes that its game-dependent work
+  reads health, consumables and current room entities; only the two output
+  arguments and its private temporaries are written. The adapter runs on the
+  main thread after UUID/player-vector validation and checks prologue
+  `0xd10183ff`. It invokes no reward, effect or RNG path.
+- Native Glyph reads the health range starting at `Player + 0x16b8`, bone
+  containers at `+0x2450` and Tainted ??? poop mana at `+0x269c`. The background
+  reader includes these fields only as an immutable refresh signature.
+- `Familiar + 0x400` is the owning player pointer: initialization stores the
+  player/spawner there at `0x1007fbf8c`; update reads the owning player's
+  position at `0x10080860c`. Personal Super Bum completion uses only live
+  type-3/variant-102 familiars in the authoritative current-room entity list,
+  stable owner reads and exact matches against the validated player vector.
+- `GridEntity_Spikes + 0x8/+0xc` are type/variant. Native spike update at
+  `0x1004de0a4` reads both and compares type 8 with variant >99 for Sanguine
+  behavior. `+0x10` is a different state field, not the variant. The adapter
+  bounds the current grid using the native room width/height and does not
+  conflate these spikes with Sacrifice Room counters at `+0x1c`.
+- Ordinary charging context adds no new offsets: it uses the already validated
+  four active-slot IDs and installed XML charge metadata.
+
+A removed external read-only diagnostic confirmed native player-slot access and
+a 15-by-9 room grid on the development phone. No Sanguine spikes or familiars
+were present in that sample, so nonzero behavior still needs gameplay checks.
+
 ### Current effects and personal inventory (2026-10-16)
 
 | Field | Offset | Independent native references |
@@ -35,7 +64,8 @@ Inventory entries now carry their original native player vector index/type.
 Physical actives are read from all four 28-byte records, never inferred from
 raw pocket references. The UI selects a player before listing items. Per-player
 PlayerForm arrays and current counts are separate from the older aggregate
-compatibility API; merged Super Bum ownership is not guessed in co-op.
+compatibility API; merged Super Bum ownership is resolved as described above,
+never guessed from a partner's global completion flag.
 
 All fields below are for the UUID above, and are bounds/type checked before use:
 

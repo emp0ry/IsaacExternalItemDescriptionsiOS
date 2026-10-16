@@ -15,6 +15,7 @@ from eid_context import luck_formulas
 from eid_context import abyss_locusts, abyss_descriptions
 from eid_context import black_feather_metadata, familiar_metadata
 from eid_outcome_strings import outcome_strings
+from eid_supplemental import supplemental_rules
 
 
 ENTRY = re.compile(r"^\s*(?:\[(\d+)\]\s*=\s*)?\{")
@@ -235,6 +236,10 @@ def main() -> int:
                 merged.update(context_table(path.read_text(encoding="utf-8-sig"), table_name))
             categories[output_name] = merged
         categories["pandora_floor_lines"] = pandora_floor_lines(categories)
+        sanguine = categories.get("collectibles", {}).get("692", {})
+        sanguine_lines = "#".join(line.strip() for line in re.split(r"[#;]", sanguine.get("description", "")) if "%" in line)
+        categories["sanguine"] = {"692": {"name": sanguine.get("name") or "Sanguine Bond",
+            "description": sanguine_lines}} if sanguine_lines else {}
         categories["context_strings"] = {}
         for path in files:
             strange_key = parse_string_assignment(path, "PandorasBoxStrangeKeyEffect")
@@ -248,7 +253,7 @@ def main() -> int:
                         "ExperimentalPillFalsePHD", "LuckModifier", "goldenTrinket", "tripledTrinket",
                         "quadrupledTrinket", "VariableCharge", "BlankCardEffect", "spindownError",
                         "ResultsWithX", "VoidText", "VoidShopText", "VoidOptionText", "BlackFeatherInformation",
-                        "GlitchedCrownToggleInfo", "CrookedPennyHeads", "CrookedPennyTails"):
+                        "GlitchedCrownToggleInfo", "CrookedPennyHeads", "CrookedPennyTails", "PandorasBoxStrangeKeyEffect"):
                 text = parse_string_assignment(path, key)
                 if text:
                     categories["context_strings"][key] = text
@@ -274,11 +279,13 @@ def main() -> int:
     if (source / "features/eid_conditionals.lua").is_file():
         payload["context_rules"], payload["health_amounts"], payload["healing_items"] = context_rules(source)
         payload["weapon_rules"] = weapon_rules(source)
+        payload["supplemental_rules"] = supplemental_rules(source)
         payload["character_metadata"] = character_metadata(source)
         payload["car_battery_metadata"] = battery_metadata(source)
         payload["familiar_metadata"] = familiar_metadata(source)
         payload["luck_formulas"] = luck_formulas(source)
         native_rules = (source / "features/eid_data.lua").read_text(encoding="utf-8-sig")
+        payload["pocket_active_players"] = context_table(native_rules,"PocketActivePlayerIDs")
         payload["golden_trinket_data"] = context_table(native_rules,"GoldenTrinketData")
         xml_data = source / "features/eid_xmldata.lua"
         if xml_data.is_file():

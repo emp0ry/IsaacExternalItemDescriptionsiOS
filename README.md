@@ -1,229 +1,118 @@
 # Isaac External Item Descriptions for iOS
 
-The first publicly released native gameplay mod for **The Binding of Isaac: Repentance on iOS**. It brings External Item Descriptions-style information to the native iOS game without relying on Isaac's desktop Lua mod API.
+See what items do in the native **The Binding of Isaac: Repentance** on iPhone and iPad. Descriptions adapt to your character, inventory, transformations and current room.
 
-![Brimstone description with original EID icons and live Leviathan transformation progress in native iOS Repentance](docs/images/eid-brimstone-transformation.png)
+Works with **rootless jailbreaks, LiveContainer private apps, and direct dylib embedding**. All descriptions and required EID resources are included; no separate database setup is needed.
 
-The same ARM64 implementation supports jailbroken injection, direct app-bundle embedding, and LiveContainer private apps. The dylib itself is portable: ElleKit is used only by the optional jailbreak package as a loader.
+**[Download the latest release](https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/latest)** · **[Website and screenshots](https://isaaceidios.emp0ry.com/)** · **[Changelog](CHANGELOG.md)** · **[Report a bug](https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/issues)**
 
-## Download
+![Brimstone with native item artwork, quality and live Leviathan progress](docs/images/eid-brimstone-transformation.png)
 
-Download the current files from [GitHub Releases](https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/latest).
+## Install
 
-| Installation | Release file | Included |
+Choose **one** format, install it, then fully restart Isaac.
+
+| Your setup | Download | What to do |
 | --- | --- | --- |
-| Rootless jailbreak with ElleKit | `IsaacExternalItemDescriptions-rootless.deb` | Dylib, loader filter, descriptions, icons, and transformation data |
-| LiveContainer private app | `IsaacExternalItemDescriptions-LiveContainer.framework.zip` | App-specific framework with all required resources |
-| Embedded/non-jailbroken app | `IsaacExternalItemDescriptions-Embedded.zip` | Dylib and complete `IsaacEID.bundle` for app-bundle injection |
-| Advanced/manual setup | `IsaacExternalItemDescriptions-Full-Build.zip` | Every build format, database, documentation, and checksums |
+| Rootless jailbreak / ElleKit | `IsaacExternalItemDescriptions-rootless.deb` | Install with your package manager. |
+| LiveContainer private app | `IsaacExternalItemDescriptions-LiveContainer.framework.zip` | Extract it, import the framework into an app-specific Tweak Folder, and assign that folder to Isaac. Do not use Global Tweaks. |
+| Direct app embedding | `IsaacExternalItemDescriptions-Embedded.zip` | Contains the dylib and complete resource bundle. Use the included [IPA patcher](tools/patch-ipa.sh), then sign the modified app. |
 
-A standalone `IsaacExternalItemDescriptions.dylib`, `descriptions.json`, and `SHA256SUMS` are also provided. No Isaac IPA or copyrighted game bundle is distributed.
+[Detailed installation and signing guide](docs/INSTALL.md). The release also provides a standalone dylib, database, checksums and a full-build archive. **No Isaac IPA or game files are distributed.** Back up your app data before replacing or re-signing an installation.
 
-### What's new in v0.11.0
+**Supported:** iOS 15+, ARM64, native Isaac **1.4 / Repentance 1.7.9b.J754**. These native offsets do **not** support Repentance+ or other game executables.
 
-- **Pocket actives fixed:** EID Items resolves the real active slot instead of
-  treating its internal reference as an item ID. Tainted Cain no longer gets a
-  phantom Spoon Bender.
-- **Bag of Crafting:** inspect the bag's ingredients and, at 8/8, its actual
-  cached result with a full description. Viewing the preview never crafts.
-- **Food and familiar synergies:** Binge Eater food bonuses, supported BFFS! /
-  Hive Mind adjustments and Forgotten Lullaby exceptions follow original EID.
-  Short pedestal cycles now follow the currently visible item without the
-  previous half-cycle's description.
-- **Current effects:** inspect Void's absorbed actives, Purity's current bonus
-  or inactive state, and Modeling Clay's already-applied item.
-- **Personal inventories:** switch between native players in EID Items. Their
-  items, pockets, swallowed trinkets and transformation counters remain separate.
-  Repeated collectibles show a live quantity such as **Brimstone ×3**.
-- **Optional RNG previews:** a new setting, off by default, enables Crooked
-  Penny's next result and Eternal D6's next individual pedestal-reroll outcome.
-  Car Battery's second Eternal D6 outcome is not predicted.
+## Use it
 
-Read the [complete v0.11.0 release notes](docs/RELEASE_NOTES_v0.11.0.md),
-[crafting checks](docs/testing-crafting-preview.md),
-[food/familiar checks](docs/testing-food-familiars.md),
-[current-effect/player checks](docs/testing-current-effects.md), and
-[optional outcome checks](docs/testing-outcome-predictions.md).
+- During a run, approach an item to see its description.
+- Open **EID ⚙** in the bottom-right from a menu or while paused. It hides during gameplay.
+- Pause and open **EID Items** in the top-left to inspect your inventory. Selected descriptions always have a readable dark background.
+- Tap a Glitched Crown description to browse its five items. Select D Infinity in EID Items and tap its description to browse all ten dice. The counter is in the top-right; browsing never uses an item or switches the game's die.
 
-### Previous update: v0.10.1
+Choose any of **20 EID languages**, independently of the game's language. Missing translations fall back to English. Settings include horizontal/vertical position, scale, text opacity, background and background opacity, Name/Icon/Quality/Description visibility, position reset, credits and dataset information. The settings panel scrolls on small screens. Default position: **140 px right, 50 px down**.
 
-- **Readable pause descriptions:** selecting an item in **EID Items** always
-  gives it a dark background, even when Background is disabled. The temporary
-  pause-inventory backdrop is at least 72% opaque; saved gameplay settings stay
-  unchanged and return when the run resumes.
-- **Content-sized backgrounds:** the box fits the actual title and widest
-  laid-out text line, including icons and the preview counter. Short descriptions
-  no longer retain a long default-width box. Text size is unchanged.
-- **D Infinity description browser:** select it in **EID Items**, then tap the
-  description to inspect all ten dice. The top-right `0/10 ›` counter starts at
-  D Infinity's overview and returns there after D100. This only changes the
-  displayed description, never the game's selected die or charge.
+Gameplay is text-only by default, with an optional content-sized background. Pause descriptions temporarily use a dark backdrop of at least 72% opacity without changing your saved settings. **RNG predictions (spoilers)** are optional and **off by default**.
 
-Read the [v0.10.1 release notes](docs/RELEASE_NOTES_v0.10.1.md) and
-[pause-description checks](docs/testing-pause-descriptions.md).
+## Everything included
 
-### Previous update: v0.10.0
+The sections below describe implemented features, not a promise of complete parity with every upstream EID feature.
 
-- **Glitched Crown:** inspect the pedestal's real five-item cycle without chasing
-  its flashing sprite. Tap the description to advance; `0/5 ›` sits inside the
-  header's top-right corner. Each item keeps its own full description and previews.
-- **Abyss:** see the original standard-Repentance locust count, damage, size,
-  speed, and special effects before absorbing a collectible.
-- **Wild Card and Vurp!:** see the recorded effect Wild Card will repeat and the
-  pill Vurp! will produce, with localized names and actual pill-color artwork.
-- **The Stars?:** preview the oldest eligible passive item it will remove, or two
-  items with Tarot Cloth, using native pickup history and current ownership.
-- **Black Feather:** show the live qualifying-item count and damage bonus,
-  including duplicate items, qualifying trinkets, Mom's Box, and golden Feather.
-- New previews use the game's native state, retain unknown/blind protections,
-  and support all 20 EID languages with English fallback. Existing Spindown,
-  absorption, character, inventory, and LiveContainer fixes remain included.
+<details>
+<summary><strong>Pickups, rooms, artwork and spoiler protection</strong></summary>
 
-Read the [complete v0.10.0 release notes](docs/RELEASE_NOTES_v0.10.0.md) for
-behavior and verification limits. Earlier additions are documented in the
-[v0.9.0 notes](docs/RELEASE_NOTES_v0.9.0.md) and [v0.8.0 notes](docs/RELEASE_NOTES_v0.8.0.md).
+- Collectibles, trinkets, cards, runes, Soul Stones, normal/horse pills and Crane Game prizes. Long descriptions wrap without a fixed character limit.
+- All six Dice Room effects; the next Sacrifice Room payout with its live `1/12–12/12` step; Sanguine Bond spike payout probabilities, without pretending to know the next random payout.
+- Native collectible/trinket artwork, correct card/rune/Soul Stone/pill frames and actual pill colors. Original EID inline symbols, quality icons, battery/charge indicators, transformation icons, colored text and highlights.
+- Active-item headers distinguish normal, timed and special charge types. Inline collectible/trinket sprites are cropped before scaling so their transparent padding does not make them tiny.
+- Curse of the Blind, forced-blind fields and question-mark sprites suppress collectible descriptions.
+- Reachable ordinary floor cards/runes are described immediately. Shared-model shop cards and `Options?` cards stay unidentified. Distinctive models, including Credit Card, Black Rune, Rune Shard, Cracked Key, Wild Card and Soul Stones, retain upstream visibility exceptions; Chaos Card is not a unique-model exception.
+- Unreachable shared-model cards/runes/pills stay unidentified; flight bypasses the obstruction check. Pills use native identified state, including shop/Options? cases, and otherwise show only a localized unidentified label and color.
+- A collection-page reminder marks eligible collectibles never picked up in the selected save slot. This is separate from unlock status and current-run ownership; hidden items, pause entries and read-only/custom runs do not get it.
+- Title, artwork and body disappear together after collection. Short rotating pedestals, including Binge Eater, follow the currently visible item rather than the previous half-cycle.
 
-## Features
+</details>
 
-### Descriptions
+<details>
+<summary><strong>Characters, transformations, floors and game modes</strong></summary>
 
-- Collectibles and trinkets
-- Cards and runes
-- Identified pills and horse pills
-- Crane Game prizes
-- Dice Room effects for all six faces
-- The next Sacrifice Room payout with the live step from `1/12` through `12/12`
-- Complete Repentance description data for all 20 upstream EID languages, with English fallback for untranslated entries
+- Lost/Keeper no-effect and lethal-use warnings, health-type replacements, Birthright descriptions, Eye Drops, Tainted Samson/Uranus, Keeper/IV Bag, tainted Clicker and Dead Cat context.
+- Lilith/Tainted Lilith familiar changes; Book of Virtues wisp health, damage and special effects; Judas/Black Judas Birthright passive Book of Belial bonuses.
+- Tainted Cain salvage: room-pool rewards, Birthright's `3–8 → 6–16` changes, eligible trinket bonuses, and quest-item/special-context exceptions.
+- Native persisted transformation counters plus live ownership keep progress current after pickups, active-item swaps and Continue. Puberty/Adult and identified horse pills are supported. Counts can exceed completion, such as `4/3`.
+- Super Bum completion uses the merged familiar's native owner, keeping verified personal progress separate in co-op. Invalid owner data does not invent a partner's completion.
+- New-run identity and seed changes reset run-only tracking.
+- Greed/Greedier descriptions, applicable room-to-wave wording and no-effect notes. Normal runs do not receive Greed-only warnings.
+- Pandora's Box lists floor rewards separately and highlights the current payout in green, including late-game routes, Void, Home and Greed. Strange Key highlights its overriding reward.
 
-The overlay tracks the player's position and displays the nearest eligible object. Long descriptions wrap normally and are not cut to a fixed character count.
+</details>
 
-### Correct knowledge and run state
+<details>
+<summary><strong>Item combinations, current effects and live bonuses</strong></summary>
 
-- Card, rune, Soul Stone, and pill visibility follows original EID's separate defaults instead of treating `Touched` as a universal knowledge flag.
-- Reachable ordinary floor cards and runes are described immediately. Shared-model shop cards and every `Options?` card stay unidentified. Unique models (Credit Card, Card Against Humanity, Get Out of Jail Free Card, Emergency Contact, Dice Shard, Holy Card, Black Rune, Rune Shard, Cracked Key, Wild Card, and Soul Stones) may be described even in shops or behind obstacles. Chaos Card shares a model with other green cards and is not an exception.
-- Reachable pills are shown in shops and `Options?` choices. Isaac's native ItemPool state decides whether the real effect or only a localized **Unidentified Pill** label may be shown.
-- Unreachable shared-model cards, runes, and pills remain unidentified. Visually distinct cards retain their exception, and flying players bypass the obstruction check.
-- Collection-page reminders use Isaac's live `PersistentGameData` for the selected save slot, not current-run inventory or another slot's progress. Hidden collectibles, pause-inventory entries, and read-only/custom runs do not show this reminder. The native table updates after a legitimate pickup; no separate progress database is written.
-- PHD and False PHD identify pills. Known effects are obtained from the game's player-specific `GetPillEffect` on the main thread after live-player validation, including Virgo/Lucky Foot conversions and native low-health exceptions. False PHD adds `+0.6` damage (`+1.2` for horse pills) or a black-heart reward only for the appropriate resulting effects. Unknown pills reveal neither effects nor synergy bonuses.
-- Curse of the Blind suppresses every collectible description using the native level curse mask. The forced-blind field and question-mark sprite are retained as additional guards.
-- Transformation progress combines Isaac's persisted PlayerForm counters with the live owned-item table. It updates immediately after a pickup while still preserving progress across active-item replacement and save reloads.
-- The 14 normal transformations use the native counters and inventory state. Super Bum completion is read from its native merged familiar.
-- Puberty/Adult and other identified pill transformations use the persisted counters, including horse pills. Unknown pills never expose transformation information.
-- Transformation counters retain the actual count after completion, so progress can display `4/3` and higher.
-- Static character-specific EID rules adjust descriptions for the nearest player, including Lost/Keeper no-effect and lethal-use warnings, health-type replacements, and Birthright effects.
-- Additional character context includes Eye Drops, Tainted Samson/Uranus, Keeper/IV Bag, tainted Clicker, Dead Cat, and Lilith/Tainted Lilith BFFS! effects. Co-op differences are annotated and pause ownership checks use the selected player's inventory.
-- Tainted Cain pedestals show salvage information with room-pool rewards, Birthright and trinket bonuses, while protecting quest items and special contexts.
-- Book of Virtues previews wisp stats and special effects; Judas' passive Birthright Book of Belial adds active-item bonuses.
-- Greed and Greedier use upstream mode-specific descriptions and room-to-wave wording where supported.
-- Weapon descriptions warn when an owned item overrides a pickup's effect, and in the reverse direction when the pickup would override an owned item. Repentance weapon priorities and special synergies follow original EID, including Dr. Fetus/Trisagion, Epic Fetus, Brimstone, Mom's Knife, Tech X, C Section, Spirit Sword, and Azazel's native weapon.
-- Car Battery and Tarot Cloth apply original Repentance conditional descriptions, including numeric effect changes, special behavior, and no-synergy active items.
-- Binge Eater adds each food's extra stats, temporary damage, speed penalty and healing changes. BFFS! / Hive Mind adjust supported familiar descriptions without stacking their shared bonus; Forgotten Lullaby includes clot support and no-effect exceptions. Upgrade-pedestal hints use current ownership and are suppressed in EID Items.
-- Binge Eater and other short pedestal cycles follow the currently displayed item with a bounded main-thread read, without speeding up the full memory scan or replacing Glitched Crown's inspection browser.
-- EID Items has a player selector for Jacob/Esau and native co-op players. Collectibles, equipped/swallowed trinkets, pocket items and native transformation counters are scoped to that player rather than combined.
-- Duplicate collectibles appear once with their current quantity, such as `Brimstone ×3`. Counts update after gaining or removing copies; Void-absorbed actives remain separate. Void converts passive items into stats, so those do not belong in its absorbed-actives list.
-- Void's already-absorbed actives appear in their own inspectable inventory section, including duplicate counts, using the game's persisted native list. Purity shows its currently active bonus (or inactive state); Modeling Clay displays its already-applied item's description. These do not predict future RNG outcomes.
-- Golden trinkets and Mom's Box use upstream's per-trinket multipliers, custom replacements, and translated bonus text; changed values are highlighted in gold.
-- Luck-sensitive effects show the current player's actual proc chance using the original standard-Repentance formulas and native Luck value.
-- Spindown Dice previews three uses using the same native availability check as the iOS effect. Locked, run-restricted, missing and hidden IDs are skipped completely; only actual eligible results are displayed. The chain accounts for Car Battery, stops at Dad's Note, and shows item disappearance. Unlocks are checked separately from collection-page ownership.
-- Blank Card, Clear Rune, and Placebo show the displayed card/rune/identified pill's mimic charge cost from the installed game's XML. Unknown pills do not reveal costs; Blank Card + Tarot Cloth has its additional upstream notes.
-- Flip reads the native alternate-pedestal record and previews its item and description, without bypassing blind-item protection. It remains included in the build; live device verification is pending.
-- Void and Black Rune preview stat gains from copied native RNG and the authoritative room entity list. Room, purchased-item, and single-item cases use separate predictions; a missing/invalid native snapshot suppresses the forecast instead of guessing.
-- Abyss appends original standard-Repentance locust information for the selected player's owned active, including 17 special definitions and the normal-locust fallback. Repentance+ quality scaling is not applied. See [Abyss checks](docs/testing-abyss.md).
-- Wild Card and Vurp! read native persisted use history for localized effect/pill previews, including normal/horse pill behavior and player-specific effects. See [repeat-preview checks](docs/testing-repeat-previews.md).
-- The Stars? reads native pickup order and removal eligibility, including Tarot Cloth's second item. Black Feather counts qualifying collectible copies and trinket multipliers for its live bonus. See [inventory-preview checks](docs/testing-inventory-previews.md).
-- Glitched Crown reads the native cycle queue. Tap its description to move from overview (`0/5 ›`) through each individual item and back; selection remains stable while the sprite rotates. Native rerolls update the list, separate pedestals have separate selections, and blind items stay hidden. See [Crown checks](docs/testing-glitched-crown.md).
-- Swallowed/smelted normal and golden trinkets appear in a separate pause-inventory section and participate in owned-item conditional checks.
-- Consolation Prize previews the lowest normalized stat and lowest weighted consumable pool. Tied candidates have a `?`; Bethany's soul charges and Tainted Bethany's blood charges are included.
-- Pandora's Box highlights the current native floor payout in green, including Greed/Greedier, the late-game route, Void, and Home. Strange Key highlights its overriding reward instead. Missing floor entries in older translations remain unhighlighted.
-- Native run identity and seed tracking reset run-only state when a new run begins.
+- Weapon overrides in both directions: warns when a pickup overrides an owned weapon or is overridden by it. Covers the original standard-Repentance priority block, including Dr. Fetus/Trisagion, Epic Fetus, Brimstone, Mom's Knife, Tech X, C Section, Spirit Sword and Azazel.
+- Car Battery and Tarot Cloth: changed numbers, special behavior and applicable no-effect combinations.
+- Duplicate-copy notes, including meaningful stacking and ineffective extra copies. Diplopia/Crooked Penny can enable prospective-copy notes; owned pause entries do not pretend another copy is being acquired.
+- Charge interactions for 9 Volt, 4.5 Volt, Sharp Plug, Vibrant/Dim Bulb and Schoolbag, respecting normal/timed/special charging and primary/pocket-slot rules.
+- Additional original combinations, including Black Candle/Cursed Eye, non-stacking damage multipliers, Sacrificial Altar familiars, supported fart/poop effects, Uranus and single-use/mimic interactions. These are reviewed declarative rules, not arbitrary Lua execution.
+- Binge Eater's food-specific stats, temporary damage, speed/healing changes and character conversions. Supported BFFS!/Hive Mind familiar changes avoid applying their shared bonus twice; Forgotten Lullaby includes supported clots and no-effect exceptions.
+- PHD/False PHD, Virgo and Lucky Foot use the current player's native pill effect. False PHD's eligible damage/black-heart rewards include horse pills and combined PHD behavior. Removing an item removes its conditional bonus; genuinely learned pill knowledge may remain.
+- Golden and swallowed trinkets, Mom's Box multipliers and localized special cases, with gold highlighting. Black Feather shows qualifying copies/trinkets and its current damage bonus.
+- Supported luck-sensitive items show their chance at your current Luck.
+- Consolation Prize shows normalized-stat and weighted-consumable candidates, tie markers and Bethany charge pools.
+- Owned Glyph of Balance shows the selected player's current native pickup priority outside Greed; it does not predict a random reward.
+- Purity shows its current aura or inactive state. Modeling Clay shows its already-applied room item, not a future roll.
 
-### Artwork and presentation
+</details>
 
-- Collectible and trinket artwork is loaded from the installed game.
-- Cards use Isaac's native `CardFronts` animation mapping.
-- Runes use the correct subtype frame from the attributed original EID card/rune atlas.
-- Identified and unidentified pills use their actual native pill color mapped to the corresponding original EID `Pills` frame.
-- Original EID inline symbols, Q0-Q4 quality icons, transformation icons, colors, and description markup are rendered through UIKit.
-- Inline collectible and trinket artwork is cropped to its visible pixels before scaling, so transparent sprite padding does not shrink items in predictions and conditional descriptions.
-- Active collectibles show the original EID battery and maximum-charge indicator. Normal, timed, and special/dynamic charge types use their matching upstream symbols.
-- Compact outlined text is shown without a background by default during gameplay. An optional rounded black backdrop has its own opacity setting and fits the title and laid-out text instead of a fixed default width. Pause-inventory selections always receive a readable dark backdrop without changing saved settings.
-- Item title, icon, and description disappear together after an item is collected.
+<details>
+<summary><strong>Item previews and touch browsing</strong></summary>
 
-### In-game settings
+- Spindown Dice shows three eligible results in an arrow-connected chain. Locked, missing, hidden and run-restricted IDs are skipped, not crossed out. Car Battery, Dad's Note stopping and item disappearance are handled.
+- Flip shows the native alternate pedestal and its description while retaining blind-item protection.
+- Void and Black Rune show separate stat-gain previews from copied native RNG, with single-item, room and purchased-item cases.
+- Abyss shows standard-Repentance locust count, damage, size, speed and special effects. Repentance+ quality scaling is intentionally not used.
+- Wild Card shows the recorded effect it will repeat; Vurp! shows the previous pill, with normal/horse-pill and player-specific context.
+- The Stars? shows the oldest eligible passive removal, or two with Tarot Cloth.
+- Blank Card, Clear Rune and Placebo show applicable mimic charge costs from the installed game's metadata. Unknown pills do not reveal costs.
+- Glitched Crown's tap browser keeps each pedestal's selected variant stable while its sprite cycles; rerolls refresh the actual list.
+- D Infinity's pause browser has an overview and all ten dice, with their own description, artwork, quality and charge indicators.
+- With **RNG predictions** enabled: Crooked Penny's next heads/tails result, including Car Battery's second activation; Eternal D6's next individual pedestal reroll, including D Infinity's actual Eternal D6 mode. Car Battery's Eternal D6 preview explicitly covers only the first of two rerolls, not both.
+- Invalid native snapshots suppress a preview instead of guessing. Viewing never consumes charge, advances game RNG, crafts, executes an effect or edits a save.
 
-The **EID ⚙** button appears in the bottom-right corner while Isaac is in a menu or a run is paused. It hides automatically during active gameplay. Its settings include:
+</details>
 
-- All 20 bundled languages
-- Horizontal and vertical position
-- Scale and opacity
-- Optional description background and independent background opacity
-- Independent Name, Icon, Quality, and Description visibility
-- Position reset controls
-- A scrollable layout that keeps every control usable on smaller displays
-- Optional **RNG predictions (spoilers)**, off by default
-- Dataset/build information and original EID credits
+<details>
+<summary><strong>Pause inventory and Bag of Crafting</strong></summary>
 
-The default overlay position is 140 px from the left and 50 px from the top.
+- Browse personal collectibles with duplicate quantities such as `Brimstone ×3`, actual primary/secondary/pocket actives, held cards/runes/pills, equipped trinkets and a separate swallowed/smelted-trinket section.
+- Switch native players for Jacob/Esau and co-op. Inventory-dependent descriptions and transformation counters use the selected player, not a combined partner inventory.
+- Void's persisted absorbed actives have a separate clickable section, including duplicate counts. Absorbed passives become stats and correctly do not appear there.
+- Validated absorbed actives can enable applicable conditional and Spindown/mimic previews while Void is owned, without becoming physical inventory copies.
+- Book of Virtues pedestal previews use each applicable player's primary active, not every secondary/pocket active.
+- Bag of Crafting shows its ingredient icons and `N/8` count. At 8/8, inspect the game's cached result with its full description, icon and quality. Incomplete/unavailable results are never guessed; viewing does not craft or spend ingredients.
+- Inventory/settings controls and the selected pause description hide when gameplay resumes.
 
-EID waits for the native Isaac render view and advancing frame timestamps before
-loading its database or attaching the overlay. It uses the game's existing window;
-it does not create a second window or synthesize joystick touches. The user confirmed
-that this fixes the stuck joystick on the affected LiveContainer device.
-
-### Pause inventory
-
-While a run is paused, an **EID Items** button appears in the top-left corner and
-the **EID ⚙** settings button becomes available in the bottom-right corner.
-It opens a scrollable browser containing the selected player's collectibles
-(with duplicate quantities), actual active slots, equipped/swallowed trinkets,
-held cards and runes, identified pills, Void-absorbed actives, and transformation
-progress. A player picker keeps Jacob/Esau and native co-op inventories separate.
-Selecting an item closes the browser and renders its full EID description.
-The button and browser disappear as soon as gameplay resumes.
-
-Selected descriptions always have a dark, content-sized backdrop over the light
-pause screen. The temporary backdrop has a minimum opacity of 72%, even when
-the normal gameplay background is disabled or more transparent. Resuming restores
-the saved gameplay setting.
-
-Select **D Infinity** to open its description browser. Tap the description to
-advance from the overview (`0/10 ›`) through D1, D4, D6, Eternal D6, D7, D8, D10,
-D12, D20 and D100, then back to the overview. Each page uses its own localized
-description, icon, quality and charge indicator. Browsing never switches the
-actual active item, uses it or spends charge.
-
-Select **Bag of Crafting** to inspect its current ingredients (`N/8`). When all
-eight slots are filled and Isaac has prepared a result, the same selection opens
-that item's full localized description, icon and quality, with the bag's
-ingredients above it. This reads the game's cached result; it does not craft,
-spend ingredients, change RNG or add the previewed item to your inventory.
-Incomplete/unavailable recipes never display a guessed result. Recipe search
-and suggestions using pickups outside the bag are not implemented.
-
-Pocket actives resolve through their native active-slot references, not by
-treating the slot number as a collectible ID. Tainted Cain's bag therefore does
-not insert a phantom Spoon Bender into **EID Items** or ownership conditions.
-See [crafting-preview checks](docs/testing-crafting-preview.md).
-
-### Optional next-outcome predictions
-
-Enable **RNG predictions (spoilers)** in EID settings to inspect the following:
-
-- **Eternal D6:** a visible, rerollable pedestal shows whether the next individual
-  reroll will replace it or make it disappear. D Infinity's actual Eternal D6
-  mode is also recognized. With Car Battery the text explicitly covers only
-  the first reroll (`1/2`); the second reroll and future-use counts are not
-  claimed, because the resulting pedestal can advance its own RNG differently.
-- **Crooked Penny:** select the owned active in paused **EID Items** to see the
-  next heads/tails result. Car Battery shows both native activations separately.
-  The second result uses the real collectible stream, including its additional
-  advance after a failed activation, not the temporary room-mixed RNG.
-
-Predictions copy current native state. Viewing or refreshing them never uses
-items, advances game RNG, spends charge, crafts or edits a save. Unknown/blind
-pedestals and unavailable native state fail closed. No running Windows/desktop
-EID RNG algorithm is assumed to match this iOS executable. See
-[device checks and native limitations](docs/testing-outcome-predictions.md).
+</details>
 
 ## Screenshots
 
@@ -251,116 +140,32 @@ Actual gameplay from the native iOS version. Click a screenshot to view it at fu
   </tr>
 </table>
 
-## Compatibility
 
-The current native layout supports this App Store build:
+## Limits and safety
 
-| Property | Supported value |
-| --- | --- |
-| Bundle identifier | `com.Nicalis.Isaac-iOS` |
-| Architecture | ARM64 |
-| iOS game version | `1.4` |
-| Embedded game string | `Repentance v1.7.9b.J754` |
-| Mach-O UUID | `F4357753-A25F-30EE-BACF-63709F902895` |
-| Description dataset | Standard Repentance `rep` with `ab+` base tables |
+- This is a **native EID adaptation**, not a desktop Lua-mod loader or complete upstream feature port. General recipe search, arbitrary Lua conditions, every co-op/subplayer rule and every RNG prediction are not implemented.
+- One nearby eligible description is shown at a time. Browsing a description does not change gameplay or unlock anything.
+- Only the verified game executable is supported. Unknown UUIDs fail closed before scanning native entity memory.
+- The same dylib uses public iOS frameworks in every loading mode: no jailbreak-only library, JIT, daemon or synthetic joystick touches. LiveContainer startup waits for Isaac's real render view and advancing frames.
+- Re-signing may change the app identifier, container, Keychain access and receipt behavior. The mod does not bypass DLC ownership, StoreKit or purchase checks.
+- The user confirmed the latest changes working on the development phone. Not every character, language, co-op combination or loading mode has been exhaustively replayed.
 
-Native layouts can change when the game executable changes. An unknown UUID is rejected before entity memory is scanned, so unsupported builds show no overlay instead of using unverified offsets. Repentance+ data is intentionally not used because it does not match the native iOS 1.4 executable.
+## Build and technical details
 
-## Installation
-
-Back up Isaac's application data before replacing or re-signing an installation.
-
-### Rootless jailbreak
-
-Install the release package with a package manager, or from a shell:
-
-```sh
-dpkg -i IsaacExternalItemDescriptions-rootless.deb
-```
-
-Restart Isaac after installation. The package installs an ElleKit filter for `com.Nicalis.Isaac-iOS`; the loaded dylib does not link against ElleKit, Substrate, libhooker, or another jailbreak runtime.
-
-### LiveContainer private app
-
-1. Extract `IsaacExternalItemDescriptions-LiveContainer.framework.zip` in Files.
-2. In LiveContainer, open **Tweaks** and create an app-specific folder such as `IsaacEID`.
-3. Open that folder, choose **Import Tweak**, and select `IsaacExternalItemDescriptions.framework`.
-4. Long-press Isaac, open **Settings**, and select the new folder under **Tweak Folder**.
-5. Keep **Don't Inject TweakLoader** and **Don't Load TweakLoader** disabled.
-6. If LiveContainer reports a signing problem, use **Force Sign** for the imported framework.
-
-Isaac must be configured as a private app. Do not place this framework in Global Tweaks. More detail is available in [Installation](docs/INSTALL.md#livecontainer-private-app).
-
-### Embedded/non-jailbroken app
-
-Extract `IsaacExternalItemDescriptions-Embedded.zip` into the app's `Frameworks` directory and add this load command to Isaac's main executable:
-
-```text
-@executable_path/Frameworks/IsaacExternalItemDescriptions.dylib
-```
-
-The included tool performs the bundle copy and Mach-O modification on a user-supplied decrypted IPA:
-
-```sh
-./tools/patch-ipa.sh Isaac.ipa Isaac-EID.ipa
-```
-
-The result is unsigned unless `SIGNING_IDENTITY` is supplied. The complete app bundle must be signed after modification. The dylib requires no JIT, executable-memory entitlement, private entitlement, daemon, SSH service, or jailbreak filesystem access.
-
-See [Installation](docs/INSTALL.md) for signing options and limitations.
-
-## Build from source
-
-Requirements:
-
-- macOS and Xcode with an iOS SDK
-- Python 3
-- `dpkg-deb` for rootless package creation
-- A checkout of [wofsauge/External-Item-Descriptions](https://github.com/wofsauge/External-Item-Descriptions) when regenerating attributed data and visual resources
-
-Build and validate every public format:
+Requires macOS, Xcode's iOS SDK, Python 3, `dpkg-deb`, and an [original EID checkout](https://github.com/wofsauge/External-Item-Descriptions) for attributed visual resources.
 
 ```sh
 make release EID_SOURCE=/path/to/External-Item-Descriptions
 ```
 
-Useful individual targets:
+Outputs go to `dist/` and `packages/`. The single GitHub workflow builds all formats, verifies their contents and publishes tagged releases. Release descriptions come from the matching [changelog](CHANGELOG.md) entry, without repeating the release title.
 
-```sh
-make test
-make dylib EXTRA_CFLAGS='-Wall -Wextra -Werror'
-make package EXTRA_CFLAGS='-Wall -Wextra -Werror'
-make livecontainer EXTRA_CFLAGS='-Wall -Wextra -Werror'
-make audit
-```
+[Installation](docs/INSTALL.md) · [Native layout](docs/NATIVE_LAYOUT.md) · [EID parity and remaining scope](docs/EID_PARITY.md)
 
-`make audit` verifies that the resulting dylib does not reference jailbreak-only libraries. Release files are written to `dist/` and `packages/`.
+## Credits
 
-The description importer combines upstream `ab+` base tables with `rep` overrides. The asset importer builds the inline-icon map and copies the card/pill and transformation resources used by the UIKit renderer.
+Huge thanks to **[wofsauge](https://github.com/wofsauge)** and every original [External Item Descriptions](https://github.com/wofsauge/External-Item-Descriptions) contributor and translator. [Original Steam Workshop mod](https://steamcommunity.com/sharedfiles/filedetails/?id=836319872).
 
-## How it works
+EID-derived descriptions and resources are included with the original author's permission and remain attributed in [Third-party notices](THIRD_PARTY_NOTICES.md). Game artwork is read from the installed game.
 
-The native iOS game has no desktop Lua mod API. This project locates the supported Isaac executable by UUID, resolves native C++ RTTI for pickup, player, familiar, slot, effect, and grid-spike types, and reads bounded snapshots from its own process.
-
-Those snapshots provide nearby pickup identity, player position, card/rune knowledge, pill knowledge, current inventory, persisted transformation counters, native pause state, level curses, room effects, Sacrifice Room grid state, and run identity. The mod does not patch save data or write into Isaac's native gameplay objects.
-
-Verified offsets and their validation are documented in [Native layout](docs/NATIVE_LAYOUT.md). Device and packaging results are recorded in [Test matrix](docs/TEST_MATRIX.md), and presentation differences are tracked in [EID parity](docs/EID_PARITY.md).
-
-## Limitations
-
-- Only the executable UUID listed above is supported. A game update requires native-layout revalidation.
-- This is a native EID implementation, not a general Windows/Linux Lua-mod loader for iOS.
-- The in-game overlay currently presents the nearest supported description rather than every object in the room simultaneously.
-- Direct embedding requires modifying and signing the application. Re-signing can change the bundle identifier, application container, Keychain groups, and App Store receipt behavior.
-- The project does not alter StoreKit, DLC ownership, receipts, or purchase checks.
-- Contextual descriptions cover the documented Repentance rules, not every upstream EID synergy. Arbitrary spawned subplayers and all desktop co-op filtering rules are not claimed. Super Bum's merged familiar ownership is not verified per player in co-op, so its personal counter is omitted there rather than borrowed from a partner.
-- Void's native active list is inspectable, but absorbed actives are not universally treated as physically held items by every synergy adapter. Book of Virtues pedestal previews include all owned actives rather than only the selected primary slot.
-- Some character-context gameplay acceptance remains pending; Bag of Crafting and its pocket-active fix have been confirmed on device. See [remaining character checks](docs/CHARACTER_CONTEXT_TESTING.md) and [current effect/player checks](docs/testing-current-effects.md).
-
-## Credits and legal
-
-Special thanks to **[wofsauge](https://github.com/wofsauge)** and every [External Item Descriptions](https://github.com/wofsauge/External-Item-Descriptions) contributor for the original mod, descriptions, translations, markup, atlases, and years of maintenance. The original mod is also available through the [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=836319872).
-
-The bundled EID-derived descriptions and visual resources are distributed with permission and remain credited to their original authors. Their attribution is preserved in [Third-party notices](THIRD_PARTY_NOTICES.md). Collectible and trinket artwork is loaded at runtime from the installed game; card, rune, Soul Stone, and pill icons use the attributed EID atlas.
-
-This is an unofficial project and is not affiliated with Nicalis, Edmund McMillen, Valve, or the External Item Descriptions maintainers. No game application, DLC, receipt, or purchase bypass is included. The bridge source is available under the [MIT License](LICENSE).
+Unofficial; not affiliated with Nicalis, Edmund McMillen, Valve or the EID maintainers. No game application, save, credential or purchase bypass is included. This bridge's source uses the [MIT License](LICENSE).

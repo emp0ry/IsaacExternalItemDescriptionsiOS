@@ -1,6 +1,6 @@
 # Original EID parity target
 
-The `main` branch contains the iOS port's work toward visual and behavioral parity with wofsauge/External-Item-Descriptions. The reference for v0.10.1 remains revision `8b59d00c6828e333294639ad2b2b6875eae821cb`, importing only standard-Repentance rules and excluding Repentance+ patches.
+The iOS port's behavioral reference remains revision `8b59d00c6828e333294639ad2b2b6875eae821cb` of wofsauge/External-Item-Descriptions, importing only standard-Repentance rules and excluding Repentance+ patches.
 
 ## Reference defaults
 
@@ -84,16 +84,17 @@ Pocket actives are resolved through `ActiveSlot + 1` references, preventing slot
 Book of Virtues uses upstream's standard-Repentance XML wisp table, localized
 special effects and flags, the current absolute stage, and the original wisp/ring
 icons. No-wisp and single-room cases are included. A Book of Virtues pedestal
-previews owned active items (including the secondary/pocket active), rather than
-claiming they are all the currently selected primary active slot. Passive Book
+previews the primary active slot of each native player, not all owned active,
+secondary and pocket items. Passive Book
 of Belial adds the imported active-item effects; ordinary Judas/Book of Belial
 (34) alone does not enable it. The native `HasCollectible(59)` branch reports
 virtual ownership for Judas/Black Judas with Birthright even when raw count 59
 is zero. The read-only adapter evaluates that verified branch per player, honors
 the native non-quest-item suppression flag, and does not insert a phantom item
 into the pause inventory. Missing flag/count context suppresses the synergy.
-Void's native absorbed-active list is now separately inspectable; it is not
-universally substituted for physical ownership in every synergy adapter.
+Void's native absorbed-active list is separately inspectable. Validated active
+IDs also participate in conditional ownership, including absorbed Spindown and
+mimic previews, without altering physical ownership/counts or passive stats.
 All new adapters are read-only.
 
 Stat icon aliases such as `Damage` are resolved to their original `DamageREP`
@@ -164,8 +165,36 @@ PlayerForm counters and current collectible/active counts are personal too.
 Repeated physical collectibles use one row with a live `×N` quantity. Raw
 counts and actual active-slot occurrences are merged without counting the same
 copy twice, and quantity changes invalidate the inventory list signature.
-Super Bum's unverified merged-familiar ownership is omitted in co-op rather
-than attributed to the wrong player. See [device checks](testing-current-effects.md).
+Super Bum's current room familiar is matched to the native player through its
+verified owner pointer. Missing/unstable room lists retain the single-player
+fallback and suppress unverified co-op completion. See [release history](../CHANGELOG.md).
+
+## Additional original conditionals
+
+The reviewed duplicate and miscellaneous blocks are imported as declarative
+rules, with explicit standard-Repentance branch filtering. No Lua is executed.
+They preserve both synergy directions, owned/pedestal names, ordering layers,
+unique IDs, localization replacements and colors. A duplicate-copy note applies
+when owning another copy or Diplopia/Crooked Penny, but not in the item reminder.
+The existing Pandora/Strange Key adapter owns its highlighting, avoiding a
+second copy of that note. Unreviewed Lua expressions fail import rather than
+being evaluated. Golden-bomb and arbitrary subplayer-count predicates remain
+outside this adapter; this is not a claim to port every EID condition.
+
+Charge predicates use installed item metadata and actual four-slot snapshots.
+They distinguish normal/timed/special charges and preserve upstream pocket-slot
+inclusion/exclusion and chargeable-character rules. Pause descriptions use only
+the selected player's slots. Native card and identified-pocket-pill ownership
+can enable applicable conditions; unknown pills never expose their effect.
+
+Glyph of Balance queries the supported iOS game's read-only native priority
+function on the main thread, with private output variables, a validated current
+player and prologue guard. This follows this executable's actual priority where
+desktop thresholds differ, rather than predicting RNG or promising a specific
+random room reward. It is shown in the owned pause description, not in Greed.
+Sanguine Bond recognizes the native spike type/variant and renders the upstream
+percent-bearing payout lines. It does not reveal the next random payout. Older
+upstream translations may contain fewer probability lines than English/Russian.
 
 ## Charge-item conditionals
 
@@ -180,7 +209,7 @@ claimed. Native pedestal initialization/price handling can advance RNG after
 morphing, so a desktop formula cannot establish those future states reliably.
 All calculations operate on private copies, without executing an effect or
 native RNG method. The setting defaults to off; malformed state suppresses the
-prediction. See [device scenarios](testing-outcome-predictions.md).
+prediction. See [release history](../CHANGELOG.md).
 
 `carBattery`, its `repCarBattery` overrides, `tarotClothBuffs`, and the effective
 Repentance no-synergy/Car Battery pedestal lists are imported from upstream.
@@ -222,7 +251,7 @@ the existing Lilith/Tainted Lilith character conditions.
 Floor conditions use current any-player ownership; the pause item reminder
 uses only its selected player's snapshot. Empty/unreadable fresh ownership does
 not fall back to a stale aggregate. No new offsets, game hooks, RNG predictions
-or native mutating calls are introduced. See [device scenarios](testing-food-familiars.md).
+or native mutating calls are introduced. See [release history](../CHANGELOG.md).
 
 The native reader validates the floor and each player's speed, fire delay,
 damage, range, consumable counts, and character-specific charge pool. Unknown
@@ -274,7 +303,7 @@ explosive flag. Chance2/3 replace chance1 only when below 1; zero remains valid.
 No Repentance+ quality damage multipliers or Repentance+ locust definitions are
 imported. Host tests cover all languages, native data identity, special/default
 records, removal, inventory use, and personal co-op isolation. Gameplay checks
-after deployment remain separate; see `testing-abyss.md`.
+after deployment remain separate; see the [release history](../CHANGELOG.md).
 
 Luck formulas are exported as restricted arithmetic trees, not executable Lua.
 Repentance overrides are applied; Repentance+ overrides are excluded. The
@@ -322,7 +351,7 @@ first eligible pedestal. Void ignores actives except Moving Box; Black Rune
 includes them. Preview refreshes with immutable native context, off the main
 thread. Co-op chooses the nearest player's inventory and RNG. Missing data
 suppresses the affected feature. Live device testing is required in addition
-to host arithmetic/translation tests; see `testing-advanced-previews.md`.
+to host arithmetic/translation tests; see the [release history](../CHANGELOG.md).
 
 Transformation counts are rendered directly from the tracker for collectibles,
 identified normal/horse pills, and assigned trinkets. This avoids an asynchronous
@@ -355,7 +384,7 @@ overview cycles through the ten dice in upstream's standard-Repentance
 not the native Drop input or any use-item adapter. Selection survives refreshes
 and resets when another inventory item is chosen or gameplay resumes. Native
 D Infinity mode, charge and saves are not changed. See
-[pause-description checks](testing-pause-descriptions.md).
+[release history](../CHANGELOG.md).
 
 ## Native repetition previews
 
@@ -367,7 +396,7 @@ resolution is bounded to validated current players; the raw state participates
 in background refresh equality. Empty/invalid history fails closed, and unknown
 pills never reveal Vurp! data. Normal/horse propagation and repeated Vurp! follow
 the native implementation where upstream's Lua event-history approximation differs.
-See [the implementation notes and device checklist](testing-repeat-previews.md).
+See [release history](../CHANGELOG.md).
 
 ## Pickup-order and inventory-count previews
 
@@ -393,7 +422,7 @@ prologues, array spans, IDs and ranges before querying. Pickup history, duplicat
 collectible counts and swallowed count changes participate in refresh signatures.
 Native queries run only when the corresponding description is displayed. No
 gameplay hook, extra window, simulated touch or game-state mutation is added.
-See [the device scenarios, including Flip](testing-inventory-previews.md).
+See [release history](../CHANGELOG.md).
 
 ## Glitched Crown native cycle
 
@@ -429,4 +458,4 @@ transformation and Flip text remains applicable. The synthetic overview gets no
 Glitched Crown collection-page reminder or Spindown chain. Native room-based
 Void/Black Rune absorption predictions are suppressed for cycle previews rather
 than attributed to a hypothetical item that is not currently on the pedestal.
-Device acceptance is tracked in [the Crown checklist](testing-glitched-crown.md).
+Device acceptance is tracked in [release history](../CHANGELOG.md).

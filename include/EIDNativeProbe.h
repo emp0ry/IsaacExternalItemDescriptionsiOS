@@ -15,6 +15,7 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
     // Internal display variants for native room entities.
     EIDPickupVariantDiceRoom = 2001,
     EIDPickupVariantSacrificeRoom = 2002,
+    EIDPickupVariantSanguineBond = 2003,
 };
 
 @interface EIDPickupIdentity : NSObject
@@ -68,6 +69,8 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 - (NSArray<EIDPickupIdentity *> *)currentInventoryItems;
 - (NSArray<EIDPickupIdentity *> *)currentSmeltedTrinkets;
 - (NSArray<EIDPickupIdentity *> *)currentVoidedItems;
+// Read-only native Glyph of Balance priority; main-thread pause inventory only.
+- (EIDPickupIdentity *)resolvedGlyphIdentity:(EIDPickupIdentity *)identity insideInventory:(BOOL)insideInventory;
 // Main-thread-only, read-only native GetPillEffect adapter. Revalidates the live
 // player vector; never invokes game code from the background memory scanner.
 - (EIDPickupIdentity *)resolvedPillIdentity:(EIDPickupIdentity *)identity;

@@ -301,6 +301,8 @@ constexpr uintptr_t kPlayerHasCollectibleOffset = 0x4eeb74;
 constexpr uintptr_t kPlayerGetCollectibleNumOffset = 0x4ff70c;
 constexpr uintptr_t kPlayerGetTrinketMultiplierOffset = 0x506238;
 constexpr uintptr_t kPlayerCanRemoveCollectibleOffset = 0x505a54;
+// Drop-reward selection at 0x10059f034 calls this read-only output adapter.
+constexpr uintptr_t kPlayerGlyphOfBalanceOffset = 0x554364;
 constexpr uintptr_t kItemConfigIsAvailableOffset = 0x73fab0;
 constexpr uintptr_t kPersistentIsAchievementUnlockedOffset = 0x7027f8;
 constexpr size_t kManagerCollectibleConfigsOffset = 0x55f30;
@@ -324,6 +326,9 @@ constexpr size_t kRoomGridPathsOffset = 0xe98;
 constexpr int32_t kSacrificeRoomType = 13;
 constexpr int32_t kGridSpikesType = 0x8;
 constexpr int32_t kSuperBumFamiliarVariant = 102;
+// Familiar::Init 0x1007fbf8c stores its owning player here. Update at
+// 0x10080860c reads this player's position for Super Bum and related variants.
+constexpr size_t kFamiliarOwnerOffset = 0x400;
 constexpr uint32_t kCurseOfTheBlind = 1u << 6;
 constexpr NSUInteger kRunEndConfirmationScans = 12;
 constexpr size_t kGameRunSeedOffset = 0x25d44;
@@ -685,6 +690,36 @@ static NSArray *ReadRoomPedestals(vm_address_t game, const ScanContext& context)
     return pedestals.copy;
 }
 
+static NSArray *ReadSuperBumOwners(vm_address_t game, const ScanContext& context, const VMRegionResult& players) {
+    uintptr_t room=0, list=0; uint32_t count=0;
+    if (!ReadOwnTaskMemory(game+kGameCurrentRoomOffset,&room,sizeof(room)) || !room ||
+        !ReadOwnTaskMemory(room+0x19c8,&list,sizeof(list)) ||
+        !ReadOwnTaskMemory(room+0x19d4,&count,sizeof(count)) || count>4096 || (count && !list)) return nil;
+    std::vector<uintptr_t> entities(count);
+    if (count && !ReadOwnTaskMemory(list,entities.data(),count*sizeof(uintptr_t))) return nil;
+    NSMutableArray *owners = [NSMutableArray arrayWithCapacity:players.playerCount];
+    for (size_t index=0; index<players.playerCount; ++index) [owners addObject:@NO];
+    for (uintptr_t address : entities) {
+        if (!address) continue;
+        uintptr_t vtable=0;
+        if (!ReadOwnTaskMemory(address,&vtable,sizeof(vtable))) return nil;
+        if (!IsCandidateVTable(context.familiarVTables,context.familiarVTableCount,vtable)) continue;
+        std::array<uint8_t,kFamiliarOwnerOffset+sizeof(uintptr_t)> bytes{};
+        if (!ReadOwnTaskMemory(address,bytes.data(),bytes.size())) return nil;
+        int32_t identity[3]{}; uintptr_t owner=0, again=0;
+        memcpy(identity,bytes.data()+kEntityTypeOffset,sizeof(identity));
+        if (identity[0]!=3 || identity[1]!=kSuperBumFamiliarVariant || bytes[0x1c3] || !bytes[0x1c2]) continue;
+        memcpy(&owner,bytes.data()+kFamiliarOwnerOffset,sizeof(owner));
+        if (!ReadOwnTaskMemory(address+kFamiliarOwnerOffset,&again,sizeof(again)) || owner!=again) return nil;
+        for (size_t index=0; index<players.playerCount; ++index)
+            if (owner && owner==players.players[index].address) owners[index]=@YES;
+    }
+    uintptr_t confirmation=0; uint32_t latestCount=0;
+    if (!ReadOwnTaskMemory(room+0x19c8,&confirmation,sizeof(confirmation)) || confirmation!=list ||
+        !ReadOwnTaskMemory(room+0x19d4,&latestCount,sizeof(latestCount)) || latestCount!=count) return nil;
+    return owners.copy;
+}
+
 static NSDictionary *ReadAbsorptionPrediction(vm_address_t player, unsigned count, bool rune) {
     RemotePointerVector vector;
     size_t offset = rune ? 0x1bf8 : 0x1bb0, identifier = rune ? 41 : 477;
@@ -798,6 +833,8 @@ static NSDictionary *ReadPurityState(vm_address_t player) {
 static bool ReadPlayerTransformationCounters(vm_address_t address,
     std::array<int32_t,kNativeTransformationCount>& counters);
 
+static bool ResolvePillPresentation(int32_t rawSubtype, int32_t& variant, int32_t& subtype);
+
 static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
     int32_t type = -1;
     if (!ReadOwnTaskMemory(address+kPlayerTypeOffset,&type,sizeof(type)) || type < 0 || type > 40) return nil;
@@ -817,6 +854,18 @@ static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
         NSMutableDictionary *numbers = [NSMutableDictionary dictionary];
         for (size_t item = 1; item < counts.size(); ++item) if (counts[item]) numbers[@(item).stringValue] = @(counts[item]);
         player[@"collectible_counts"] = numbers.copy;
+        if (counts[464]) {
+            std::array<int32_t,7> health{};
+            int32_t bone=0, poop=0;
+            if (ReadOwnTaskMemory(address+0x16b8,health.data(),sizeof(health)) &&
+                ReadOwnTaskMemory(address+0x2450,&bone,sizeof(bone)) &&
+                ReadOwnTaskMemory(address+0x269c,&poop,sizeof(poop))) {
+                NSMutableArray *signature = [NSMutableArray array];
+                for (int32_t value : health) [signature addObject:@(value)];
+                [signature addObject:@(bone)]; [signature addObject:@(poop)];
+                player[@"glyph_health_signature"] = signature.copy;
+            }
+        }
     }
     uint8_t disabled = 0xff;
     if (countsReadable && ReadOwnTaskMemory(address+kPlayerNonQuestItemsDisabledOffset,&disabled,sizeof(disabled)) && disabled <= 1) {
@@ -839,6 +888,15 @@ static NSDictionary *ReadDescriptionPlayer(vm_address_t address) {
             [owned addObject:[NSString stringWithFormat:@"5.350.%d",item & 0x7fff]];
         for (const auto& pocket : pockets) if (pocket.type == 2 && pocket.id > 0)
             [owned addObject:[NSString stringWithFormat:@"5.100.%d",pocket.id]];
+        for (const auto& pocket : pockets) if (pocket.type == 1 && pocket.id > 0)
+            [owned addObject:[NSString stringWithFormat:@"5.300.%d",pocket.id]];
+        for (const auto& pocket : pockets) if (pocket.type == 0 && pocket.id>0) {
+            int32_t variant=0, effect=0;
+            if (ResolvePillPresentation(pocket.id,variant,effect) && effect>0 && effect<=64 &&
+                (variant==EIDPickupVariantPill || variant==EIDPickupVariantHorsePill))
+                [owned addObject:[NSString stringWithFormat:@"5.70.%d",effect]];
+        }
+        player[@"active_slots"] = @[@(actives[0]),@(actives[1]),@(actives[2]),@(actives[3])];
         NSMutableArray *activeIDs = [NSMutableArray array];
         for (int32_t id : actives) if (id) {
             [activeIDs addObject:@(id)];
@@ -1206,7 +1264,7 @@ static bool IsDescribableVariant(int32_t variant) {
         variant == EIDPickupVariantHorsePill ||
         variant == EIDPickupVariantUnidentifiedPill || variant == EIDPickupVariantCard ||
         variant == EIDPickupVariantTrinket || variant == EIDPickupVariantDiceRoom ||
-        variant == EIDPickupVariantSacrificeRoom;
+        variant == EIDPickupVariantSacrificeRoom || variant == EIDPickupVariantSanguineBond;
 }
 
 static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype,
@@ -1248,33 +1306,40 @@ static bool ResolveSacrificeRoomSpikes(const ScanContext& context,
     vm_address_t room = 0;
     int32_t roomType = 0;
     if (!ReadCurrentRoomAddress(room) || !ReadCurrentRoomType(roomType)) return false;
-    if (roomType != kSacrificeRoomType) return true;
 
     std::array<uintptr_t, kRoomGridEntityCount> gridEntities{};
     if (!ReadOwnTaskMemory(room + kRoomGridEntitiesOffset, gridEntities.data(),
                            sizeof(gridEntities))) return false;
 
-    constexpr int32_t roomGridWidth = 15;
-    for (size_t gridIndex = 0; gridIndex < gridEntities.size(); ++gridIndex) {
+    int32_t roomGridWidth=0, roomGridHeight=0;
+    if (!ReadOwnTaskMemory(room+kRoomGridWidthOffset,&roomGridWidth,4) ||
+        !ReadOwnTaskMemory(room+kRoomGridHeightOffset,&roomGridHeight,4) ||
+        roomGridWidth<1 || roomGridWidth>28 || roomGridHeight<1 || roomGridHeight>28 ||
+        (size_t)(roomGridWidth*roomGridHeight)>gridEntities.size()) return false;
+    for (size_t gridIndex = 0; gridIndex < (size_t)(roomGridWidth*roomGridHeight); ++gridIndex) {
         vm_address_t gridEntity = static_cast<vm_address_t>(gridEntities[gridIndex]);
         if (!gridEntity) continue;
         std::array<uint8_t, kGridEntityVarDataOffset + sizeof(int32_t)> object{};
         if (!ReadOwnTaskMemory(gridEntity, object.data(), object.size())) continue;
         uintptr_t vtable = 0;
         int32_t gridType = 0;
+        int32_t gridVariant = 0;
         int32_t varData = 0;
         memcpy(&vtable, object.data(), sizeof(vtable));
         if (!IsCandidateVTable(context.gridSpikesVTables,
                                context.gridSpikesVTableCount, vtable)) continue;
         result.gridSpikesVTableReferences++;
         memcpy(&gridType, object.data() + kGridEntityDescOffset, sizeof(gridType));
+        memcpy(&gridVariant, object.data() + kGridEntityDescOffset + 4, sizeof(gridVariant));
         memcpy(&varData, object.data() + kGridEntityVarDataOffset, sizeof(varData));
         if (gridType != kGridSpikesType || varData < 0 || varData > 1000) continue;
+        BOOL sanguine = gridVariant>=100 && gridVariant<=255;
+        if (!sanguine && roomType!=kSacrificeRoomType) continue;
 
         float gridX = 40.0f + 40.0f * static_cast<float>(gridIndex % roomGridWidth);
         float gridY = 80.0f + 40.0f * static_cast<float>(gridIndex / roomGridWidth);
         int32_t payout = varData >= 11 ? 12 : varData + 1;
-        AddVMPickup(result, EIDPickupVariantSacrificeRoom, payout,
+        AddVMPickup(result, sanguine ? EIDPickupVariantSanguineBond : EIDPickupVariantSacrificeRoom, sanguine ? 692 : payout,
                     gridX, gridY, true);
     }
     return true;
@@ -2076,10 +2141,12 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         if (![self.activeCollectibleIDs containsObject:item] || item.intValue == 523) ++voidCount;
     }
     if (pedestals) state[@"room_pedestals"] = pedestals;
+    NSArray *superBumOwners = game ? ReadSuperBumOwners(game,self.scanContext,players) : nil;
     for (size_t index = 0; index < players.playerCount; ++index) {
         NSMutableDictionary *player = [ReadDescriptionPlayer(players.players[index].address) mutableCopy];
         if (player) {
             player[@"index"] = @(index);
+            if (index<superBumOwners.count) player[@"super_bum_active"] = superBumOwners[index];
             if (pedestals && self.activeCollectibleIDs.count) {
                 NSDictionary *voidPrediction = ReadAbsorptionPrediction(players.players[index].address,voidCount,false);
                 NSDictionary *runePrediction = ReadAbsorptionPrediction(players.players[index].address,runeCount,true);
@@ -2478,7 +2545,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     uintptr_t player = players.players[(size_t)identity.playerIndex].address;
     using HasCollectible = bool (*)(uintptr_t,uint32_t,bool);
     HasCollectible has = reinterpret_cast<HasCollectible>(image+kPlayerHasCollectibleOffset);
-    if (!has(player,723,false)) { context[@"spindown"] = @{@"owned":@NO}; return finish(); }
+    BOOL absorbed = NO;
+    if (!has(player,723,false) && has(player,477,false))
+        absorbed = [ReadVoidedActives(player) containsObject:@723];
+    if (!has(player,723,false) && !absorbed) { context[@"spindown"] = @{@"owned":@NO}; return finish(); }
     BOOL battery = has(player,356,false);
     uint32_t availablePrologue = 0, unlockedPrologue = 0;
     uintptr_t manager = 0;
@@ -2539,6 +2609,38 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
             (long)identity.subtype,(unsigned long)lockedCount,(unsigned long)restrictedCount);
     }
     return finish();
+}
+
+- (EIDPickupIdentity *)resolvedGlyphIdentity:(EIDPickupIdentity *)identity insideInventory:(BOOL)insideInventory {
+    if (identity.variant!=100 || identity.subtype!=464 || !insideInventory) return identity;
+    NSMutableDictionary *context = identity.pickupContext.mutableCopy;
+    context[@"glyph_balance"] = @{@"validated":@NO};
+    if (self.supportedBuild && NSThread.isMainThread) {
+        const mach_header_64 *header = IsaacExecutableHeader(nullptr);
+        uintptr_t game=0; VMRegionResult players;
+        uint32_t prologue=0;
+        if (header && self.playerVectorOffset && ReadGameObjectAddress(game) &&
+            ReadPlayerVector(self.scanContext,game+self.playerVectorOffset,false,players) &&
+            identity.playerIndex>=0 && (size_t)identity.playerIndex<players.playerCount &&
+            ReadOwnTaskMemory((uintptr_t)header+kPlayerGlyphOfBalanceOffset,&prologue,4) && prologue==0xd10183ff) {
+            uintptr_t player=players.players[(size_t)identity.playerIndex].address;
+            std::array<int32_t,kMaximumCollectibleID+1> counts{};
+            if (ReadPlayerCollectibleCounts(player,counts) && counts[464]>0) {
+                // The verified routine reads health/consumables and room entities.
+                // Its only writes are to these two private stack output values;
+                // no RNG, reward creation or native player mutation is called.
+                int32_t variant=0, subtype=0;
+                using GlyphPriority = void (*)(uintptr_t,int32_t *,int32_t *);
+                reinterpret_cast<GlyphPriority>((uintptr_t)header+kPlayerGlyphOfBalanceOffset)(player,&variant,&subtype);
+                if (variant==0 || variant==10 || variant==20 || variant==30 || variant==40 || variant==42 || variant==350)
+                    if (subtype>=0 && subtype<=6) context[@"glyph_balance"] =
+                        @{@"validated":@YES,@"variant":@(variant),@"subtype":@(subtype)};
+            }
+        }
+    }
+    return [[EIDPickupIdentity alloc] initWithVariant:identity.variant subtype:identity.subtype
+        playerType:identity.playerType playerIndex:identity.playerIndex rawPillSubtype:identity.rawPillSubtype
+        pillModifiers:identity.pillModifiers pickupContext:context];
 }
 
 - (EIDPickupIdentity *)resolvedLivePedestalIdentity:(EIDPickupIdentity *)identity {

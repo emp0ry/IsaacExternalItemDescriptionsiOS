@@ -218,8 +218,10 @@ static NSInteger EIDNativeFormIDForTransformation(NSInteger transformation) {
         return MAX(live,[forms[(NSUInteger)nativeForm] integerValue]);
     }
     if (transformation!=11) return -1;
-    // Super Bum's familiar-owner layout has not been established for co-op.
-    // Keep the existing verified single-player merge check, not a shared flag.
+    if ([selected[@"super_bum_active"] isKindOfClass:NSNumber.class])
+        return MAX(live,[selected[@"super_bum_active"] boolValue] ? self.required : 0);
+    // Preserve the verified single-player fallback if the room list was
+    // transiently unavailable. Never borrow a global merge flag in co-op.
     return players.count==1 ? MAX(live,self.probe.superBumActive ? self.required : 0) : -1;
 }
 
