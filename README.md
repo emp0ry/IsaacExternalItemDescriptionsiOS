@@ -31,7 +31,7 @@ Choose **one** format, install it, then fully restart Isaac.
 
 Choose any of **20 EID languages**, independently of the game's language. Missing translations fall back to English. Settings include horizontal/vertical position, scale, text opacity, background and background opacity, Name/Icon/Quality/Description visibility, position reset, credits and dataset information. The settings panel scrolls on small screens. Default position: **140 px right, 50 px down**.
 
-Gameplay is text-only by default, with an optional content-sized background. Pause descriptions temporarily use a dark backdrop of at least 72% opacity without changing your saved settings.
+Gameplay is text-only by default, with an optional content-sized background. Pausing temporarily gives every visible description a dark backdrop of at least 72% opacity, including nearby pickups without opening EID Items. Resuming restores your saved background settings.
 
 Original EID's spoiler controls are separate, and all three default to **OFF**:
 

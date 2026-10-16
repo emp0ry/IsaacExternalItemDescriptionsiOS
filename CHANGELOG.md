@@ -2,6 +2,21 @@
 
 All release changes are kept here. Older entries describe their own release; historical limitations may have been resolved by a later update.
 
+## v0.13.1
+
+2026-10-16
+
+Readable descriptions throughout Isaac's pause screen, not just inside EID Items.
+
+- Every visible description now gains a dark background of at least 72% opacity while paused, including nearby pickups without opening EID Items.
+- The backdrop updates on pause/resume even when the item and text are unchanged; it no longer depends on selecting an inventory entry.
+- Resuming restores the configured gameplay background toggle and opacity. Pausing never overwrites saved settings or changes text scale and fitted panel width.
+- README and website feature descriptions reflect the expanded pause behavior. All v0.13.0 features and spoiler controls remain included.
+
+Local pause-policy, source-architecture, context, importer and documentation regressions passed, along with strict ARM64, signature, portable-dependency and packaging checks. The corrected dylib was installed on the development iPhone and its hash verified; exhaustive visual checks across all loading modes are not claimed.
+
+Fully restart Isaac after updating. Compatibility remains native iOS **1.4 / Repentance 1.7.9b.J754**, ARM64, iOS 15+. No game files or saves are distributed or modified by this fix.
+
 ## v0.13.0
 
 2026-10-16

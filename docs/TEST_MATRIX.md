@@ -1,5 +1,14 @@
 # Test matrix
 
+## v0.13.1 release validation (2026-10-16)
+
+| Area | Result |
+| --- | --- |
+| Pause background policy | Host checks cover both saved toggle states, minimum pause opacity, invalid opacity values and restoration of configured gameplay opacity |
+| Pause/resume transitions | Source guards require native pause state rather than inventory selection, immediate backdrop refresh on transitions and no preference writes |
+| Device installation | Corrected dylib installed on the development iPhone; installed hash matches the local build; all loading-mode visual combinations not independently replayed |
+| Regression and packaging | Local policy, 20-language context, importer, bundled-data and documentation checks passed; strict ARM64, signature, portable-dependency and distribution checks passed before publication |
+
 ## v0.13.0 release validation (2026-10-16)
 
 | Area | Result |

@@ -578,6 +578,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 
 - (void)updatePauseInventoryForPaused:(BOOL)paused {
+    BOOL pauseChanged = paused != self.pauseUIActive;
     BOOL available = paused && self.probe.inventoryStateAvailable;
     self.inventoryButton.hidden = !available;
     self.settingsButton.hidden = !(self.menuMode || paused);
@@ -599,6 +600,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         EIDLog(@"native pause detected; inventory and settings buttons available");
     }
     self.pauseUIActive = paused;
+    // A floor description may have identical contents across pause/resume.
+    // Update contrast on the transition without waiting for another render.
+    if (pauseChanged) [self applyDescriptionBackground];
 }
 
 - (void)updateSettingsControls {
@@ -1303,13 +1307,13 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         self.descriptionBackground = backdrop;
     }
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    BOOL inventoryPaused = [self inventoryDescriptionActive];
-    BOOL enabled = EIDDescriptionBackgroundVisible([defaults boolForKey:@"IsaacEIDBackgroundEnabled"],inventoryPaused);
+    BOOL paused = self.probe.gameplayActive && self.probe.pauseStateAvailable && self.probe.paused;
+    BOOL enabled = EIDDescriptionBackgroundVisible([defaults boolForKey:@"IsaacEIDBackgroundEnabled"],paused);
     CGFloat opacity = [defaults objectForKey:@"IsaacEIDBackgroundOpacity"]
         ? [defaults doubleForKey:@"IsaacEIDBackgroundOpacity"] : .28;
     self.descriptionBackground.hidden = !enabled;
     self.descriptionBackground.backgroundColor = [UIColor colorWithWhite:0
-        alpha:EIDDescriptionBackgroundAlpha(opacity,inventoryPaused)];
+        alpha:EIDDescriptionBackgroundAlpha(opacity,paused)];
     self.descriptionBackground.frame = CGRectInset(self.panel.bounds, -6, -4);
 }
 

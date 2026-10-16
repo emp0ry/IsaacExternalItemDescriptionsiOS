@@ -395,10 +395,12 @@ of text opacity and the settings stay within the existing scroll view.
 
 Since v0.10.1, the final panel width fits the title and the widest laid-out body
 line, including inline artwork and any cycle-counter header inset. The backdrop
-is resized after the final header layout, without changing text scale. Selected
-pause-inventory descriptions force a backdrop with at least 72% opacity; they
-never overwrite the user's saved background preference. Normal gameplay resumes
-with the configured toggle and opacity.
+is resized after the final header layout, without changing text scale. Every
+visible description forces a backdrop with at least 72% opacity while the
+native game is paused, even without an EID Items selection. Pause/resume
+transitions update the existing backdrop without waiting for text changes.
+This never overwrites the user's saved background preference; normal gameplay
+resumes with the configured toggle and opacity.
 
 The pause inventory also offers a read-only D Infinity browser. Its `0/10 ›`
 overview cycles through the ten dice in upstream's standard-Repentance

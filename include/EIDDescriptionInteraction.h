@@ -17,13 +17,15 @@ static inline size_t EIDNextDescriptionSelection(size_t selection, size_t count)
     return count > 0 && count <= 32 && selection < count ? selection+1 : 0;
 }
 
-static inline bool EIDDescriptionBackgroundVisible(bool configured, bool inventoryPaused) {
-    return configured || inventoryPaused;
+// Any visible description needs contrast against Isaac's bright pause screen,
+// including the nearby pickup shown before opening the inventory browser.
+static inline bool EIDDescriptionBackgroundVisible(bool configured, bool paused) {
+    return configured || paused;
 }
 
-static inline double EIDDescriptionBackgroundAlpha(double configured, bool inventoryPaused) {
+static inline double EIDDescriptionBackgroundAlpha(double configured, bool paused) {
     double value = isfinite(configured) ? fmin(1, fmax(0,configured)) : .28;
-    return inventoryPaused ? fmax(.72,value) : value;
+    return paused ? fmax(.72,value) : value;
 }
 
 // The body width is its widest laid-out line, not the wrapping container's
