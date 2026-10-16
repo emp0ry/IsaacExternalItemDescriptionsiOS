@@ -452,10 +452,15 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
                             @"car_battery", @"tarot_cloth", @"stat_names", @"pickup_names",
                             @"pandora_floor_lines", @"context_strings", @"BFFSSynergies", @"binge_eater", @"purity_boosts", @"book_of_belial",
                             @"wisp_texts", @"wisp_extras", @"tear_flags", @"golden_trinket_effects",
-                            @"golden_trinket_overrides", @"tarot_cloth_blank_card", @"abyss_descriptions"]) {
+                            @"golden_trinket_overrides", @"tarot_cloth_blank_card", @"abyss_descriptions", @"modular_descriptions"]) {
         NSMutableDictionary *entries = [NSMutableDictionary dictionary];
         if ([english[key] isKindOfClass:NSDictionary.class]) [entries addEntriesFromDictionary:english[key]];
-        if ([language[key] isKindOfClass:NSDictionary.class]) [entries addEntriesFromDictionary:language[key]];
+        if ([language[key] isKindOfClass:NSDictionary.class]) {
+            // Modular imports already include per-fragment English fallback.
+            // Preserve language-specific IgnoreFullyAutomatedDescriptions.
+            if ([key isEqual:@"modular_descriptions"]) [entries removeAllObjects];
+            [entries addEntriesFromDictionary:language[key]];
+        }
         context[key] = entries.copy;
     }
     if ([root[@"context_rules"] isKindOfClass:NSArray.class]) context[@"rules"] = root[@"context_rules"];
@@ -491,6 +496,7 @@ static NSString *EIDUnidentifiedPillName(NSString *languageCode) {
         context[@"character_metadata"] = root[@"character_metadata"];
     if ([root[@"health_amounts"] isKindOfClass:NSDictionary.class]) context[@"health_amounts"] = root[@"health_amounts"];
     if ([root[@"healing_items"] isKindOfClass:NSArray.class]) context[@"healing_items"] = root[@"healing_items"];
+    if ([root[@"single_use_collectibles"] isKindOfClass:NSArray.class]) context[@"single_use_collectibles"] = root[@"single_use_collectibles"];
     self.contextData = context.copy;
     EIDLog(@"imported context: %lu weapon rules, %lu supplemental rules, language %@; read-only native inventory; %lu Abyss previews",
         (unsigned long)[context[@"weapon_rules"] count], (unsigned long)[context[@"supplemental_rules"] count], self.languageCode,

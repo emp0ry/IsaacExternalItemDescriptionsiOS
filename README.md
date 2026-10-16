@@ -1,5 +1,7 @@
 # Isaac External Item Descriptions for iOS
 
+**Version 1.0.0** brings the original EID pixel font, modular descriptions and redesigned settings to the native iOS game.
+
 See what items do in the native **The Binding of Isaac: Repentance** on iPhone and iPad. Descriptions adapt to your character, inventory, transformations and current room.
 
 Works with **rootless jailbreaks, LiveContainer private apps, and direct dylib embedding**. All descriptions and required EID resources are included; no separate database setup is needed.
@@ -29,7 +31,11 @@ Choose **one** format, install it, then fully restart Isaac.
 - Pause and open **EID Items** in the top-left to inspect your inventory. Selected descriptions always have a readable dark background.
 - Tap a Glitched Crown description to browse its five items. Select D Infinity in EID Items and tap its description to browse all ten dice. The counter is in the top-right; browsing never uses an item or switches the game's die.
 
-Choose any of **20 EID languages**, independently of the game's language. Missing translations fall back to English. Settings include horizontal/vertical position, scale, text opacity, background and background opacity, Name/Icon/Quality/Description visibility, position reset, credits and dataset information. The settings panel scrolls on small screens. Default position: **140 px right, 50 px down**.
+Choose any of **20 EID languages**, independently of the game's language. Settings and EID Items follow the selected language immediately. Missing description translations fall back to English. Settings are organized into **Content, Layout, Appearance and Advanced** tabs, each scrollable on small screens. Adjust horizontal/vertical position, scale, **text width (100-300%)**, text opacity, background opacity and Name/Icon/Quality/Description visibility. Every slider has its own Reset button. Dataset information is included; upstream attribution remains below in the credits and license files. Default position: **140 px right, 50 px down**. Width never goes below the previous default, and increasing it does not shrink the font.
+
+Descriptions are drawn with original EID bitmap fonts, glyph metrics, inline artwork and layout rules rather than a system description font. Active headers include normal, timed and special charge indicators; unknown pills use a red title with a question-mark icon overlay.
+
+Descriptions now include original EID's **modular text generation** for its supported Repentance objects and character health variants. **Stat icons after arrows** default to on; disable them in Content for original EID's arrow-only appearance. Other inline icons remain visible.
 
 Gameplay is text-only by default, with an optional content-sized background. Pausing temporarily gives every visible description a dark backdrop of at least 72% opacity, including nearby pickups without opening EID Items. Resuming restores your saved background settings.
 
@@ -51,9 +57,9 @@ The sections below describe implemented features, not a promise of complete pari
 <summary><strong>Pickups, rooms, artwork and spoiler protection</strong></summary>
 
 - Collectibles, trinkets, cards, runes, Soul Stones, normal/horse pills and Crane Game prizes. Long descriptions wrap without a fixed character limit.
-- All six Dice Room effects; the next Sacrifice Room payout with its live `1/12–12/12` step; Sanguine Bond spike payout probabilities, without pretending to know the next random payout.
+- All six Dice Room effects; the next Sacrifice Room payout with its live `1/12-12/12` step; Sanguine Bond spike payout probabilities, without pretending to know the next random payout.
 - Native collectible/trinket artwork, correct card/rune/Soul Stone/pill frames and actual pill colors. Original EID inline symbols, quality icons, battery/charge indicators, transformation icons, colored text and highlights.
-- Active-item headers distinguish normal, timed and special charge types. Inline collectible/trinket sprites are cropped before scaling so their transparent padding does not make them tiny.
+- Active-item headers distinguish normal, timed and special charge types. The original localized single-use warning is shown for its 13 Repentance actives, both on pedestals and in EID Items. Inline collectible/trinket sprites are cropped before scaling so their transparent padding does not make them tiny.
 - Curse of the Blind, forced-blind fields and question-mark sprites suppress collectible descriptions.
 - Reachable ordinary floor cards/runes are described immediately. Shared-model shop cards and `Options?` cards stay unidentified. Distinctive models, including Credit Card, Black Rune, Rune Shard, Cracked Key, Wild Card and Soul Stones, retain upstream visibility exceptions; Chaos Card is not a unique-model exception.
 - Unreachable shared-model cards/runes/pills stay unidentified; flight bypasses the obstruction check. Pills use native identified state, including shop/Options? cases, and otherwise show only a localized unidentified label and color.
@@ -68,7 +74,7 @@ The sections below describe implemented features, not a promise of complete pari
 
 - Lost/Keeper no-effect and lethal-use warnings, health-type replacements, Birthright descriptions, Eye Drops, Tainted Samson/Uranus, Keeper/IV Bag, tainted Clicker and Dead Cat context.
 - Lilith/Tainted Lilith familiar changes; Book of Virtues wisp health, damage and special effects; Judas/Black Judas Birthright passive Book of Belial bonuses.
-- Tainted Cain salvage: room-pool rewards, Birthright's `3–8 → 6–16` changes, eligible trinket bonuses, and quest-item/special-context exceptions.
+- Tainted Cain salvage: room-pool rewards, Birthright's `3-8 → 6-16` changes, eligible trinket bonuses, and quest-item/special-context exceptions.
 - Native persisted transformation counters plus live ownership keep progress current after pickups, active-item swaps and Continue. Puberty/Adult and identified horse pills are supported. Counts can exceed completion, such as `4/3`.
 - Super Bum completion uses the merged familiar's native owner, keeping verified personal progress separate in co-op. Invalid owner data does not invent a partner's completion.
 - New-run identity and seed changes reset run-only tracking.
@@ -128,30 +134,42 @@ The sections below describe implemented features, not a promise of complete pari
 
 ## Screenshots
 
-Actual gameplay from the native iOS version. Click a screenshot to view it at full resolution.
+Actual native iOS gameplay with the 1.0.0 renderer. Open an image for full resolution. The Console button visible in some pause screenshots belongs to the separate Debug Console mod and is not included in EID.
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/images/eid-absorption-preview.png"><img src="docs/images/eid-absorption-preview.png" alt="Breakfast showing separate Void and Black Rune absorption stat predictions" width="100%"></a><br><strong>Void and Black Rune previews</strong><br>See the separate stat gains before absorbing a pedestal.</td>
-    <td width="50%"><a href="docs/images/eid-spindown-preview.png"><img src="docs/images/eid-spindown-preview.png" alt="Blood Bag with a Spindown chain leading to Brimstone, Dead Bird, and 9 Volt" width="100%"></a><br><strong>Spindown Dice results</strong><br>Three eligible results connected by arrows; unavailable items are skipped.</td>
+    <td width="50%"><a href="docs/images/eid-brimstone-transformation.png"><img src="docs/images/eid-brimstone-transformation.png" alt="Brimstone with the original pixel font, native artwork, quality and live Leviathan progress." width="100%"></a><br><strong>Original EID look</strong><br>Brimstone with the original pixel font, native artwork, quality and live Leviathan progress.</td>
+    <td width="50%"><a href="docs/images/eid-single-use.png"><img src="docs/images/eid-single-use.png" alt="Mystery Gift carries the original SINGLE USE warning, alongside its active-item charge indicator." width="100%"></a><br><strong>Single-use means single-use</strong><br>Mystery Gift carries the original SINGLE USE warning, alongside its active-item charge indicator.</td>
   </tr>
   <tr>
-    <td><a href="docs/images/eid-collection-reminder.png"><img src="docs/images/eid-collection-reminder.png" alt="Twisted Pair with a reminder that it has not yet been picked up for the current save's collection page" width="100%"></a><br><strong>Collection completion reminder</strong><br>Flags an item still missing from the active save slot's collection page.</td>
-    <td><a href="docs/images/eid-current-luck.png"><img src="docs/images/eid-current-luck.png" alt="Lodestone showing a 33.3 percent proc chance at the player's current 3 Luck" width="100%"></a><br><strong>Your current Luck chance</strong><br>Lodestone shows 33.3% at 3 Luck, alongside its base description.</td>
+    <td width="50%"><a href="docs/images/eid-pandoras-box.png"><img src="docs/images/eid-pandoras-box.png" alt="Pandora’s Box lists its rewards and highlights the current Basement I payout in green." width="100%"></a><br><strong>The floor you are on</strong><br>Pandora’s Box lists its rewards and highlights the current Basement I payout in green.</td>
+    <td width="50%"><a href="docs/images/eid-spindown-preview.png"><img src="docs/images/eid-spindown-preview.png" alt="Spindown Dice shows three eligible ID-based results, connected by arrows. Unavailable candidates are skipped." width="100%"></a><br><strong>Follow the reroll</strong><br>Spindown Dice shows three eligible ID-based results, connected by arrows. Unavailable candidates are skipped.</td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/images/eid-weapon-overrides.png"><img src="docs/images/eid-weapon-overrides.png" alt="Dr. Fetus description warning that it overrides Brimstone" width="100%"></a><br>Weapon override warnings</td>
-    <td width="50%"><a href="docs/images/eid-pandoras-box.png"><img src="docs/images/eid-pandoras-box.png" alt="Pandora's Box with the current Basement I reward highlighted in green" width="100%"></a><br>Current-floor reward highlighting</td>
+    <td width="50%"><a href="docs/images/eid-lost-breakfast.png"><img src="docs/images/eid-lost-breakfast.png" alt="Breakfast says No effect for The Lost instead of suggesting an irrelevant health increase." width="100%"></a><br><strong>Your character matters</strong><br>Breakfast says No effect for The Lost instead of suggesting an irrelevant health increase.</td>
+    <td width="50%"><a href="docs/images/eid-book-of-virtues.png"><img src="docs/images/eid-book-of-virtues.png" alt="Book of Revelations includes Book of Virtues wisp statistics and special behavior." width="100%"></a><br><strong>More than the base description</strong><br>Book of Revelations includes Book of Virtues wisp statistics and special behavior.</td>
   </tr>
   <tr>
-    <td><a href="docs/images/eid-sacrifice-room.png"><img src="docs/images/eid-sacrifice-room.png" alt="Sacrifice Room description showing the next payout at step 1 of 12" width="100%"></a><br>Live Sacrifice Room payouts</td>
-    <td><a href="docs/images/eid-lost-breakfast.png"><img src="docs/images/eid-lost-breakfast.png" alt="Breakfast description showing No effect for The Lost" width="100%"></a><br>Character-specific descriptions</td>
+    <td width="50%"><a href="docs/images/eid-abyss.png"><img src="docs/images/eid-abyss.png" alt="With Abyss held, Brimstone shows its special locust and damage multiplier." width="100%"></a><br><strong>Know your locust</strong><br>With Abyss held, Brimstone shows its special locust and damage multiplier.</td>
+    <td width="50%"><a href="docs/images/eid-pause-d-infinity.png"><img src="docs/images/eid-pause-d-infinity.png" alt="D Infinity in the pause inventory has a readable backdrop and a tap-to-browse 0/10 counter. Browsing does not change the active die." width="100%"></a><br><strong>Inspect without using</strong><br>D Infinity in the pause inventory has a readable backdrop and a tap-to-browse 0/10 counter. Browsing does not change the active die.</td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><a href="docs/images/eid-lost-no-effect-warning.png"><img src="docs/images/eid-lost-no-effect-warning.png" alt="Breakfast marked No effect for The Lost instead of displaying an irrelevant health bonus" width="50%"></a><br>No-effect warnings for health-only items on The Lost</td>
+    <td width="50%"><a href="docs/images/eid-soul-of-isaac.png"><img src="docs/images/eid-soul-of-isaac.png" alt="Soul of Isaac uses its own icon and description, alongside support for cards, runes and identified pills." width="100%"></a><br><strong>Soul Stones, correctly drawn</strong><br>Soul of Isaac uses its own icon and description, alongside support for cards, runes and identified pills.</td>
+    <td width="50%"><a href="docs/images/eid-unidentified-pill.png"><img src="docs/images/eid-unidentified-pill.png" alt="An unidentified pill shows its real color, a question-mark overlay and a red title, without revealing its effect." width="100%"></a><br><strong>Keep the mystery</strong><br>An unidentified pill shows its real color, a question-mark overlay and a red title, without revealing its effect.</td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/images/eid-settings-language.png"><img src="docs/images/eid-settings-language.png" alt="All 20 EID languages are available. Settings and EID Items follow the selected description language." width="100%"></a><br><strong>Choose your language</strong><br>All 20 EID languages are available. Settings and EID Items follow the selected description language.</td>
+    <td width="50%"><a href="docs/images/eid-settings-content.png"><img src="docs/images/eid-settings-content.png" alt="Control item names, icons, quality, descriptions and stat icons after arrows." width="100%"></a><br><strong>Keep what you need</strong><br>Control item names, icons, quality, descriptions and stat icons after arrows.</td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/images/eid-settings-layout.png"><img src="docs/images/eid-settings-layout.png" alt="Adjust position, scale and text width. Every slider has an individual Reset button." width="100%"></a><br><strong>Fit your screen</strong><br>Adjust position, scale and text width. Every slider has an individual Reset button.</td>
+    <td width="50%"><a href="docs/images/eid-settings-appearance.png"><img src="docs/images/eid-settings-appearance.png" alt="Adjust text and background opacity. Non-empty descriptions always gain contrast while paused." width="100%"></a><br><strong>Make it readable</strong><br>Adjust text and background opacity. Non-empty descriptions always gain contrast while paused.</td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/images/eid-settings-advanced.png"><img src="docs/images/eid-settings-advanced.png" alt="RNG predictions, Void / Black Rune stat previews and hidden current effects are separate options, all off by default." width="100%"></a><br><strong>Spoilers are your choice</strong><br>RNG predictions, Void / Black Rune stat previews and hidden current effects are separate options, all off by default.</td>
+    <td></td>
   </tr>
 </table>
-
 
 ## Limits and safety
 
@@ -172,7 +190,7 @@ make release EID_SOURCE=/path/to/External-Item-Descriptions
 
 Outputs go to `dist/` and `packages/`. The single GitHub workflow builds all formats, verifies their contents and publishes tagged releases. Release descriptions come from the matching [changelog](CHANGELOG.md) entry, without repeating the release title.
 
-[Installation](docs/INSTALL.md) · [Native layout](docs/NATIVE_LAYOUT.md) · [EID parity and remaining scope](docs/EID_PARITY.md)
+[Rendering and resource attribution](docs/RENDERING.md) · [Installation](docs/INSTALL.md) · [Native layout](docs/NATIVE_LAYOUT.md) · [EID parity and remaining scope](docs/EID_PARITY.md)
 
 ## Credits
 

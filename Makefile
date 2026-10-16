@@ -1,4 +1,5 @@
 SHELL := /bin/zsh
+.DEFAULT_GOAL := all
 
 PROJECT_ROOT := $(CURDIR)
 SDK := $(shell xcrun --sdk iphoneos --show-sdk-path)
@@ -36,10 +37,28 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDCardFrameFix.m \
 	$(PROJECT_ROOT)/src/EIDPillFrameFix.m \
 	$(PROJECT_ROOT)/src/EIDParityPresentation.m \
-	$(PROJECT_ROOT)/src/EIDHeaderTuning.m \
+	$(PROJECT_ROOT)/src/EIDSettings.m \
+	$(PROJECT_ROOT)/src/EIDUILocalization.m \
+	$(PROJECT_ROOT)/src/EIDBitmapFont.mm \
+	$(PROJECT_ROOT)/src/EIDOriginalScene.mm \
+	$(PROJECT_ROOT)/src/EIDOriginalRenderer.mm \
 	$(PROJECT_ROOT)/src/EIDTransformationProgress.m
 
 .PHONY: all dylib descriptions parity-assets stage-release-bundle package livecontainer audit check test local-test release clean
+
+.PHONY: original-test original-check
+original-test: original-check
+	"$(HOST_CLANGXX)" -isysroot "$(HOST_SDK)" -std=c++17 -Wall -Wextra -Werror -I"$(PROJECT_ROOT)/include" \
+		"$(PROJECT_ROOT)/tests/test_original_font.cpp" -o "$(PROJECT_ROOT)/build/test_original_font"
+	"$(PROJECT_ROOT)/build/test_original_font" "$(PARITY_BUNDLE)/fonts/eid_default.fnt"
+
+original-check: stage-release-bundle
+	"$(HOST_CLANGXX)" -isysroot "$(HOST_SDK)" -std=c++17 -fobjc-arc -Wall -Wextra -Werror -I"$(PROJECT_ROOT)/include" \
+		"$(PROJECT_ROOT)/src/EIDBitmapFont.mm" "$(PROJECT_ROOT)/src/EIDOriginalScene.mm" \
+		"$(PROJECT_ROOT)/tools/preview-original-renderer.mm" \
+		-framework Foundation -framework CoreGraphics -framework ImageIO -o "$(PROJECT_ROOT)/build/preview-original-renderer"
+	"$(PROJECT_ROOT)/build/preview-original-renderer" "$(PARITY_BUNDLE)" "$(PROJECT_ROOT)/build/original-renderer-preview.png"
+	python3 "$(PROJECT_ROOT)/tools/audit-original-presentation.py" --strict
 
 all: dylib package
 
@@ -52,6 +71,7 @@ parity-assets:
 	@test -n "$(EID_SOURCE)" || (echo "Set EID_SOURCE=/path/to/External-Item-Descriptions"; exit 2)
 	mkdir -p "$(PARITY_BUNDLE)"
 	python3 "$(PROJECT_ROOT)/tools/import-eid-assets.py" "$(EID_SOURCE)" "$(PARITY_BUNDLE)"
+	python3 "$(PROJECT_ROOT)/tools/import-original-renderer.py" "$(EID_SOURCE)" "$(PARITY_BUNDLE)"
 
 stage-release-bundle:
 	mkdir -p "$(PARITY_BUNDLE)"
@@ -60,15 +80,17 @@ stage-release-bundle:
 	@if test -n "$(EID_SOURCE)"; then \
 		$(MAKE) parity-assets EID_SOURCE="$(EID_SOURCE)"; \
 	fi
+	cp "$(PROJECT_ROOT)/THIRD_PARTY_NOTICES.md" "$(PARITY_BUNDLE)/THIRD_PARTY_NOTICES.md"
+	cp "$(PROJECT_ROOT)/LICENSE" "$(PARITY_BUNDLE)/IsaacEID-bridge-LICENSE.txt"
 	@test -f "$(STAGED_DESCRIPTION_DB)"
 
 dylib:
 	mkdir -p "$(PROJECT_ROOT)/build"
 	"$(CLANG)" -isysroot "$(SDK)" -arch arm64 -miphoneos-version-min="$(MIN_IOS)" \
-		-fobjc-arc -fmodules -O2 $(EXTRA_CFLAGS) -dynamiclib -I"$(PROJECT_ROOT)/include" \
+		-fobjc-arc -fmodules -fno-autolink -O2 $(EXTRA_CFLAGS) -dynamiclib -I"$(PROJECT_ROOT)/include" \
 		-Wl,-install_name,@rpath/IsaacExternalItemDescriptions.dylib -Wl,-dead_strip -Wl,-fatal_warnings \
 		-Wl,-exported_symbols_list,"$(PROJECT_ROOT)/package/exports.txt" \
-		$(SOURCES) -framework Foundation -framework UIKit -framework QuartzCore -lc++ -o "$(DYLIB)"
+		$(SOURCES) -framework Foundation -framework UIKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -lc++ -o "$(DYLIB)"
 	xcrun strip -x "$(DYLIB)"
 	@if command -v codesign >/dev/null 2>&1; then codesign --force --sign - --timestamp=none --identifier com.emp0ry.isaaceid.dylib "$(DYLIB)"; elif command -v ldid >/dev/null 2>&1; then ldid -S "$(DYLIB)"; fi
 
@@ -133,8 +155,13 @@ local-test:
 		"$(PROJECT_ROOT)/src/EIDTransformationProgress.m" "$(PROJECT_ROOT)/src/EIDLogger.m" \
 		-framework Foundation -o "$(PROJECT_ROOT)/build/test_context_descriptions"
 	"$(PROJECT_ROOT)/build/test_context_descriptions" "$(BUNDLED_DESCRIPTION_DB)"
+	"$(HOST_CLANGXX)" -isysroot "$(HOST_SDK)" -fobjc-arc -Wall -Wextra -Werror -I"$(PROJECT_ROOT)/include" \
+		"$(PROJECT_ROOT)/tests/test_ui_localization.m" "$(PROJECT_ROOT)/src/EIDUILocalization.m" \
+		-framework Foundation -o "$(PROJECT_ROOT)/build/test_ui_localization"
+	"$(PROJECT_ROOT)/build/test_ui_localization" "$(BUNDLED_DESCRIPTION_DB)"
 	python3 "$(PROJECT_ROOT)/tests/test_overlay_architecture.py"
 	python3 "$(PROJECT_ROOT)/tests/test_import_eid.py"
+	python3 "$(PROJECT_ROOT)/tests/test_modular_import.py"
 	python3 "$(PROJECT_ROOT)/tests/test_import_eid_assets.py"
 	python3 "$(PROJECT_ROOT)/tests/test_bundled_descriptions.py"
 	python3 "$(PROJECT_ROOT)/tests/test_documentation.py"
@@ -143,6 +170,7 @@ release:
 	rm -rf "$(DIST)"
 	$(MAKE) test
 	$(MAKE) stage-release-bundle EID_SOURCE="$(EID_SOURCE)"
+	$(MAKE) original-check
 	$(MAKE) package INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) livecontainer INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) audit EXTRA_CFLAGS='-Wall -Wextra -Werror'

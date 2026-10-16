@@ -88,6 +88,15 @@ static NSString *HeartType(NSInteger player) {
     return @"Red";
 }
 
+NSString *EIDSingleUseDescription(NSString *detail, NSInteger variant, NSInteger subtype, NSDictionary *context) {
+    if (variant != 100 || ![context[@"single_use_collectibles"] containsObject:@(subtype)] ||
+        [context[@"pickup_context"][@"crown_overview"] boolValue]) return detail ?: @"";
+    NSString *banner = context[@"context_strings"][@"SingleUseInfo"];
+    if (![banner isKindOfClass:NSString.class] || !banner.length) return detail ?: @"";
+    if ([[detail componentsSeparatedByString:@"#"] containsObject:banner]) return detail;
+    return detail.length ? [banner stringByAppendingFormat:@"#%@",detail] : banner;
+}
+
 static NSArray<NSNumber *> *PlayerTypes(NSInteger closest, NSDictionary *context) {
     if ([context[@"inside_item_reminder"] boolValue]) return closest >= 0 ? @[@(closest)] : @[];
     NSMutableOrderedSet *types = [NSMutableOrderedSet orderedSet];
@@ -499,7 +508,17 @@ NSString *EIDContextDescriptionWithOwnedItems(NSString *detail, NSInteger varian
     NSString *healthKey = [NSString stringWithFormat:@"5.%ld.%ld", (long)healthVariant, (long)healthSubtype];
     NSNumber *healthAmount = context[@"health_amounts"][healthKey];
     NSString *heartType = HeartType(playerType);
-    if (playerType >= 0 && ![heartType isEqualToString:@"Red"] &&
+    NSDictionary *modular = context[@"modular_descriptions"][target];
+    BOOL modularHealthHandled = NO;
+    if ([modular isKindOfClass:NSDictionary.class] && [modular[@"Red"] isKindOfClass:NSString.class]) {
+        NSString *generated = modular[heartType] ?: modular[@"Red"];
+        if ([generated isKindOfClass:NSString.class]) {
+            detail = generated;
+            modularHealthHandled = ![heartType isEqual:@"Bone"] && playerType>=0;
+            if (!detail.length && playerName.length) detail = Apply(@"",conditions[@"No Effect"],playerName,1);
+        }
+    }
+    if (!modularHealthHandled && playerType >= 0 && ![heartType isEqualToString:@"Red"] &&
         (healthAmount || [context[@"healing_items"] containsObject:healthKey])) {
         NSInteger amount = healthAmount ? healthAmount.integerValue : 1;
         id replacements = context[@"heart_replacements"][[NSString stringWithFormat:@"Red to %@", heartType]];
@@ -596,5 +615,5 @@ NSString *EIDContextDescriptionWithOwnedItems(NSString *detail, NSInteger varian
     }
     NSMutableArray *lines = [NSMutableArray array];
     for (NSString *line in [detail componentsSeparatedByString:@"#"]) if (line.length) [lines addObject:line];
-    return [lines componentsJoinedByString:@"#"];
+    return EIDSingleUseDescription([lines componentsJoinedByString:@"#"],variant,subtype,context);
 }

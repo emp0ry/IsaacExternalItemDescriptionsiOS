@@ -16,6 +16,8 @@ from eid_context import abyss_locusts, abyss_descriptions
 from eid_context import black_feather_metadata, familiar_metadata
 from eid_outcome_strings import outcome_strings
 from eid_supplemental import supplemental_rules
+from eid_modular import import_modular
+from eid_lua import decode_escapes
 
 
 ENTRY = re.compile(r"^\s*(?:\[(\d+)\]\s*=\s*)?\{")
@@ -55,11 +57,11 @@ def read_lua_string(text: str, start: int) -> tuple[str, int]:
         char = text[start]
         start += 1
         if char == quote:
-            return "".join(chars), start
+            return decode_escapes("".join(chars)), start
         if char == "\\" and start < len(text):
             escaped = text[start]
             start += 1
-            chars.append({"n": "\n", "r": "\r", "t": "\t"}.get(escaped, escaped))
+            chars.append("\\" + escaped)
         else:
             chars.append(char)
     raise ValueError("unterminated Lua string")
@@ -253,7 +255,7 @@ def main() -> int:
                         "ExperimentalPillFalsePHD", "LuckModifier", "goldenTrinket", "tripledTrinket",
                         "quadrupledTrinket", "VariableCharge", "BlankCardEffect", "spindownError",
                         "ResultsWithX", "VoidText", "VoidShopText", "VoidOptionText", "BlackFeatherInformation",
-                        "GlitchedCrownToggleInfo", "CrookedPennyHeads", "CrookedPennyTails", "PandorasBoxStrangeKeyEffect"):
+                        "GlitchedCrownToggleInfo", "CrookedPennyHeads", "CrookedPennyTails", "PandorasBoxStrangeKeyEffect", "SingleUseInfo"):
                 text = parse_string_assignment(path, key)
                 if text:
                     categories["context_strings"][key] = text
@@ -276,6 +278,14 @@ def main() -> int:
         "abyss_locusts": locusts,
         "black_feather_metadata": black_feather_metadata(source),
     }
+    payload["modular_metadata"] = import_modular(source, languages)
+    single_use_path = source / "features/eid_data.lua"
+    single_use_source = single_use_path.read_text(encoding="utf-8-sig") if single_use_path.is_file() else ""
+    single_use = context_table(single_use_source, "SingleUseCollectibles")
+    repentance_single_use = single_use_source.split("EID.SingleUseCollectibles =",1)[-1].split("---------------- BAG OF CRAFTING DATA",1)[0]
+    for key, enabled in re.findall(r'EID\.SingleUseCollectibles\[(\d+)\]\s*=\s*(true|false)', repentance_single_use):
+        single_use[key] = enabled == "true"
+    payload["single_use_collectibles"] = sorted(int(key) for key, enabled in single_use.items() if enabled)
     if (source / "features/eid_conditionals.lua").is_file():
         payload["context_rules"], payload["health_amounts"], payload["healing_items"] = context_rules(source)
         payload["weapon_rules"] = weapon_rules(source)

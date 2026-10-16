@@ -10,6 +10,9 @@
 #import "EIDOverlayController.h"
 #import "EIDCharacterSynergies.h"
 #import "EIDFeatureConfig.h"
+#import "EIDOriginalRenderer.h"
+#import "EIDSettings.h"
+#import "EIDPresentationConfig.h"
 #import "EIDInlineIconPolicy.h"
 #include "EIDArtworkBounds.h"
 #import <UIKit/UIKit.h>
@@ -18,8 +21,6 @@
 #import <stdlib.h>
 
 static NSString *const EIDScaleKey=@"IsaacEIDScale",*const EIDTransparencyKey=@"IsaacEIDTransparency",*const EIDShowNameKey=@"IsaacEIDShowItemName",*const EIDShowIconKey=@"IsaacEIDShowItemIcon",*const EIDShowQualityKey=@"IsaacEIDShowQuality",*const EIDShowDescriptionKey=@"IsaacEIDShowItemDescription";
-static NSString *const EIDBackgroundKey = @"IsaacEIDBackgroundEnabled";
-static NSString *const EIDBackgroundOpacityKey = @"IsaacEIDBackgroundOpacity";
 static UIColor *EIDObjNameColor(void){return [UIColor colorWithRed:.8 green:.3 blue:.8 alpha:1];}
 static UIColor *EIDTransformationColor(void){return [UIColor colorWithRed:.42 green:.64 blue:1 alpha:1];}
 static NSArray<NSString*> *EIDResourceRoots(void){NSMutableArray*roots=[NSMutableArray array];NSString*main=NSBundle.mainBundle.bundlePath;[roots addObjectsFromArray:@[[main stringByAppendingPathComponent:@"Frameworks/IsaacEID.bundle"],[main stringByAppendingPathComponent:@"IsaacEID.bundle"],[main stringByAppendingPathComponent:@"Frameworks/IsaacExternalItemDescriptions.framework/Resources/IsaacEID.bundle"],[main stringByAppendingPathComponent:@"Frameworks/IsaacExternalItemDescriptions.framework/IsaacEID.bundle"],[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/IsaacExternalItemDescriptions"],@"/var/jb/Library/Application Support/IsaacExternalItemDescriptions",@"/Library/Application Support/IsaacExternalItemDescriptions"]];NSBundle*framework=[NSBundle bundleForClass:NSClassFromString(@"EIDOverlayController")?:NSObject.class];if(framework.bundlePath.length){[roots addObject:[framework.bundlePath stringByAppendingPathComponent:@"Resources/IsaacEID.bundle"]];[roots addObject:[framework.bundlePath stringByAppendingPathComponent:@"IsaacEID.bundle"]];[roots addObject:framework.bundlePath];}return roots;}
@@ -201,14 +202,14 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
 }
 
 @interface NSObject(EIDParityMethods)
--(void)eid_parity_renderPickups:(NSArray<EIDPickupIdentity*>*)pickups;-(void)eid_parity_attachOverlayIfNeeded;-(void)eid_parity_toggle:(UIButton*)sender;-(void)eid_parity_slider:(UISlider*)slider;-(void)eid_parity_refreshButtons;
+-(void)eid_parity_renderPickups:(NSArray<EIDPickupIdentity*>*)pickups;-(void)eid_parity_attachOverlayIfNeeded;
 @end
 @interface NSObject(EIDBackgroundMethods)
 - (void)applyDescriptionBackground;
 @end
 @interface EIDParityPresentation:NSObject@end
 @implementation EIDParityPresentation
-+(void)load{static dispatch_once_t once;dispatch_once(&once,^{Class cls=NSClassFromString(@"EIDOverlayController");if(!cls)return;NSArray*names=@[@"eid_parity_renderPickups:",@"eid_parity_attachOverlayIfNeeded",@"eid_parity_toggle:",@"eid_parity_slider:",@"eid_parity_refreshButtons"];for(NSString*n in names){SEL sel=NSSelectorFromString(n);Method m=class_getInstanceMethod(NSObject.class,sel);if(m)class_addMethod(cls,sel,method_getImplementation(m),method_getTypeEncoding(m));}Method o=class_getInstanceMethod(cls,NSSelectorFromString(@"renderPickups:")),r=class_getInstanceMethod(cls,@selector(eid_parity_renderPickups:));if(o&&r)method_exchangeImplementations(o,r);Method oa=class_getInstanceMethod(cls,NSSelectorFromString(@"attachOverlayIfNeeded")),ra=class_getInstanceMethod(cls,@selector(eid_parity_attachOverlayIfNeeded));if(oa&&ra)method_exchangeImplementations(oa,ra);});}
++(void)load{static dispatch_once_t once;dispatch_once(&once,^{Class cls=NSClassFromString(@"EIDOverlayController");if(!cls)return;NSArray*names=@[@"eid_parity_renderPickups:",@"eid_parity_attachOverlayIfNeeded"];for(NSString*n in names){SEL sel=NSSelectorFromString(n);Method m=class_getInstanceMethod(NSObject.class,sel);if(m)class_addMethod(cls,sel,method_getImplementation(m),method_getTypeEncoding(m));}Method o=class_getInstanceMethod(cls,NSSelectorFromString(@"renderPickups:")),r=class_getInstanceMethod(cls,@selector(eid_parity_renderPickups:));if(o&&r)method_exchangeImplementations(o,r);Method oa=class_getInstanceMethod(cls,NSSelectorFromString(@"attachOverlayIfNeeded")),ra=class_getInstanceMethod(cls,@selector(eid_parity_attachOverlayIfNeeded));if(oa&&ra)method_exchangeImplementations(oa,ra);});}
 @end
 
 @implementation NSObject(EIDParityMethods)
@@ -219,6 +220,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     EIDDescriptionStore *store = [self valueForKey:@"store"];
     EIDNativeProbe *probe = [self valueForKey:@"probe"];
     if (!label || !panel || !store || !pickups.count) {
+        EIDHideOriginalDescription(self);
         [(EIDOverlayController *)self prepareCollectibleCycleIdentity:nil];
         [self eid_parity_renderPickups:pickups];
         return;
@@ -226,7 +228,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     EIDPickupIdentity *pickup = [probe resolvedRepeatIdentity:[probe resolvedPillIdentity:pickups.firstObject]];
     pickup = [probe resolvedInventoryPreviewIdentity:pickup blackFeatherMetadata:store.contextData[@"black_feather_metadata"] ?: @{}];
     pickup = [(EIDOverlayController *)self prepareCollectibleCycleIdentity:pickup];
-    if (!pickup) { [self eid_parity_renderPickups:@[]]; return; }
+    if (!pickup) { EIDHideOriginalDescription(self); label.hidden=NO; [self eid_parity_renderPickups:@[]]; return; }
     BOOL inventory = [self valueForKey:@"selectedInventoryItem"] != nil;
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     BOOL hiddenInfoEnabled = EIDFeatureEnabled(defaults,EIDHiddenInfoKey);
@@ -234,7 +236,11 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     BOOL outcomesEnabled = EIDFeatureEnabled(defaults,EIDOutcomesKey);
     pickup = [probe resolvedOutcomeIdentity:pickup insideInventory:inventory enabled:outcomesEnabled];
     EIDDescription *item = [store descriptionForPickupVariant:pickup.variant subtype:pickup.subtype];
-    if (!item) { [self eid_parity_renderPickups:pickups]; return; }
+    if (!item) {
+        EIDLog(@"bitmap fallback: no descriptor for %ld:%ld",(long)pickup.variant,(long)pickup.subtype);
+        EIDHideOriginalDescription(self); label.hidden=NO;
+        [self eid_parity_renderPickups:pickups]; return;
+    }
     NSInteger playerType = pickup.playerType >= 0 ? pickup.playerType : probe.primaryPlayerType;
     NSMutableDictionary *context = store.contextData.mutableCopy;
     context[@"live_state"] = probe.descriptionState;
@@ -266,6 +272,42 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
                 pickup.rawPillSubtype ? EIDPickupVariantUnidentifiedPill : pickup.variant,
                 pickup.rawPillSubtype ?: pickup.subtype);
     }
+    NSMutableArray *originalTransformations=[NSMutableArray array];
+    EIDTransformationProgress *originalTracker=[EIDTransformationProgress shared];
+    originalTracker.probe=probe;
+    NSArray *originalIDs=[pickup.pickupContext[@"crown_overview"] boolValue] ||
+        EIDUsesSalvageDescription(pickup.variant,pickup.subtype,playerType,context)?@[]:
+        [originalTracker transformationsForVariant:pickup.variant subtype:pickup.subtype];
+    for (NSNumber *identifier in originalIDs) {
+        NSInteger count=pickup.playerIndex>=0?[originalTracker progressForTransformation:identifier.integerValue playerIndex:pickup.playerIndex]:
+            [originalTracker progressForTransformation:identifier.integerValue];
+        if (count>=0) [originalTransformations addObject:@{@"id":identifier,@"text":[NSString stringWithFormat:@"%@ (%ld/%ld)",
+            [originalTracker localizedNameForTransformation:identifier.integerValue],(long)count,(long)MAX(1,originalTracker.required)]}];
+    }
+    NSSet *originalOwned=[probe currentOwnedItemKeys];
+    if (inventory) {
+        originalOwned=[NSSet set];
+        for (NSDictionary *player in context[@"live_state"][@"players"])
+            if ([player[@"index"] isEqual:context[@"player_index"]] && [player[@"owned"] isKindOfClass:NSArray.class]) {
+                originalOwned=[NSSet setWithArray:player[@"owned"]]; break;
+            }
+    }
+    NSString *originalDetail=showDetail?EIDContextDescriptionWithOwnedItems(item.detail,pickup.variant,pickup.subtype,
+        playerType,probe.gameDifficulty,originalOwned,context):@"";
+    if (showDetail) {
+        originalDetail=EIDDynamicDescription(originalDetail,pickup.variant,pickup.subtype,probe.gameDifficulty,originalOwned,context);
+        originalDetail=EIDAdvancedDescription(originalDetail,pickup.variant,pickup.subtype,probe.gameDifficulty,originalOwned,context);
+        originalDetail=EIDCollectionDescription(originalDetail,pickup.variant,pickup.subtype,context);
+    }
+    if (EIDRenderOriginalDescription(self,item,pickup,store,originalDetail,originalTransformations,image,
+        EIDResourceRoots(),scale,alpha,showName,showQuality,showDetail)) {
+        [self applyDescriptionBackground];
+        [UIView animateWithDuration:.12 animations:^{panel.alpha=1;}];
+        [(EIDOverlayController *)self updateCollectibleCycleControls];
+        return;
+    }
+    // Missing or invalid fonts fall back to the established renderer, not a crash.
+    EIDHideOriginalDescription(self); label.hidden=NO;
     NSMutableAttributedString *output = [NSMutableAttributedString new];
     NSUInteger headerEnd = 0;
     if (showName) {
@@ -324,6 +366,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
         detail = EIDDynamicDescription(detail,pickup.variant,pickup.subtype,probe.gameDifficulty,owned,context);
         detail = EIDAdvancedDescription(detail,pickup.variant,pickup.subtype,probe.gameDifficulty,owned,context);
         detail = EIDCollectionDescription(detail,pickup.variant,pickup.subtype,context);
+        detail = EIDFormatStatChangeIcons(detail,EIDStatChangeIconsEnabled(defaults));
         AppendMarkup(output, detail, bodyFont, scale, store);
     }
     NSMutableParagraphStyle *bodyStyle = [NSMutableParagraphStyle new];
@@ -350,191 +393,6 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
 }
 -(void)eid_parity_attachOverlayIfNeeded {
     [self eid_parity_attachOverlayIfNeeded];
-    UIView *card = [self valueForKey:@"settingsCard"];
-    UIView *root = [self valueForKey:@"rootView"];
-    if (!card || !root || [card viewWithTag:0xE1D5]) return;
-
-    CGFloat oldHeight = card.bounds.size.height;
-    CGFloat height = MIN(430.0, MAX(oldHeight, root.bounds.size.height - 24.0));
-    CGRect cardFrame = card.frame;
-    cardFrame.origin.y -= (height - oldHeight) * 0.5;
-    cardFrame.size.height = height;
-    card.frame = cardFrame;
-
-    UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:
-        CGRectMake(0, 41, card.bounds.size.width, card.bounds.size.height - 49)];
-    scroll.tag = 0xE1D4;
-    scroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    scroll.alwaysBounceVertical = YES;
-    scroll.showsVerticalScrollIndicator = YES;
-
-    UILabel *credits = nil;
-    for (UIView *view in card.subviews.copy) {
-        BOOL fixedTitle = [view isKindOfClass:UILabel.class] &&
-            [((UILabel *)view).text isEqualToString:@"Isaac EID Settings"];
-        BOOL fixedClose = [view isKindOfClass:UIButton.class] &&
-            [[((UIButton *)view) titleForState:UIControlStateNormal] isEqualToString:@"×"];
-        if (fixedTitle || fixedClose) continue;
-        CGRect frame = view.frame;
-        frame.origin.y -= 37.0;
-        [view removeFromSuperview];
-        view.frame = frame;
-        [scroll addSubview:view];
-        if ([view isKindOfClass:UILabel.class] &&
-            [((UILabel *)view).text hasPrefix:@"Descriptions:"]) credits = (UILabel *)view;
-    }
-    [card addSubview:scroll];
-
-    UIView *section = [[UIView alloc] initWithFrame:
-        CGRectMake(18, 198, scroll.bounds.size.width - 36, 378)];
-    section.tag = 0xE1D5;
-    section.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    [scroll addSubview:section];
-
-    NSArray *titles = @[@"Name", @"Icon", @"Quality", @"Description"];
-    NSArray *keys = @[EIDShowNameKey, EIDShowIconKey, EIDShowQualityKey, EIDShowDescriptionKey];
-    CGFloat buttonWidth = floor((section.bounds.size.width - 12) / 4.0);
-    for (NSUInteger index = 0; index < titles.count; index++) {
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        button.frame = CGRectMake(index * (buttonWidth + 4), 0, buttonWidth, 28);
-        button.titleLabel.font = [UIFont systemFontOfSize:10 weight:UIFontWeightSemibold];
-        button.backgroundColor = [UIColor colorWithWhite:1 alpha:.12];
-        button.layer.cornerRadius = 6;
-        [button setTitle:titles[index] forState:UIControlStateNormal];
-        [button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        button.accessibilityIdentifier = keys[index];
-        [button addTarget:self action:@selector(eid_parity_toggle:)
-         forControlEvents:UIControlEventTouchUpInside];
-        [section addSubview:button];
-    }
-
-    NSArray *sliderKeys = @[EIDScaleKey, EIDTransparencyKey];
-    for (NSUInteger index = 0; index < sliderKeys.count; index++) {
-        NSString *key = sliderKeys[index];
-        CGFloat labelY = index == 0 ? 36 : 94;
-        UILabel *label = [[UILabel alloc] initWithFrame:
-            CGRectMake(0, labelY, section.bounds.size.width, 20)];
-        label.tag = index == 0 ? 0xE1D6 : 0xE1D7;
-        label.textColor = UIColor.whiteColor;
-        label.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightSemibold];
-        [section addSubview:label];
-
-        UISlider *slider = [[UISlider alloc] initWithFrame:
-            CGRectMake(0, labelY + 20, section.bounds.size.width, 32)];
-        slider.minimumValue = index == 0 ? .5 : .15;
-        slider.maximumValue = index == 0 ? 1.8 : 1.0;
-        slider.value = [NSUserDefaults.standardUserDefaults objectForKey:key]
-            ? [NSUserDefaults.standardUserDefaults doubleForKey:key] : (index == 0 ? 1.0 : .75);
-        slider.accessibilityIdentifier = key;
-        [slider addTarget:self action:@selector(eid_parity_slider:)
-          forControlEvents:UIControlEventValueChanged];
-        [section addSubview:slider];
-    }
-
-    UIButton *backgroundButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    backgroundButton.frame = CGRectMake(0, 151, section.bounds.size.width, 28);
-    backgroundButton.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
-    backgroundButton.backgroundColor = [UIColor colorWithWhite:1 alpha:.12];
-    backgroundButton.layer.cornerRadius = 6;
-    [backgroundButton setTitle:@"Description background" forState:UIControlStateNormal];
-    [backgroundButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    backgroundButton.accessibilityIdentifier = EIDBackgroundKey;
-    [backgroundButton addTarget:self action:@selector(eid_parity_toggle:) forControlEvents:UIControlEventTouchUpInside];
-    [section addSubview:backgroundButton];
-
-    UILabel *backgroundLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 187, section.bounds.size.width, 20)];
-    backgroundLabel.tag = 0xE1D8;
-    backgroundLabel.textColor = UIColor.whiteColor;
-    backgroundLabel.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightSemibold];
-    [section addSubview:backgroundLabel];
-    UISlider *backgroundSlider = [[UISlider alloc] initWithFrame:CGRectMake(0, 207, section.bounds.size.width, 32)];
-    backgroundSlider.minimumValue = 0;
-    backgroundSlider.maximumValue = 1;
-    backgroundSlider.value = [NSUserDefaults.standardUserDefaults objectForKey:EIDBackgroundOpacityKey]
-        ? [NSUserDefaults.standardUserDefaults doubleForKey:EIDBackgroundOpacityKey] : .28;
-    backgroundSlider.accessibilityIdentifier = EIDBackgroundOpacityKey;
-    [backgroundSlider addTarget:self action:@selector(eid_parity_slider:) forControlEvents:UIControlEventValueChanged];
-    [section addSubview:backgroundSlider];
-
-    NSArray *featureKeys = @[EIDOutcomesKey,EIDVoidStatInfoKey,EIDHiddenInfoKey];
-    NSArray *featureTitles = @[@"RNG predictions (spoilers)",@"Void / Black Rune stat previews",@"Hidden current effects"];
-    for (NSUInteger index=0; index<featureKeys.count; ++index) {
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        button.frame = CGRectMake(0,246+36*index,section.bounds.size.width,28);
-        button.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
-        button.backgroundColor = [UIColor colorWithWhite:1 alpha:.12];
-        button.layer.cornerRadius = 6;
-        [button setTitle:featureTitles[index] forState:UIControlStateNormal];
-        [button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        button.accessibilityIdentifier = featureKeys[index];
-        [button addTarget:self action:@selector(eid_parity_toggle:) forControlEvents:UIControlEventTouchUpInside];
-        [section addSubview:button];
-    }
-
-    UILabel *hint = [[UILabel alloc] initWithFrame:
-        CGRectMake(0, 354, section.bounds.size.width, 20)];
-    hint.text = @"EID layout · quality · transformations · inline icons";
-    hint.textColor = [UIColor colorWithWhite:.72 alpha:1];
-    hint.font = [UIFont systemFontOfSize:9.5];
-    hint.textAlignment = NSTextAlignmentCenter;
-    [section addSubview:hint];
-
-    if (credits) {
-        credits.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        credits.frame = CGRectMake(18, 589, scroll.bounds.size.width - 36, 54);
-    }
-    scroll.contentSize = CGSizeMake(scroll.bounds.size.width, 655);
-    [self eid_parity_refreshButtons];
-}
-- (void)eid_parity_toggle:(UIButton *)button {
-    NSString *key = button.accessibilityIdentifier;
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    BOOL enabled = [defaults objectForKey:key] ? [defaults boolForKey:key] :
-        EIDFeatureDefaults()[key] ? EIDFeatureEnabled(defaults,key) : ![key isEqualToString:EIDBackgroundKey];
-    [defaults setBool:!enabled forKey:key];
-    [self eid_parity_refreshButtons];
-    [self applyDescriptionBackground];
-    NSArray *pickups = [self valueForKey:@"lastPickups"];
-    EIDPickupIdentity *selected = [self valueForKey:@"selectedInventoryItem"];
-    if (selected) pickups = @[selected];
-    if (pickups.count) {
-        SEL render = NSSelectorFromString(@"renderPickups:");
-        ((void (*)(id,SEL,NSArray *))objc_msgSend)(self,render,pickups);
-    }
-}
-- (void)eid_parity_slider:(UISlider *)slider {
-    [NSUserDefaults.standardUserDefaults setDouble:slider.value forKey:slider.accessibilityIdentifier];
-    [self eid_parity_refreshButtons];
-    [self applyDescriptionBackground];
-    NSArray *pickups = [self valueForKey:@"lastPickups"];
-    EIDPickupIdentity *selected = [self valueForKey:@"selectedInventoryItem"];
-    if (selected) pickups = @[selected];
-    if (pickups.count) {
-        SEL render = NSSelectorFromString(@"renderPickups:");
-        ((void (*)(id,SEL,NSArray *))objc_msgSend)(self,render,pickups);
-    }
-}
-- (void)eid_parity_refreshButtons {
-    UIView *section = [[self valueForKey:@"settingsCard"] viewWithTag:0xE1D5];
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    for (UIView *view in section.subviews) {
-        if (![view isKindOfClass:UIButton.class]) continue;
-        UIButton *button = (UIButton *)view;
-        NSString *key = button.accessibilityIdentifier;
-        BOOL enabled = [defaults objectForKey:key] ? [defaults boolForKey:key] :
-            EIDFeatureDefaults()[key] ? EIDFeatureEnabled(defaults,key) : ![key isEqualToString:EIDBackgroundKey];
-        NSString *base = [[button titleForState:UIControlStateNormal] stringByReplacingOccurrencesOfString:@"✓ " withString:@""];
-        [button setTitle:enabled ? [@"✓ " stringByAppendingString:base] : base forState:UIControlStateNormal];
-        button.alpha = enabled ? 1 : .5;
-    }
-    CGFloat scale = [defaults objectForKey:EIDScaleKey] ? [defaults doubleForKey:EIDScaleKey] : 1;
-    CGFloat opacity = [defaults objectForKey:EIDTransparencyKey] ? [defaults doubleForKey:EIDTransparencyKey] : .75;
-    CGFloat background = [defaults objectForKey:EIDBackgroundOpacityKey] ? [defaults doubleForKey:EIDBackgroundOpacityKey] : .28;
-    UILabel *scaleLabel = (UILabel *)[section viewWithTag:0xE1D6];
-    UILabel *opacityLabel = (UILabel *)[section viewWithTag:0xE1D7];
-    UILabel *backgroundLabel = (UILabel *)[section viewWithTag:0xE1D8];
-    scaleLabel.text = [NSString stringWithFormat:@"Scale: %.0f%%", scale * 100];
-    opacityLabel.text = [NSString stringWithFormat:@"Opacity: %.0f%%", opacity * 100];
-    backgroundLabel.text = [NSString stringWithFormat:@"Background opacity: %.0f%%", background * 100];
+    EIDBuildSettings(self);
 }
 @end

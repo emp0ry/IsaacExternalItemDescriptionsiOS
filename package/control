@@ -1,8 +1,8 @@
 Package: com.emp0ry.isaaceid
 Name: Isaac External Item Descriptions
-Version: 0.13.1
+Version: 1.0.0
 Architecture: iphoneos-arm64
-Description: Native External Item Descriptions bridge for Isaac Repentance on iOS.
+Description: Native EID descriptions, original pixel fonts and contextual item information for iOS Repentance.
 Maintainer: emp0ry
 Author: emp0ry
 Section: Tweaks

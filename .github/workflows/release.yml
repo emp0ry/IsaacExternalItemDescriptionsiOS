@@ -96,10 +96,17 @@ jobs:
           test -s build/IsaacEID.bundle/eid_inline_icons.png
           test -s build/IsaacEID.bundle/eid_transform_icons.png
           test -s build/IsaacEID.bundle/eid_cardspills.png
+          test -s build/IsaacEID.bundle/eid_player_icons.png
+          test -s build/IsaacEID.bundle/original-renderer.json
+          test -s build/IsaacEID.bundle/fonts/eid_default.fnt
+          test -s build/IsaacEID.bundle/fonts/eid_default_0.png
+          test -s build/IsaacEID.bundle/THIRD_PARTY_NOTICES.md
           unzip -l dist/IsaacExternalItemDescriptions-Embedded.zip > "$RUNNER_TEMP/embedded-files.txt"
           unzip -l dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip > "$RUNNER_TEMP/livecontainer-files.txt"
           grep -q 'IsaacEID.bundle/eid_transform_icons.png' "$RUNNER_TEMP/embedded-files.txt"
           grep -q 'Resources/IsaacEID.bundle/descriptions.json' "$RUNNER_TEMP/livecontainer-files.txt"
+          grep -q 'IsaacEID.bundle/fonts/eid_default.fnt' "$RUNNER_TEMP/embedded-files.txt"
+          grep -q 'Resources/IsaacEID.bundle/original-renderer.json' "$RUNNER_TEMP/livecontainer-files.txt"
 
       - name: Create complete archive
         shell: bash

@@ -1,5 +1,17 @@
 # Test matrix
 
+## v1.0.0 release validation (2026-10-17)
+
+| Area | Result |
+| --- | --- |
+| Original renderer | 445 static atlas entries, 21,232 base layouts and 17,375 modular health variants checked across 20 languages; shortcut, bullet, bounds, unknown-pill and animated-color regressions passed locally |
+| Single-use modifier | Exact 13-item upstream allowlist, localized banners, pedestal/inventory behavior, reusable-item exclusions and duplicate suppression checked in 20 languages |
+| Settings and language | All 20 UI translation tables verified; simulator checks on two screen sizes cover four tabs, individual defaults, unrelated-preference preservation and repeated language-dependent rebuilding |
+| Device visuals | Supplied native iOS screenshots show original fonts, item context, single-use warnings, floor highlighting, Spindown, wisps, Abyss, D Infinity pause inspection, Soul Stones, unknown pills and all settings tabs |
+| Loading modes | Same portable core packaged as rootless DEB, LiveContainer framework and signed-embedding bundle; no claim of exhaustively retesting every loading/signing/device combination |
+| Public CI | Single build workflow checks renderer and markup plus packaged fonts/resources; local tests remain ignored and are not uploaded |
+| Remaining limits | Version-specific native offsets; no general Lua loader, Repentance+ adapter, exhaustive co-op replay or pixel-identical animated-color phase guarantee |
+
 ## v0.13.1 release validation (2026-10-16)
 
 | Area | Result |

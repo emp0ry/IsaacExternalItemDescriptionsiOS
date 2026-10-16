@@ -5,6 +5,7 @@ import re
 import ast
 import math
 from pathlib import Path
+from eid_lua import decode_escapes
 
 
 def black_feather_metadata(source: Path) -> dict:
@@ -247,7 +248,7 @@ def value(text: str):
     if text in ("true", "false"):
         return text == "true"
     if len(text) >= 2 and text[0] in "\"'" and text[-1] == text[0]:
-        return re.sub(r"\\(.)", lambda m: {"n": "\n", "r": "\r", "t": "\t"}.get(m[1], m[1]), text[1:-1])
+        return decode_escapes(text[1:-1])
     raise ValueError("dynamic Lua expression")
 
 

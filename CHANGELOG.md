@@ -2,6 +2,49 @@
 
 All release changes are kept here. Older entries describe their own release; historical limitations may have been resolved by a later update.
 
+## v1.0.0
+
+2026-10-17
+
+Original EID pixel rendering, refreshed descriptions and redesigned settings, with a new screenshot-led website.
+
+### Original EID presentation
+
+- Replaced the system description font with upstream EID bitmap fonts, glyph metrics, kerning and language-specific layout defaults. Settings and inventory controls remain native UIKit.
+- Ported icon-led bullets, indentation, wrapping, title colors, quality symbols, transformation rows and active-item charge geometry. Normal, timed and special charges retain their distinct indicators.
+- Unknown pills use the original red localized title and question-mark overlay on their real pill-color icon, without a redundant question-mark description.
+- Restored the separate localized SINGLE USE warning for the exact 13 Repentance actives in upstream EID's list. Reusable zero-charge actives are not incorrectly marked single-use.
+- Imported literal markup shortcuts and legacy string escapes, including golden-heart and chest aliases. Corrected missing character icons, clipped dice-face frames, blank bullets, leading animated-color bullets and blink/fade color preservation.
+- Fixed off-screen collectible descriptions caused by unsigned bullet coordinates. Empty descriptions cannot leave a black pause backdrop; invalid layouts fall back safely.
+
+### Descriptions and settings
+
+- Updated the standard-Repentance database from pinned upstream EID V5.25 revision `8b59d00c6828e333294639ad2b2b6875eae821cb`, including original modular text generation and character health variants for all supported languages.
+- Stat icons after arrows default to on. They can be disabled without removing other inline icons, including wisp health and damage.
+- Rebuilt settings as four scrollable tabs: Content, Layout, Appearance and Advanced. Every position, scale, width and opacity slider has its own Reset button.
+- Added text width from 100% to 300% of the language's original width, capped by available screen space without shrinking the font or going below the previous default.
+- The Language setting now controls descriptions, settings and EID Items in all 20 languages. Labels refresh immediately while preserving other preferences and the selected settings tab.
+- Retained character context, synergies, transformations, floor and room descriptions, pickup knowledge rules, pause inventory and previous previews. RNG predictions, exact absorption stat previews and hidden current effects remain independent options, off by default unless explicitly configured.
+
+### Website and distribution
+
+- Redesigned the website in the same visual family as Isaac Drop (Ctrl), with a real-gameplay hero, a filterable 15-image gallery, full-resolution image viewing, download cards, installation instructions and clear compatibility limits.
+- Replaced older renderer screenshots in the website and README with new native iOS screenshots and feature-specific captions. Debug Console shown in some screenshots is identified as a separate mod.
+- The single build workflow now runs the original-font rendering and markup audit and checks that matching fonts and resources are present in packaged releases. Tests remain local-only and are not published as a repository folder.
+- Rootless DEB, LiveContainer framework, embedded package, standalone dylib, description database, checksums and complete build archive are provided. No IPA, game executable, game asset dump, save or credential is distributed.
+
+### Verification and compatibility
+
+- Host checks cover 445 static icons, 21,232 base description layouts, 17,375 modular character-health layouts, all 20 interface languages, single-use warnings and existing native context rules. Simulator UI checks cover two screen sizes, four tabs, individual resets and repeated language changes.
+- The experimental build was installed on the development iPhone with matching hashes; supplied native screenshots demonstrate the new renderer, contextual descriptions, pause inspection and settings. Every device, locale, character and co-op/loading combination has not been exhaustively replayed.
+- Compatibility remains native Isaac iOS **1.4 / Repentance 1.7.9b.J754**, **ARM64**, **iOS 15+**. This is a native EID adaptation, not a general desktop Lua-mod loader or Repentance+ support. Animated-color timing is approximate across different rendering backends.
+
+Install the complete package for your loading method and fully restart Isaac. Existing EID preferences are retained. Do not load two EID copies at once.
+
+Thanks to **wofsauge**, all original EID contributors and translators, and the font creators. Upstream-derived descriptions, fonts, artwork and algorithms remain attributed in the project notices.
+
+[Website and screenshots](https://isaaceidios.emp0ry.com/) · [Complete feature guide](https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS#readme) · [Report a problem](https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/issues)
+
 ## v0.13.1
 
 2026-10-16

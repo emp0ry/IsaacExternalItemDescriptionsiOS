@@ -5,6 +5,9 @@
 #import "EIDTransformationProgress.h"
 #import "EIDGameHost.h"
 #import "EIDDescriptionInteraction.h"
+#import "EIDOriginalRenderer.h"
+#import "EIDSettings.h"
+#import "EIDUILocalization.h"
 #include "EIDLivePedestalPolicy.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -111,6 +114,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 @property(nonatomic, strong) EIDPassthroughView *rootView;
 @property(nonatomic, strong) UIControl *panel;
 @property(nonatomic, strong) UIView *descriptionBackground;
+@property(nonatomic) BOOL descriptionHasContent;
 @property(nonatomic, strong) UIImageView *itemIconView;
 @property(nonatomic, strong) UILabel *label;
 @property(nonatomic, strong) UILabel *diagnosticsLabel;
@@ -393,16 +397,6 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                   forControlEvents:UIControlEventTouchUpInside];
     [settingsCard addSubview:verticalResetButton];
 
-    UILabel *creditsLabel = [[UILabel alloc] initWithFrame:CGRectMake(18, cardHeight - 68,
-                                                                      cardWidth - 36, 54)];
-    creditsLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
-    creditsLabel.text = @"Descriptions: External Item Descriptions\nby wofsauge and contributors · github.com/wofsauge/External-Item-Descriptions";
-    creditsLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1];
-    creditsLabel.font = [UIFont systemFontOfSize:9.5 weight:UIFontWeightRegular];
-    creditsLabel.numberOfLines = 3;
-    creditsLabel.textAlignment = NSTextAlignmentCenter;
-    [settingsCard addSubview:creditsLabel];
-
     CGFloat inventoryWidth = MIN(440, window.bounds.size.width - 30);
     CGFloat inventoryHeight = MIN(350, window.bounds.size.height - 24);
     UIView *inventoryCard = [[UIView alloc] initWithFrame:
@@ -423,6 +417,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         CGRectMake(16, 8, inventoryWidth - 66, 32)];
     inventoryTitle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     inventoryTitle.text = @"Inventory & Transformations";
+    inventoryTitle.tag = 0xE1D8;
+    inventoryTitle.adjustsFontSizeToFitWidth = YES;
+    inventoryTitle.minimumScaleFactor = .7;
     inventoryTitle.textColor = UIColor.whiteColor;
     inventoryTitle.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
     [inventoryCard addSubview:inventoryTitle];
@@ -606,25 +603,31 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 
 - (void)updateSettingsControls {
+    EIDBuildSettings(self);
+    [self.inventoryButton setTitle:[self uiText:@"EID Items"] forState:UIControlStateNormal];
+    CGRect buttonFrame = self.inventoryButton.frame;
+    buttonFrame.size.width = MIN(self.rootView.bounds.size.width*.4,MAX(88,[self.inventoryButton sizeThatFits:CGSizeMake(CGFLOAT_MAX,34)].width+16));
+    self.inventoryButton.frame = buttonFrame;
+    UILabel *inventoryTitle = (UILabel *)[self.inventoryCard viewWithTag:0xE1D8];
+    inventoryTitle.text = [self uiText:@"Inventory & Transformations"];
     NSString *languageName = [self.store displayNameForLanguageCode:self.store.languageCode];
     [self.settingsLanguageButton setTitle:
         [NSString stringWithFormat:@"%@ · %@  ▾", languageName, self.store.languageCode]
                                   forState:UIControlStateNormal];
     CGFloat position = [self overlayLeftMargin];
     self.settingsPositionSlider.value = position;
-    self.settingsPositionLabel.text = [NSString stringWithFormat:@"Horizontal position: %.0f px", position];
+    self.settingsPositionLabel.text = [NSString stringWithFormat:@"%@: %.0f px",[self uiText:@"Horizontal position"],position];
     CGFloat verticalPosition = [self overlayTopMargin];
     self.settingsVerticalPositionSlider.value = verticalPosition;
     self.settingsVerticalPositionLabel.text = [NSString stringWithFormat:
-        @"Vertical position: %.0f px", verticalPosition];
+        @"%@: %.0f px",[self uiText:@"Vertical position"],verticalPosition];
     NSString *appVersion = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"unknown";
-    NSString *context = self.probe.paused ? @"Paused" :
-        (self.probe.gameplayActive ? @"In game" : @"Menu");
     self.settingsVersionLabel.text = [NSString stringWithFormat:
-        @"%@ · iOS %@ · dataset: %@ · not Repentance+",
-        context, appVersion,
+        @"Isaac iOS %@ · %@", appVersion,
         self.store.descriptionDataSet];
 }
+
+- (NSString *)uiText:(NSString *)key { return EIDUIString(self.store.languageCode,key); }
 
 - (UIViewController *)topViewControllerFrom:(UIViewController *)viewController {
     UIViewController *current = viewController;
@@ -646,7 +649,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         return;
     }
 
-    UIAlertController *picker = [UIAlertController alertControllerWithTitle:@"Description Language"
+    UIAlertController *picker = [UIAlertController alertControllerWithTitle:[self uiText:@"Language"]
                                                                     message:nil
                                                              preferredStyle:UIAlertControllerStyleActionSheet];
     __weak typeof(self) weakSelf = self;
@@ -661,10 +664,13 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
             if (!self) return;
             [self.store setLanguageCode:code];
             [self updateSettingsControls];
+            self.inventorySignature = nil;
+            self.descriptionNeedsRefresh = YES;
+            if (!self.inventoryCard.hidden) [self rebuildInventoryContentsIfNeeded:YES];
             EIDLog(@"description language changed to %@", code);
         }]];
     }
-    [picker addAction:[UIAlertAction actionWithTitle:@"Cancel"
+    [picker addAction:[UIAlertAction actionWithTitle:[self uiText:@"Cancel"]
                                                style:UIAlertActionStyleCancel
                                              handler:nil]];
     UIPopoverPresentationController *popover = picker.popoverPresentationController;
@@ -778,7 +784,6 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         else [pockets addObject:item];
     }
 
-    BOOL russian = [self.store.languageCode isEqualToString:@"ru"];
     CGFloat width = self.inventoryScrollView.bounds.size.width;
     CGFloat y = 0;
     if (players.count>1) {
@@ -795,11 +800,11 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     for (EIDPickupIdentity *item in [self.probe currentVoidedItems])
         if (item.playerIndex==self.inventoryPlayerIndex) [voided addObject:item];
     NSArray<NSDictionary *> *sections = @[
-        @{@"title": russian ? @"Предметы" : @"Collectibles", @"items": collectibles},
-        @{@"title": russian ? @"Брелоки" : @"Trinkets", @"items": trinkets},
-        @{@"title": russian ? @"Проглоченные брелоки" : @"Smelted trinkets", @"items": smelted},
-        @{@"title": russian ? @"Поглощено Void" : @"Absorbed by Void", @"items": voided},
-        @{@"title": russian ? @"Карты, руны и таблетки" : @"Cards, runes & pills",
+        @{@"title": [self uiText:@"Collectibles"], @"items": collectibles},
+        @{@"title": [self uiText:@"Trinkets"], @"items": trinkets},
+        @{@"title": [self uiText:@"Smelted trinkets"], @"items": smelted},
+        @{@"title": [self uiText:@"Absorbed by Void"], @"items": voided},
+        @{@"title": [self uiText:@"Cards, runes & pills"],
           @"items": pockets},
     ];
     for (NSDictionary *section in sections) {
@@ -813,7 +818,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     }
 
     EIDTransformationProgress *tracker = [EIDTransformationProgress shared];
-    [self addInventoryHeading:(russian ? @"Трансформации" : @"Transformations")
+    [self addInventoryHeading:[self uiText:@"Transformations"]
                             y:&y width:width];
     for (NSNumber *identifier in tracker.allTransformationIdentifiers) {
         NSInteger transformation = identifier.integerValue;
@@ -854,6 +859,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (void)closeInventory:(UIButton *)sender {
     (void)sender;
     self.inventoryCard.hidden = YES;
+    self.descriptionNeedsRefresh = YES;
 }
 
 - (void)selectInventoryIdentity:(UIButton *)sender {
@@ -878,8 +884,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     UIWindow *window=[self gameWindow];
     UIViewController *presenter=[self topViewControllerFrom:window.rootViewController];
     if (!presenter || !self.probe.paused) return;
-    BOOL russian=[self.store.languageCode isEqualToString:@"ru"];
-    UIAlertController *picker=[UIAlertController alertControllerWithTitle:russian ? @"Игрок" : @"Player"
+    UIAlertController *picker=[UIAlertController alertControllerWithTitle:[self uiText:@"Player"]
         message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     __weak typeof(self) weakSelf=self;
     for (NSDictionary *player in self.probe.descriptionState[@"players"]) {
@@ -896,7 +901,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
                 strongSelf.inventoryScrollView.contentOffset=CGPointZero;
             }]];
     }
-    [picker addAction:[UIAlertAction actionWithTitle:russian ? @"Отмена" : @"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [picker addAction:[UIAlertAction actionWithTitle:[self uiText:@"Cancel"] style:UIAlertActionStyleCancel handler:nil]];
     picker.popoverPresentationController.sourceView=sender;
     picker.popoverPresentationController.sourceRect=sender.bounds;
     [presenter presentViewController:picker animated:YES completion:nil];
@@ -920,13 +925,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 - (void)closeSettings:(UIButton *)sender {
     (void)sender;
     self.settingsCard.hidden = YES;
+    self.descriptionNeedsRefresh = YES;
 }
 
 - (void)positionChanged:(UISlider *)slider {
     CGFloat position = round(slider.value);
     slider.value = position;
     [[NSUserDefaults standardUserDefaults] setDouble:position forKey:EIDHorizontalPositionKey];
-    self.settingsPositionLabel.text = [NSString stringWithFormat:@"Horizontal position: %.0f px", position];
+    self.settingsPositionLabel.text = [NSString stringWithFormat:@"%@: %.0f px",[self uiText:@"Horizontal position"],position];
     self.descriptionNeedsRefresh = YES;
     CGRect diagnosticsFrame = self.diagnosticsLabel.frame;
     diagnosticsFrame.origin.x = position;
@@ -939,7 +945,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     slider.value = position;
     [[NSUserDefaults standardUserDefaults] setDouble:position forKey:EIDVerticalPositionKey];
     self.settingsVerticalPositionLabel.text = [NSString stringWithFormat:
-        @"Vertical position: %.0f px", position];
+        @"%@: %.0f px",[self uiText:@"Vertical position"],position];
     self.descriptionNeedsRefresh = YES;
 }
 
@@ -958,15 +964,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 }
 
 - (NSString *)kindNameForVariant:(NSInteger)variant {
-    BOOL russian = [self.store.languageCode isEqualToString:@"ru"];
-    if (variant == EIDPickupVariantTrinket) return russian ? @"Брелок" : @"Trinket";
-    if (variant == EIDPickupVariantCard) return russian ? @"Карта / руна" : @"Card / rune";
-    if (variant == EIDPickupVariantPill) return russian ? @"Таблетка" : @"Pill";
-    if (variant == EIDPickupVariantHorsePill) return russian ? @"Большая таблетка" : @"Horse pill";
-    if (variant == EIDPickupVariantUnidentifiedPill) return russian ? @"Неизвестная пилюля" : @"Unidentified pill";
-    if (variant == EIDPickupVariantDiceRoom) return russian ? @"Комната игральной кости" : @"Dice Room";
-    if (variant == EIDPickupVariantSacrificeRoom) return russian ? @"Комната жертвоприношений" : @"Sacrifice Room";
-    return russian ? @"Артефакт" : @"Collectible";
+    if (variant == EIDPickupVariantTrinket) return [self uiText:@"Trinket"];
+    if (variant == EIDPickupVariantCard) return [self uiText:@"Card / rune"];
+    if (variant == EIDPickupVariantPill) return [self uiText:@"Pill"];
+    if (variant == EIDPickupVariantHorsePill) return [self uiText:@"Horse pill"];
+    if (variant == EIDPickupVariantUnidentifiedPill) return [self uiText:@"Unidentified pill"];
+    if (variant == EIDPickupVariantDiceRoom) return [self uiText:@"Dice Room"];
+    if (variant == EIDPickupVariantSacrificeRoom) return [self uiText:@"Sacrifice Room"];
+    return [self uiText:@"Collectible"];
 }
 
 - (void)loadPocketArtworkIfNeeded {
@@ -1194,17 +1199,19 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.collectibleCycleIndicator.font = [UIFont monospacedDigitSystemFontOfSize:10.5 * scale weight:UIFontWeightSemibold];
     self.collectibleCycleIndicator.alpha = self.label.alpha;
     self.collectibleCycleIndicator.frame = CGRectMake(MAX(0,self.panel.bounds.size.width-inset),0,inset,22*scale);
+    EIDRenderOriginalCounter(self.collectibleCycleIndicator,title,scale);
     self.collectibleCycleIndicator.hidden = NO;
     self.panel.accessibilityTraits = UIAccessibilityTraitButton;
     self.panel.accessibilityLabel = [NSString stringWithFormat:@"%@, %@",self.label.attributedText.string,title];
     self.panel.accessibilityHint = self.descriptionCycleKind == EIDDescriptionCycleInventoryDice
-        ? @"Tap the description to inspect the next die; this does not switch the game's active item"
-        : @"Tap the description to inspect the next item";
+        ? [self uiText:@"Next die hint"] : [self uiText:@"Next item hint"];
     [self.panel bringSubviewToFront:self.collectibleCycleIndicator];
 }
 
 - (void)renderPickups:(NSArray<EIDPickupIdentity *> *)pickups {
     if (!pickups.count) {
+        self.descriptionHasContent = NO;
+        [self applyDescriptionBackground];
         UIView *panel = self.panel;
         [UIView animateWithDuration:0.15 animations:^{
             panel.alpha = 0;
@@ -1232,15 +1239,14 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
         NSString *name = item.name.length ? item.name
             : [NSString stringWithFormat:@"%@ %ld", kind, (long)displaySubtype];
         NSString *detail = item.detail.length ? item.detail
-            : ([self.store.languageCode isEqualToString:@"ru"]
-               ? @"Описание недоступно" : @"No description available");
+            : [self uiText:@"No description available"];
         detail = [detail stringByReplacingOccurrencesOfString:@"#" withString:@"\n"];
         detail = [self renderMarkup:detail];
         [lines addObject:[NSString stringWithFormat:@"%@ · %@  [%ld]\n%@",
                           kind, name, (long)displaySubtype, detail]];
     }
     if (pickups.count > shown) {
-        NSString *more = [self.store.languageCode isEqualToString:@"ru"] ? @"ещё объектов" : @"more pickups";
+        NSString *more = [self uiText:@"more pickups"];
         [lines addObject:[NSString stringWithFormat:@"+ %lu %@",
                           (unsigned long)(pickups.count - shown), more]];
     }
@@ -1253,7 +1259,9 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     self.itemIconView.image = itemImage;
     self.itemIconView.hidden = itemImage == nil;
     self.label.text = [lines componentsJoinedByString:@"\n\n"];
+    self.descriptionHasContent = self.label.text.length > 0 || self.itemIconView.image != nil;
     [self sizePanelForText];
+    [self applyDescriptionBackground];
     [UIView animateWithDuration:0.15 animations:^{ self.panel.alpha = 1; }];
 }
 
@@ -1308,7 +1316,8 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     }
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     BOOL paused = self.probe.gameplayActive && self.probe.pauseStateAvailable && self.probe.paused;
-    BOOL enabled = EIDDescriptionBackgroundVisible([defaults boolForKey:@"IsaacEIDBackgroundEnabled"],paused);
+    BOOL enabled = self.descriptionHasContent &&
+        EIDDescriptionBackgroundVisible([defaults boolForKey:@"IsaacEIDBackgroundEnabled"],paused);
     CGFloat opacity = [defaults objectForKey:@"IsaacEIDBackgroundOpacity"]
         ? [defaults doubleForKey:@"IsaacEIDBackgroundOpacity"] : .28;
     self.descriptionBackground.hidden = !enabled;

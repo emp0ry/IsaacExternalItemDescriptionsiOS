@@ -1,28 +1,27 @@
+"use strict";
+
+document.documentElement.classList.add("js");
 const navToggle = document.querySelector(".nav-toggle");
-const siteNav = navToggle
-  ? document.getElementById(navToggle.getAttribute("aria-controls") || "")
-  : document.querySelector(".site-nav");
-
+const siteNav = document.getElementById("site-nav");
+function closeMenu() {
+  siteNav.classList.remove("is-open");
+  navToggle.setAttribute("aria-expanded", "false");
+  navToggle.setAttribute("aria-label", "Open menu");
+}
 if (navToggle && siteNav) {
+  navToggle.hidden = false;
   navToggle.addEventListener("click", () => {
-    const isOpen = siteNav.classList.toggle("is-open");
-    navToggle.setAttribute("aria-expanded", String(isOpen));
-    navToggle.setAttribute("aria-label", isOpen ? "Close menu" : "Open menu");
+    const open = siteNav.classList.toggle("is-open");
+    navToggle.setAttribute("aria-expanded", String(open));
+    navToggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
   });
-
-  siteNav.querySelectorAll("a").forEach((link) => {
-    link.addEventListener("click", () => {
-      siteNav.classList.remove("is-open");
-      navToggle.setAttribute("aria-expanded", "false");
-      navToggle.setAttribute("aria-label", "Open menu");
-    });
-  });
-
+  siteNav.querySelectorAll("a").forEach((link) => link.addEventListener("click", closeMenu));
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    siteNav.classList.remove("is-open");
-    navToggle.setAttribute("aria-expanded", "false");
-    navToggle.setAttribute("aria-label", "Open menu");
+    if (event.key === "Escape") {
+      const wasOpen = siteNav.classList.contains("is-open");
+      closeMenu();
+      if (wasOpen) navToggle.focus();
+    }
   });
 }
 
@@ -30,125 +29,87 @@ document.querySelectorAll("[data-year]").forEach((node) => {
   node.textContent = String(new Date().getFullYear());
 });
 
-const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const revealNodes = document.querySelectorAll(".reveal");
-
-if (!reducedMotion && "IntersectionObserver" in window) {
-  const revealObserver = new IntersectionObserver(
-    (entries, observer) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add("is-visible");
-        observer.unobserve(entry.target);
-      });
-    },
-    { threshold: 0.14, rootMargin: "0px 0px -36px 0px" },
-  );
-
-  revealNodes.forEach((node) => revealObserver.observe(node));
-} else {
-  revealNodes.forEach((node) => node.classList.add("is-visible"));
+// Static download links remain usable without JavaScript or GitHub API access.
+const repository = "emp0ry/IsaacExternalItemDescriptionsiOS";
+const latest = `https://github.com/${repository}/releases/latest`;
+function releaseURL(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "github.com" &&
+      url.pathname.startsWith(`/${repository}/releases/`) ? url.href : null;
+  } catch {
+    return null;
+  }
 }
-
-const sections = [...document.querySelectorAll("main section[id]")];
-const sectionLinks = [...document.querySelectorAll('.site-nav a[href^="#"]')];
-
-if (sections.length && sectionLinks.length && "IntersectionObserver" in window) {
-  const activeMap = new Map(
-    sectionLinks.map((link) => [link.getAttribute("href")?.slice(1), link]),
-  );
-  const sectionObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        const link = activeMap.get(entry.target.id);
-        if (!link || !entry.isIntersecting) return;
-        sectionLinks.forEach((item) => item.classList.remove("is-active"));
-        link.classList.add("is-active");
-      });
-    },
-    { threshold: 0.4, rootMargin: "-15% 0px -45% 0px" },
-  );
-  sections.forEach((section) => sectionObserver.observe(section));
-}
-
-const desktopFrame = document.querySelector(".desktop-frame");
-if (desktopFrame && !reducedMotion && window.matchMedia("(pointer: fine)").matches) {
-  desktopFrame.addEventListener("pointermove", (event) => {
-    const rect = desktopFrame.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width - 0.5;
-    const y = (event.clientY - rect.top) / rect.height - 0.5;
-    desktopFrame.style.setProperty("--tilt-x", `${(-y * 3).toFixed(2)}deg`);
-    desktopFrame.style.setProperty("--tilt-y", `${(x * 4).toFixed(2)}deg`);
-    desktopFrame.style.setProperty("--float-x", `${(x * 3).toFixed(2)}px`);
-    desktopFrame.style.setProperty("--float-y", `${(y * 3).toFixed(2)}px`);
-  });
-
-  desktopFrame.addEventListener("pointerleave", () => {
-    desktopFrame.style.removeProperty("--tilt-x");
-    desktopFrame.style.removeProperty("--tilt-y");
-    desktopFrame.style.removeProperty("--float-x");
-    desktopFrame.style.removeProperty("--float-y");
-  });
-}
-
-const repository = document.body.dataset.repository;
-const releaseStatus = document.querySelector("[data-release-status]");
-
-if (repository) {
-  const fallbackReleaseUrl = `https://github.com/${repository}/releases/latest`;
-
-  fetch(`https://api.github.com/repos/${repository}/releases/latest`, {
-    headers: { Accept: "application/vnd.github+json" },
-  })
-    .then((response) => {
-      if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
-      return response.json();
-    })
-    .then((release) => {
-      const assets = new Map(
-        (release.assets || []).map((asset) => [asset.name, asset.browser_download_url]),
-      );
-
-      document.querySelectorAll("[data-release-link]").forEach((link) => {
-        link.href = release.html_url || fallbackReleaseUrl;
-      });
-      document.querySelectorAll("[data-version]").forEach((node) => {
-        node.textContent = release.tag_name || "latest";
-      });
-      document.querySelectorAll("[data-asset], [data-asset-pattern]").forEach((link) => {
-        const card = link.closest(".download-card");
-        const pattern = link.dataset.assetPattern
-          ? new RegExp(link.dataset.assetPattern)
-          : null;
-        const assetUrl = pattern
-          ? [...assets].find(([name]) => pattern.test(name))?.[1]
-          : assets.get(link.dataset.asset);
-        link.href = assetUrl || release.html_url || fallbackReleaseUrl;
-        if (assetUrl) {
-          card?.classList.add("is-ready");
-        } else {
-          card?.classList.add("is-missing");
-          link.textContent = "Open release";
-        }
-      });
-
-      if (releaseStatus) {
-        const date = release.published_at
-          ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(release.published_at))
-          : null;
-        releaseStatus.textContent = date
-          ? `${release.name || release.tag_name} · published ${date}`
-          : release.name || release.tag_name || "Latest release";
-        releaseStatus.classList.add("is-loaded");
-      }
-    })
-    .catch(() => {
-      document.querySelectorAll("[data-release-link], [data-asset], [data-asset-pattern]").forEach((link) => {
-        link.href = fallbackReleaseUrl;
-      });
-      if (releaseStatus) {
-        releaseStatus.textContent = "Latest release is available on GitHub";
-        releaseStatus.classList.add("is-error");
-      }
+async function loadRelease() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, {
+      headers: { Accept: "application/vnd.github+json" }, signal: controller.signal,
     });
+    if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+    const release = await response.json();
+    const releaseLink = releaseURL(release.html_url) || latest;
+    const assets = new Map((release.assets || []).map((asset) => [asset.name, releaseURL(asset.browser_download_url)]));
+    document.querySelectorAll("[data-asset]").forEach((link) => {
+      const asset = assets.get(link.dataset.asset);
+      link.href = asset || releaseLink;
+      if (!asset) link.textContent = "Open release ↗";
+    });
+    document.querySelectorAll("[data-release-link]").forEach((link) => { link.href = releaseLink; });
+    if (typeof release.tag_name === "string") {
+      document.querySelectorAll("[data-version]").forEach((node) => { node.textContent = release.tag_name; });
+    }
+    const status = document.querySelector("[data-release-status]");
+    if (status) status.textContent = `${release.name || release.tag_name || "Latest release"} · Available on GitHub`;
+  } catch {
+    const status = document.querySelector("[data-release-status]");
+    if (status) status.textContent = "Latest release and checksums are available on GitHub";
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+loadRelease();
+
+const toolbar = document.querySelector(".gallery-toolbar");
+const screenshots = [...document.querySelectorAll(".screenshot-card")];
+if (toolbar) {
+  toolbar.hidden = false;
+  toolbar.querySelectorAll("[data-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      toolbar.querySelectorAll("[data-filter]").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+      let count = 0;
+      screenshots.forEach((card) => {
+        card.hidden = button.dataset.filter !== "all" && card.dataset.category !== button.dataset.filter;
+        if (!card.hidden) count += 1;
+      });
+      document.querySelector(".gallery-count").textContent = count + (count === 1 ? " screenshot" : " screenshots");
+    });
+  });
+}
+const lightbox = document.querySelector(".lightbox");
+if (lightbox && typeof lightbox.showModal === "function") {
+  const image = lightbox.querySelector("img");
+  const caption = lightbox.querySelector(".lightbox-caption");
+  const original = lightbox.querySelector(".lightbox-original");
+  let trigger = null;
+  document.querySelectorAll("[data-lightbox]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      trigger = link;
+      image.src = link.href;
+      image.alt = link.querySelector("img").alt;
+      caption.textContent = image.alt;
+      original.href = link.href;
+      lightbox.showModal();
+    });
+  });
+  lightbox.querySelector(".lightbox-close").addEventListener("click", () => lightbox.close());
+  lightbox.addEventListener("click", (event) => {
+    if (event.target !== lightbox) return;
+    const bounds = lightbox.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) lightbox.close();
+  });
+  lightbox.addEventListener("close", () => { if (trigger) trigger.focus({preventScroll: true}); });
 }

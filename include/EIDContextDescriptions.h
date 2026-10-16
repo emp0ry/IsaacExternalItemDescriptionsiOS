@@ -19,3 +19,8 @@ FOUNDATION_EXPORT NSString *EIDCollectionDescription(NSString *detail,
 // Shared by the ordinary description and Pandora's floor-highlight matcher.
 FOUNDATION_EXPORT NSString *EIDUnlockDescription(NSString *detail,
     NSInteger variant, NSInteger subtype, NSDictionary *context);
+
+// Original SingleUseCallback, independent of charges (many reusable actives
+// also have zero charges). The imported exact ID allowlist is authoritative.
+FOUNDATION_EXPORT NSString *EIDSingleUseDescription(NSString *detail,
+    NSInteger variant, NSInteger subtype, NSDictionary *context);

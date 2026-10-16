@@ -20,6 +20,11 @@ The desktop mod currently defaults to:
 
 ## iOS parity layers
 
+Version 1.0.0 uses the original bitmap fonts, metrics and sprite geometry.
+See [Description rendering](RENDERING.md) for the implementation, resource
+pin and remaining visual limits. The in-app interface now follows the selected
+EID language, with scrollable settings and per-slider resets.
+
 1. **Presentation** — EID-style item-name color, outlined text, compact line spacing, opacity and scale.
 2. **Markup** — replace emoji approximations with EID inline sprite icons and honor color markup.
 3. **Metadata** — expose quality, item type/charge, transformations and pools where available.
