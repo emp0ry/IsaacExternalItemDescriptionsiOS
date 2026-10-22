@@ -12,31 +12,40 @@ struct State {
     uint32_t mode=0,seed=0;
     uint8_t pending=1,hud=0,fullscreenPlaying=0;
     int pause=-1,roomTransition=-1,fadeState=-1,bossIntro=-1,deathScreen=-1,cutscene=-1;
+    int transitionKind=-1,transitionDirection=-1;
     int rewardScreen=-1,entryTimer=0,overlayTimer=0;
     float fade=1,whiteFade=1;
-    bool RunVisible(bool allowPause) const {
+    bool DoorSlide() const {
+        // Native WALK transition: four screen-scroll directions. Fade,
+        // teleport, floor loading and cinematics are not door slides.
+        return roomTransition>=1 && roomTransition<=4 && transitionKind==0 &&
+            transitionDirection>=0 && transitionDirection<=3;
+    }
+    bool RunVisible(bool allowPause,bool allowDoorSlide=false) const {
         return mode==2 && manager && game && room && roomDescriptor && seed && !pending && hud==1 &&
-            (pause==0 || (allowPause && pause==1)) && roomTransition==0 && fadeState==0 &&
+            (pause==0 || (allowPause && pause==1)) &&
+            (roomTransition==0 || (allowDoorSlide && DoorSlide())) && fadeState==0 &&
             bossIntro==0 && deathScreen==0 && cutscene==0 && rewardScreen>=0 && rewardScreen<2 &&
             entryTimer<=0 && overlayTimer<=0 && !fullscreenPlaying &&
             std::isfinite(fade) && fade==0 && std::isfinite(whiteFade) && whiteFade<=0;
     }
-    bool OverlayVisible() const { return (mode==1 && manager) || RunVisible(true); }
+    bool OverlayVisible() const { return (mode==1 && manager) || RunVisible(true,true); }
 };
 
-// Require a short continuous clear interval after a scene/room change. An
+// Require a short continuous clear interval after a scene/run change. An
 // intermediate idle update during loading must not flash the previous overlay.
+// Ordinary door slides and their room-descriptor swaps keep the current latch.
 class Visibility {
-    uintptr_t game_=0,room_=0,manager_=0;
+    uintptr_t game_=0,manager_=0;
     uint32_t seed_=0,mode_=0;
     double clearSince_=-1,last_=0;
 public:
     bool Observe(const State& s,bool captured,bool allowPause,bool allowMenu,double now) {
-        bool clear=captured && (allowMenu ? s.OverlayVisible() : s.RunVisible(allowPause));
+        bool clear=captured && (allowMenu ? s.OverlayVisible() : s.RunVisible(allowPause,true));
         if (!clear || !std::isfinite(now) || now<last_) { clearSince_=-1; last_=now; return false; }
-        if (clearSince_<0 || game_!=s.game || room_!=s.roomDescriptor ||
+        if (clearSince_<0 || game_!=s.game ||
             seed_!=s.seed || manager_!=s.manager || mode_!=s.mode) {
-            clearSince_=now; game_=s.game; room_=s.roomDescriptor; seed_=s.seed;
+            clearSince_=now; game_=s.game; seed_=s.seed;
             manager_=s.manager; mode_=s.mode;
         }
         last_=now;
@@ -47,6 +56,8 @@ template<class Reader> bool Validate(uintptr_t base,const Reader& read) {
     struct Signature { uintptr_t rva; std::array<uint32_t,4> words; };
     const Signature signatures[]={
         {0x6a8b98,{0xb9400008,0x121f7908,0x7100091f,0x1a9f17e0}},
+        {0x6a8cc0,{0xb9401c09,0x5100052a,0x7100095f,0x54000303}},
+        {0x6a8cd0,{0xb940100a,0x3100055f,0x540002a0,0x71004d3f}},
         {0x89b2f0,{0xb9400008,0x121f7909,0x1e3e1000,0x7100093f}},
         {0x76b7b0,{0xa9027bfd,0x910083fd,0xb9400008,0x34000388}},
         {0x7ea2fc,{0xb9400008,0x34003668,0xaa0003f6,0xb81703bf}},
@@ -75,6 +86,8 @@ template<class Reader> bool Capture(uintptr_t base,const Reader& read,State& s) 
         read(s.game+0x25d44,&s.seed,4) &&
         read(s.game+0x10dfd8,&s.pause,4) && read(s.game+0x10d45a,&s.hud,1) &&
         read(s.game+0x25810,&s.roomTransition,4) && // RoomTransition render / IsActive
+        read(s.game+0x25810+0x1c,&s.transitionKind,4) &&
+        read(s.game+0x25810+0x10,&s.transitionDirection,4) &&
         read(s.game+0x25c00,&s.fadeState,4) &&     // full-screen fade render
         read(s.game+0x27390,&s.bossIntro,4) &&     // native full-screen cutscene
         read(s.game+0x27630,&s.deathScreen,4) &&   // game-over screen render

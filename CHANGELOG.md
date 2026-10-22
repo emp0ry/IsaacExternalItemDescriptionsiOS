@@ -4,8 +4,9 @@ All release changes are kept here. Older entries describe their own release; his
 
 ## Unreleased
 
-- Hide the complete EID overlay during native room/floor transitions, fades, boss introductions, death screens and cinematics. Ordinary pause inspection remains available, and hidden scenes do not clear the selected item or settings.
-- Include the independent boss/large-sprite screen, fullscreen animation playback, post-HUD screen counters and white fades. Wait for 100 ms of a clear scene after loading or changing rooms to avoid flashes of the previous description.
+- Hide the complete EID overlay during native floor transitions, fades, boss introductions, death screens and cinematics. Ordinary pause inspection remains available, and hidden scenes do not clear the selected item or settings.
+- Include the independent boss/large-sprite screen, fullscreen animation playback, post-HUD screen counters and white fades. Wait for 100 ms of a clear scene after loading/cinematics to avoid flashes of the previous description.
+- Keep EID visible through ordinary door slides. Changing room descriptors alone no longer hides the overlay or restarts the loading delay.
 - Extend description scale from 180% to 400% for larger displays. Existing preferences and the 100% Reset value remain unchanged; text, icons and cycling controls use the same scale limit.
 
 ## v1.0.0
