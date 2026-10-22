@@ -65,6 +65,9 @@ typedef NS_ENUM(NSInteger, EIDPickupVariant) {
 @property(atomic, readonly, getter=isTransformationStateAvailable) BOOL transformationStateAvailable;
 @property(atomic, readonly, getter=isSuperBumActive) BOOL superBumActive;
 - (void)start;
+// Main-thread presentation gate, independent of the background entity scan.
+// Menus remain configurable; transitions/cinematics hide the whole overlay.
+- (BOOL)overlayPresentationVisible;
 - (NSArray<EIDPickupIdentity *> *)currentDescribablePickups;
 - (NSArray<EIDPickupIdentity *> *)currentInventoryItems;
 - (NSArray<EIDPickupIdentity *> *)currentSmeltedTrinkets;

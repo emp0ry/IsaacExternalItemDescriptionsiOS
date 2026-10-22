@@ -158,7 +158,7 @@ static UIImageView *EIDHeaderLogoForController(id controller, UIView *panel) {
 
     CGFloat scale = [[NSUserDefaults standardUserDefaults] objectForKey:@"IsaacEIDScale"]
         ? [[NSUserDefaults standardUserDefaults] doubleForKey:@"IsaacEIDScale"] : 1.0;
-    scale = MIN(1.8, MAX(0.5, scale));
+    scale = EIDClampScale(scale);
 
     NSMutableAttributedString *headerText = [[rendered attributedSubstringFromRange:NSMakeRange(0, headerLength)] mutableCopy];
 

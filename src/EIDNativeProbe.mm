@@ -1,5 +1,6 @@
 #import "EIDNativeProbe.h"
 #include "EIDLivePedestalPolicy.h"
+#include "IsaacPresentationState.hpp"
 #include "EIDCurrentEffectsPolicy.hpp"
 #include "EIDInventoryCountPolicy.hpp"
 #import "EIDLogger.h"
@@ -2276,6 +2277,24 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     if (previousFloor != state[@"floor"] && ![previousFloor isEqual:state[@"floor"]])
         EIDLog(@"native description floor: %@",state[@"floor"] ?: @"unavailable");
     self.descriptionState = state.copy;
+}
+
+- (BOOL)overlayPresentationVisible {
+    if (!NSThread.isMainThread || !self.supportedBuild) return NO;
+    const mach_header_64 *header=IsaacExecutableHeader(nullptr);
+    if (!header) return NO;
+    uintptr_t base=reinterpret_cast<uintptr_t>(header);
+    static uintptr_t validatedBase=0;
+    static bool validated=false;
+    auto read=[](uintptr_t a,void *p,size_t n){ return ReadOwnTaskMemory(a,p,n); };
+    if (validatedBase!=base) {
+        validatedBase=base; validated=IsaacPresentation::Validate(base,read);
+        EIDLog(@"native transition/cinematic presentation gate %@",validated?@"validated":@"rejected");
+    }
+    IsaacPresentation::State state;
+    static IsaacPresentation::Visibility visibility;
+    bool captured=validated && IsaacPresentation::Capture(base,read,state);
+    return visibility.Observe(state,captured,true,true,CACurrentMediaTime());
 }
 
 - (void)updatePauseStateForGameplay:(BOOL)gameplayActive {

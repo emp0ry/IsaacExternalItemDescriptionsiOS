@@ -171,7 +171,7 @@ void EIDBuildSettings(id controller) {
     [content addArrangedSubview:version];
     [layout addArrangedSubview:Position(controller,NO,code)];
     [layout addArrangedSubview:Position(controller,YES,code)];
-    [layout addArrangedSubview:Slider(controller,text(@"Scale"),@"IsaacEIDScale",.5,1.8,1,code)];
+    [layout addArrangedSubview:Slider(controller,text(@"Scale"),@"IsaacEIDScale",.5,EIDMaximumScalePercent/100.,1,code)];
     [layout addArrangedSubview:Slider(controller,text(@"Text width"),EIDTextWidthKey,1,3,1,code)];
     [layout addArrangedSubview:Label(text(@"Width hint"),11,YES)];
     [appearance addArrangedSubview:Slider(controller,text(@"Text opacity"),@"IsaacEIDTransparency",.15,1,.75,code)];

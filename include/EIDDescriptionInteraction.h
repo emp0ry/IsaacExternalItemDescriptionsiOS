@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "EIDScalePolicy.h"
 
 // Standard Repentance order from upstream EID's dinfinityList. Selection zero
 // is D Infinity's own description; selections 1–10 inspect its individual dice.
@@ -35,6 +36,6 @@ static inline double EIDDescriptionFittedWidth(double available, double title, d
     if (!isfinite(available) || available <= 0 || !isfinite(title) || !isfinite(body) ||
         !isfinite(textInset) || !isfinite(cycleInset) || !isfinite(scale)) return 0;
     double content = fmax(fmax(0,title)+fmax(0,cycleInset), fmax(0,body));
-    double width = ceil(fmax(0,textInset)+content+2*fmin(1.8,fmax(.5,scale)));
+    double width = ceil(fmax(0,textInset)+content+2*EIDClampScale(scale));
     return fmin(available,fmax(1,width));
 }

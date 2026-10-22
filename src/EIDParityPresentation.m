@@ -255,7 +255,7 @@ static void AppendMarkup(NSMutableAttributedString *output, NSString *text, UIFo
     context[@"void_stat_info_enabled"] = @(EIDFeatureEnabled(defaults,EIDVoidStatInfoKey));
     context[@"hidden_info_enabled"] = @(hiddenInfoEnabled);
     CGFloat scale = [defaults objectForKey:EIDScaleKey] ? [defaults doubleForKey:EIDScaleKey] : 1;
-    scale = MIN(1.8, MAX(.5, scale));
+    scale = EIDClampScale(scale);
     CGFloat alpha = [defaults objectForKey:EIDTransparencyKey] ? [defaults doubleForKey:EIDTransparencyKey] : .75;
     BOOL showName = [defaults objectForKey:EIDShowNameKey] ? [defaults boolForKey:EIDShowNameKey] : YES;
     BOOL showIcon = [defaults objectForKey:EIDShowIconKey] ? [defaults boolForKey:EIDShowIconKey] : YES;

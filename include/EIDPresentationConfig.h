@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #include <math.h>
+#include "EIDScalePolicy.h"
 
 static NSString *const EIDTextWidthKey = @"IsaacEIDTextWidthMultiplier";
 static NSString *const EIDStatChangeIconsKey = @"IsaacEIDStatChangeIcons";

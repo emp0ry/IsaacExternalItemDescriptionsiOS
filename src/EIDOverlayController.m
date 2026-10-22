@@ -9,6 +9,7 @@
 #import "EIDSettings.h"
 #import "EIDUILocalization.h"
 #include "EIDLivePedestalPolicy.h"
+#include "EIDScalePolicy.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -222,6 +223,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
     EIDPassthroughView *root = [[EIDPassthroughView alloc] initWithFrame:window.bounds];
     root.backgroundColor = UIColor.clearColor;
+    root.hidden = YES; // The display link reveals it only in a verified native scene.
     // The root only claims touches that land on EID controls. Its hit-test
     // implementation returns nil everywhere else, preserving Isaac's game input.
     root.userInteractionEnabled = YES;
@@ -470,6 +472,10 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
 
 - (void)tickLivePedestal:(CADisplayLink *)link {
     (void)link;
+    BOOL visible=UIApplication.sharedApplication.applicationState==UIApplicationStateActive &&
+        [self.probe overlayPresentationVisible];
+    self.rootView.hidden=!visible;
+    if (!visible) return;
     if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
         !self.rootView.superview || self.menuMode || !self.probe.gameplayActive ||
         self.selectedInventoryItem || !self.settingsCard.hidden || !self.inventoryCard.hidden) return;
@@ -1173,7 +1179,7 @@ static NSString *EIDGameResourcePath(NSString *relativePath) {
     if (![self descriptionCycleAvailable]) return 0;
     CGFloat scale = [NSUserDefaults.standardUserDefaults objectForKey:@"IsaacEIDScale"]
         ? [NSUserDefaults.standardUserDefaults doubleForKey:@"IsaacEIDScale"] : 1;
-    return 58 * MIN(1.8,MAX(.5,scale));
+    return 58 * EIDClampScale(scale);
 }
 
 - (void)updateCollectibleCycleControls {
