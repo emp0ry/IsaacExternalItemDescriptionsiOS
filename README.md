@@ -1,6 +1,6 @@
 # Isaac External Item Descriptions for iOS
 
-**Version 1.1.1** fixes Curse of the Blind visibility: hidden question-mark pedestals stay secret, while visible active items left after swapping can be described. Scaling up to 400%, cutscene visibility and PlayCover support remain included.
+**Version 1.1.2** restores descriptions for visible items sold for hearts and corrects shop-slot versus Options? detection. Curse of the Blind protection, scaling up to 400%, cutscene visibility and PlayCover support remain included.
 
 See what items do in the native **The Binding of Isaac: Repentance** on iPhone and iPad. Descriptions adapt to your character, inventory, transformations and current room.
 
@@ -64,6 +64,7 @@ The sections below describe implemented features, not a promise of complete pari
 - Native collectible/trinket artwork, correct card/rune/Soul Stone/pill frames and actual pill colors. Original EID inline symbols, quality icons, battery/charge indicators, transformation icons, colored text and highlights.
 - Active-item headers distinguish normal, timed and special charge types. The original localized single-use warning is shown for its 13 Repentance actives, both on pedestals and in EID Items. Inline collectible/trinket sprites are cropped before scaling so their transparent padding does not make them tiny.
 - Question-mark sprites and forced-blind fields suppress collectible descriptions, including Curse of the Blind. A visible active item left after swapping is still described on a cursed floor; missing or unreadable artwork stays hidden.
+- Visible collectibles sold for coins or hearts can be inspected before purchase. Price, shop-slot ID and the actual Options? group are decoded independently; a negative shop-slot sentinel does not hide the item.
 - Reachable ordinary floor cards/runes are described immediately. Shared-model shop cards and `Options?` cards stay unidentified. Distinctive models, including Credit Card, Black Rune, Rune Shard, Cracked Key, Wild Card and Soul Stones, retain upstream visibility exceptions; Chaos Card is not a unique-model exception.
 - Unreachable shared-model cards/runes/pills stay unidentified; flight bypasses the obstruction check. Pills use native identified state, including shop/Options? cases, and otherwise show only a localized unidentified label and color.
 - A collection-page reminder marks eligible collectibles never picked up in the selected save slot. This is separate from unlock status and current-run ownership; hidden items, pause entries and read-only/custom runs do not get it.

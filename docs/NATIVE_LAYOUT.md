@@ -202,7 +202,8 @@ allocator and does not directly dereference mutable game allocations.
 | Pickup touched byte | `0x561` | Native pickup init/collision/morph preservation code |
 | Pickup forced-blind byte | `0x562` | ARM64 disassembly of native `SetForceBlind` |
 | Pickup price | `0x564` | Native `IsShopItem` returns `Price != 0` |
-| Pickup Options index | `0x56c` | Live shop and floor pickup instances; positive values identify an `Options?` group |
+| Pickup Options index | `0x55c` | Native serialization `0x10059d878` stores it at saved record +0x30; Options collision `0x10071d000` compares this field between pickups |
+| Pickup shop item ID | `0x56c` | Native pricing `0x100718348` and shop setup `0x10071d4f0`; serialized separately at +0x18. Negative sentinels are valid and do not hide a collectible |
 | Crane Game prize collectible | `0x570` | ARM64 disassembly of `Entity_Slot::SetPrizeCollectible` |
 | Player can-fly byte | `Entity_Player + 0x1954` | Live flight state and repeated native `ldrb` call sites in movement/collision paths; must be read as one byte rather than as the adjacent four-byte word |
 | Player character type | `Entity_Player + 0x1738` | Repentance ChangePlayerType/character-specific branches read this int32; valid native types are 0–40 |
@@ -259,7 +260,9 @@ their color and render the upstream localized unidentified label.
 
 Floor card/rune/pill visibility mirrors original EID's defaults. The native
 price at `Entity_Pickup + 0x564` marks a shop pickup when nonzero, and the
-`OptionsPickupIndex` at `+0x56c` marks an `Options?` choice when positive.
+`OptionsPickupIndex` at `+0x55c` marks an `Options?` choice when positive.
+`+0x56c` is the independent shop item ID, not the Options group; it must not
+invalidate a heart-priced collectible or suppress an otherwise known card.
 Ordinary shop cards and all `Options?` cards are hidden; shop Soul Stones and
 shop/`Options?` pills are shown. Reachability uses the native room dimensions
 and `Room::_gridPaths`, with the same four-direction search and `path <= 900`

@@ -5,6 +5,7 @@
 #include "EIDInventoryCountPolicy.hpp"
 #import "EIDLogger.h"
 #include "EIDPickupPolicy.hpp"
+#include "EIDPickupMetadataPolicy.hpp"
 #include "EIDCollectibleVisibilityPolicy.hpp"
 #include "EIDNativeContextPolicy.hpp"
 #include "EIDPillPolicy.h"
@@ -221,11 +222,6 @@ constexpr size_t kPickupCollectibleCycleCountOffset = 0x604;
 // +0x3d8 is the mutable pickup RNG record, not a stable identity key.
 constexpr size_t kPickupCycleSeedOffset = 0x3e8;
 constexpr size_t kPickupCurrentRNGOffset = 0x3d8;
-constexpr size_t kPickupPriceOffset = 0x564;
-// Live-verified on the supported iOS build: an ordinary floor card has 0 here,
-// while an Options? shop card had 2. +0x570 belongs to a different field and
-// contained -1, which previously caused every ordinary card to fail closed.
-constexpr size_t kPickupOptionsIndexOffset = 0x56c;
 constexpr size_t kCranePrizeCollectibleOffset = 0x570;
 constexpr size_t kPlayerPocketItemsOffset = 0x1c10;
 constexpr size_t kPlayerPocketItemCount = 4;
@@ -411,6 +407,16 @@ static bool ReadOwnTaskMemory(vm_address_t address, void *destination, vm_size_t
     return vm_read_overwrite(mach_task_self(), address, size,
                              reinterpret_cast<vm_address_t>(destination), &copied) == KERN_SUCCESS &&
         copied == size;
+}
+
+static bool ReadPickupMetadata(const uint8_t *object, size_t available,
+                                EIDPickupMetadataPolicy::Metadata& metadata) {
+    static const bool layoutValid = [] {
+        const auto *header = IsaacExecutableHeader(nullptr);
+        return header && EIDPickupMetadataPolicy::ValidateLayout(
+            reinterpret_cast<uintptr_t>(header),ReadOwnTaskMemory);
+    }();
+    return layoutValid && EIDPickupMetadataPolicy::Read(object,available,metadata);
 }
 
 static bool ReadGameObjectAddress(vm_address_t& gameAddress) {
@@ -676,15 +682,14 @@ static NSArray *ReadRoomPedestals(vm_address_t game, const ScanContext& context)
         if (!IsCandidateVTable(context.pickupVTables,context.pickupVTableCount,vtable)) continue;
         std::array<uint8_t,0x578> object{};
         if (!ReadOwnTaskMemory(address,object.data(),object.size())) return nil;
-        int32_t identity[3], price, options, crane;
+        int32_t identity[3], wait;
+        EIDPickupMetadataPolicy::Metadata metadata;
+        if (!ReadPickupMetadata(object.data(),object.size(),metadata)) return nil;
         memcpy(identity,object.data()+0x38,sizeof(identity));
-        memcpy(&price,object.data()+0x564,sizeof(price));
-        memcpy(&options,object.data()+0x56c,sizeof(options));
-        memcpy(&crane,object.data()+0x570,sizeof(crane));
+        memcpy(&wait,object.data()+0x570,sizeof(wait));
         if (identity[0] != 5 || identity[1] != 100 || identity[2] <= 0 || identity[2] > 732 ||
-            object[0x1c3] || !object[0x1c2] || price || crane > 0) continue;
-        if (options < 0 || options > 4096) return nil;
-        [pedestals addObject:@{@"id":@(identity[2]),@"options":@(options)}];
+            object[0x1c3] || !object[0x1c2] || metadata.IsShopItem() || wait > 0) continue;
+        [pedestals addObject:@{@"id":@(identity[2]),@"options":@(metadata.optionsIndex)}];
     }
     uintptr_t latestList = 0; uint32_t latestCount = 0;
     if (!ReadOwnTaskMemory(room+0x19c8,&latestList,sizeof(latestList)) || latestList != list ||
@@ -1443,19 +1448,8 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
             if (activeObject && identity[0] == 5 && IsDescribableVariant(identity[1])) {
                 int32_t displayVariant = identity[1];
                 int32_t displaySubtype = identity[2];
-                int32_t price = 0;
-                int32_t optionsPickupIndex = 0;
-                bool pickupMetadataAvailable =
-                    offset + kPickupOptionsIndexOffset + sizeof(optionsPickupIndex) <= size;
-                if (pickupMetadataAvailable) {
-                    memcpy(&price, bytes + offset + kPickupPriceOffset, sizeof(price));
-                    memcpy(&optionsPickupIndex,
-                           bytes + offset + kPickupOptionsIndexOffset,
-                           sizeof(optionsPickupIndex));
-                    if (optionsPickupIndex < 0 || optionsPickupIndex > 4096) {
-                        pickupMetadataAvailable = false;
-                    }
-                }
+                EIDPickupMetadataPolicy::Metadata metadata;
+                const bool pickupMetadataAvailable = ReadPickupMetadata(bytes + offset,size - offset,metadata);
                 // Fail closed for card identity if its shop/options metadata cannot
                 // be read; showing it could reveal a purchase or Options? choice.
                 if (displayVariant == EIDPickupVariantCard && !pickupMetadataAvailable) continue;
@@ -1484,7 +1478,7 @@ static void ScanVMCopy(const ScanContext& context, const uint8_t *bytes, size_t 
                     if (identity[1] == 100 && offset+kPickupCurrentRNGOffset+sizeof(outcomeSeed) <= size)
                         memcpy(&outcomeSeed,bytes+offset+kPickupCurrentRNGOffset,sizeof(outcomeSeed));
                     AddVMPickup(result, displayVariant, displaySubtype, x, y,
-                                positionAvailable, price != 0, optionsPickupIndex,
+                                positionAvailable, metadata.IsShopItem(), metadata.optionsIndex,
                                 identity[1] == EIDPickupVariantPill ? identity[2] : 0,flipID,
                                 identity[1] == 100 ? referenceAddress : 0,cycleSeed,outcomeSeed);
                 } else if (visibility == PickupVisibility::Blind) {
@@ -2723,7 +2717,7 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     std::array<uint8_t,0x618> bytes{};
     if (!ReadOwnTaskMemory(address,bytes.data(),bytes.size())) return nil;
     uintptr_t vtable = 0, alternate = 0;
-    int32_t native[3]{}, count = 0, price = 0, options = 0;
+    int32_t native[3]{}, count = 0;
     uint32_t currentSeed = 0, outcomeSeed = 0;
     memcpy(&vtable,bytes.data(),sizeof(vtable));
     memcpy(native,bytes.data()+kEntityTypeOffset,sizeof(native));
@@ -2734,11 +2728,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         !active[0] || !active[2] || active[3] ||
         PickupVisibilityState(bytes.data(),bytes.size()) != PickupVisibility::Visible) return nil;
     memcpy(&count,bytes.data()+kPickupCollectibleCycleCountOffset,sizeof(count));
-    memcpy(&price,bytes.data()+kPickupPriceOffset,sizeof(price));
-    memcpy(&options,bytes.data()+kPickupOptionsIndexOffset,sizeof(options));
+    EIDPickupMetadataPolicy::Metadata metadata;
+    if (!ReadPickupMetadata(bytes.data(),bytes.size(),metadata)) return nil;
     memcpy(&outcomeSeed,bytes.data()+kPickupCurrentRNGOffset,sizeof(outcomeSeed));
     memcpy(&alternate,bytes.data()+0x610,sizeof(alternate));
-    if (options < 0 || options > 4096) return nil;
     int32_t flip = 0, saved[3]{}; uint8_t hidden = 1;
     if (alternate && ReadOwnTaskMemory(alternate,saved,sizeof(saved)) && saved[0] == 5 && saved[1] == 100 &&
         saved[2] >= 1 && saved[2] <= 732 && ReadOwnTaskMemory(alternate+0x23,&hidden,sizeof(hidden)) && !hidden)
@@ -2747,8 +2740,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     if (!displayID) return nil;
     NSMutableDictionary *context = previous.mutableCopy;
     context[@"live_cycle_count"] = @(count >= 0 && count <= 8 ? count : 0);
-    context[@"shop"] = @(price != 0);
-    context[@"options"] = @(options);
+    context[@"shop"] = @(metadata.IsShopItem());
+    context[@"options"] = @(metadata.optionsIndex);
     context[@"flip_id"] = @(native[2] ? flip : 0);
     context[@"outcome_seed"] = @(outcomeSeed);
     if (displayID != identity.subtype) {

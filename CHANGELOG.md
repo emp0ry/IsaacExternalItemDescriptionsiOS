@@ -2,6 +2,21 @@
 
 All release changes are kept here. Older entries describe their own release; historical limitations may have been resolved by a later update.
 
+## v1.1.2
+
+2026-10-22
+
+Descriptions for visible items sold for hearts are restored.
+
+- Fix visible heart-priced collectibles disappearing during EID's main-thread refresh. A valid negative shop-slot value no longer invalidates the entire description; the item can be inspected before buying it.
+- Read native Price (`+0x564`), OptionsPickupIndex (`+0x55c`) and ShopItemID (`+0x56c`) independently. Positive shop slots no longer masquerade as Options? groups. Validate four native serialization/collision instruction signatures before using the layout.
+- Use the same metadata decoder in pickup scans, live description updates and room absorption context. Actual Options? card restrictions, shop-card knowledge rules, Curse of the Blind protection and existing spoiler settings remain intact.
+- Correct the native-layout documentation. README and website metadata now identify the patch release.
+
+Local tests cover free and coin-priced pickups, all supported heart-price encodings, negative shop-slot sentinels, real Options? groups and existing visibility/context/rendering regressions. The native ABI was checked against the supported game executable. The fix was installed and confirmed working in PlayCover; exhaustive physical-device coverage is not claimed.
+
+Fully restart Isaac after updating. Languages, resources, saved settings and game saves are unchanged.
+
 ## v1.1.1
 
 2026-10-22
