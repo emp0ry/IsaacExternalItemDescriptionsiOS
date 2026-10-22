@@ -1,6 +1,6 @@
 # Isaac External Item Descriptions for iOS
 
-**Version 1.0.0** brings the original EID pixel font, modular descriptions and redesigned settings to the native iOS game.
+**Version 1.1.0** adds scaling up to 400%, cleaner cutscene visibility and a PlayCover download, while keeping the original EID pixel font and contextual descriptions.
 
 See what items do in the native **The Binding of Isaac: Repentance** on iPhone and iPad. Descriptions adapt to your character, inventory, transformations and current room.
 
@@ -19,6 +19,7 @@ Choose **one** format, install it, then fully restart Isaac.
 | Rootless jailbreak / ElleKit | `IsaacExternalItemDescriptions-rootless.deb` | Install with your package manager. |
 | LiveContainer private app | `IsaacExternalItemDescriptions-LiveContainer.framework.zip` | Extract it, import the framework into an app-specific Tweak Folder, and assign that folder to Isaac. Do not use Global Tweaks. |
 | Direct app embedding | `IsaacExternalItemDescriptions-Embedded.zip` | Contains the dylib and complete resource bundle. Use the included [IPA patcher](tools/patch-ipa.sh), then sign the modified app. |
+| PlayCover on Apple Silicon | `IsaacExternalItemDescriptions-PlayCover.dylib` | Use this Mac Catalyst library, plus the complete `IsaacEID.bundle` from the embedded ZIP. Re-sign the app after embedding. |
 
 [Detailed installation and signing guide](docs/INSTALL.md). The release also provides a standalone dylib, database, checksums and a full-build archive. **No Isaac IPA or game files are distributed.** Back up your app data before replacing or re-signing an installation.
 

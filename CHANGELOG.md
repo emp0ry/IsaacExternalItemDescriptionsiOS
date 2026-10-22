@@ -2,12 +2,16 @@
 
 All release changes are kept here. Older entries describe their own release; historical limitations may have been resolved by a later update.
 
-## Unreleased
+## v1.1.0
+
+2026-10-22
 
 - Hide the complete EID overlay during native floor transitions, fades, boss introductions, death screens and cinematics. Ordinary pause inspection remains available, and hidden scenes do not clear the selected item or settings.
 - Include the independent boss/large-sprite screen, fullscreen animation playback, post-HUD screen counters and white fades. Wait for 100 ms of a clear scene after loading/cinematics to avoid flashes of the previous description.
 - Keep EID visible through ordinary door slides. Changing room descriptors alone no longer hides the overlay or restarts the loading delay.
 - Extend description scale from 180% to 400% for larger displays. Existing preferences and the 100% Reset value remain unchanged; text, icons and cycling controls use the same scale limit.
+- Add a signed Mac Catalyst / PlayCover library to the release downloads, alongside the iPhone packages. It uses the same complete IsaacEID.bundle from the embedded package.
+- Keep descriptions, fonts, spoiler defaults and existing preferences unchanged. Local context/layout, native presentation-policy, binary ABI and packaging checks are run; exhaustive cutscene and physical-device coverage is not claimed.
 
 ## v1.0.0
 

@@ -79,6 +79,7 @@ jobs:
           set -euo pipefail
           required=(
             dist/IsaacExternalItemDescriptions.dylib
+            dist/IsaacExternalItemDescriptions-PlayCover.dylib
             dist/IsaacExternalItemDescriptions-rootless.deb
             dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip
             dist/IsaacExternalItemDescriptions-Embedded.zip
@@ -87,6 +88,8 @@ jobs:
           )
           for file in "${required[@]}"; do test -s "$file"; done
           codesign --verify --strict dist/IsaacExternalItemDescriptions.dylib
+          codesign --verify --strict dist/IsaacExternalItemDescriptions-PlayCover.dylib
+          xcrun vtool -show-build dist/IsaacExternalItemDescriptions-PlayCover.dylib | grep -q 'platform MACCATALYST'
           test "$(lipo -archs dist/IsaacExternalItemDescriptions.dylib)" = arm64
           if otool -L dist/IsaacExternalItemDescriptions.dylib | grep -Eiq 'substrate|ellekit|libhooker|/var/jb'; then
             echo 'Jailbreak-only dependency detected' >&2
@@ -125,6 +128,7 @@ jobs:
           name: IsaacExternalItemDescriptions-v${{ steps.version.outputs.version }}
           path: |
             dist/IsaacExternalItemDescriptions.dylib
+            dist/IsaacExternalItemDescriptions-PlayCover.dylib
             dist/IsaacExternalItemDescriptions-rootless.deb
             dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip
             dist/IsaacExternalItemDescriptions-Embedded.zip
@@ -149,6 +153,7 @@ jobs:
             --notes-file "$RUNNER_TEMP/release-body.md" \
             --latest \
             dist/IsaacExternalItemDescriptions.dylib \
+            dist/IsaacExternalItemDescriptions-PlayCover.dylib \
             dist/IsaacExternalItemDescriptions-rootless.deb \
             dist/IsaacExternalItemDescriptions-LiveContainer.framework.zip \
             dist/IsaacExternalItemDescriptions-Embedded.zip \

@@ -9,6 +9,7 @@ HOST_CLANGXX := $(shell xcrun --sdk macosx --find clang++)
 MIN_IOS ?= 15.0
 EXTRA_CFLAGS ?=
 DYLIB := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions.dylib
+PLAYCOVER_DYLIB := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions-PlayCover.dylib
 DEB_STAGE := $(PROJECT_ROOT)/package/stage
 DEB := $(PROJECT_ROOT)/packages/IsaacExternalItemDescriptions-rootless.deb
 LIVECONTAINER_FRAMEWORK := $(PROJECT_ROOT)/build/IsaacExternalItemDescriptions.framework
@@ -44,7 +45,7 @@ SOURCES := \
 	$(PROJECT_ROOT)/src/EIDOriginalRenderer.mm \
 	$(PROJECT_ROOT)/src/EIDTransformationProgress.m
 
-.PHONY: all dylib descriptions parity-assets stage-release-bundle package livecontainer audit check test local-test release clean
+.PHONY: all dylib playcover descriptions parity-assets stage-release-bundle package livecontainer audit check test local-test release clean
 
 .PHONY: original-test original-check
 original-test: original-check
@@ -93,6 +94,11 @@ dylib:
 		$(SOURCES) -framework Foundation -framework UIKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -lc++ -o "$(DYLIB)"
 	xcrun strip -x "$(DYLIB)"
 	@if command -v codesign >/dev/null 2>&1; then codesign --force --sign - --timestamp=none --identifier com.emp0ry.isaaceid.dylib "$(DYLIB)"; elif command -v ldid >/dev/null 2>&1; then ldid -S "$(DYLIB)"; fi
+
+playcover: dylib
+	xcrun vtool -set-build-version maccatalyst 15.0 15.0 -replace -output "$(PLAYCOVER_DYLIB)" "$(DYLIB)"
+	codesign --force --sign - --timestamp=none --identifier com.emp0ry.isaaceid.dylib "$(PLAYCOVER_DYLIB)"
+	codesign --verify --strict "$(PLAYCOVER_DYLIB)"
 
 package: dylib
 	rm -rf "$(DEB_STAGE)"
@@ -174,8 +180,10 @@ release:
 	$(MAKE) package INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) livecontainer INCLUDE_DESCRIPTION_DB=1 EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) audit EXTRA_CFLAGS='-Wall -Wextra -Werror'
+	$(MAKE) playcover EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	mkdir -p "$(DIST)"
 	cp "$(DYLIB)" "$(DIST)/IsaacExternalItemDescriptions.dylib"
+	cp "$(PLAYCOVER_DYLIB)" "$(DIST)/IsaacExternalItemDescriptions-PlayCover.dylib"
 	cp "$(DEB)" "$(DIST)/IsaacExternalItemDescriptions-rootless.deb"
 	cp "$(LIVECONTAINER_ZIP)" "$(DIST)/IsaacExternalItemDescriptions-LiveContainer.framework.zip"
 	cp "$(STAGED_DESCRIPTION_DB)" "$(DIST)/descriptions.json"
@@ -186,6 +194,7 @@ release:
 	/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$(EMBEDDED_STAGE)" "$(EMBEDDED_ZIP)"
 	cd "$(DIST)" && shasum -a 256 \
 		IsaacExternalItemDescriptions.dylib \
+		IsaacExternalItemDescriptions-PlayCover.dylib \
 		IsaacExternalItemDescriptions-rootless.deb \
 		IsaacExternalItemDescriptions-LiveContainer.framework.zip \
 		IsaacExternalItemDescriptions-Embedded.zip \

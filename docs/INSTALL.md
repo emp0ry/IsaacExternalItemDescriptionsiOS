@@ -70,6 +70,16 @@ ENTITLEMENTS=/path/to/entitlements.plist \
 No JIT, private entitlement, executable-memory permission, background daemon,
 or jailbreak path is required by the dylib.
 
+## PlayCover on Apple Silicon
+
+Use `IsaacExternalItemDescriptions-PlayCover.dylib`, not the iPhone dylib, in
+the PlayCover-converted Isaac app. Install it at
+`Frameworks/IsaacExternalItemDescriptions.dylib` and keep the same load command
+shown above. Also copy the complete `IsaacEID.bundle` from the matching
+embedded ZIP into `Frameworks/`, including its fonts and artwork. Re-sign the
+modified app using its existing PlayCover signing/entitlement setup, then
+restart Isaac. The mod download does not include the game or PlayCover.
+
 ## LiveContainer private app
 
 Use the primary (Blue) LiveContainer and keep Isaac in private-app mode. Tweak
