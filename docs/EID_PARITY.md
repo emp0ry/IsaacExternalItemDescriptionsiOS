@@ -259,7 +259,7 @@ A display-link callback reads only the selected short-cycle object and redraws
 only when its identity/context changes. The normal background heap/inventory
 scan remains at 250 ms, and its results are revalidated before rendering so a
 delayed scan cannot repaint the previous food/item. Run/room/seed, object state,
-Curse of the Blind and sprite visibility are checked; removed/hidden/stale
+per-pickup ForceBlind and actual sprite visibility are checked; removed/hidden/stale
 objects are suppressed. No timing guess, native effect call or touch/window
 change is used.
 
@@ -360,7 +360,8 @@ Mimic charges are parsed from installed `pocketitems.xml`, including rune/Soul
 Stone type distinctions and zero-based pill-effect IDs. Unknown/random pills
 never reveal an effect through their charge cost. Flip's alternate identity is
 read from Pickup + `0x610`, saved record subtype + `8`; ForceBlind is saved at
-record + `0x23`. Existing curse, sprite and native blind checks remain in force.
+record + `0x23`. Actual question-mark artwork and native blind checks remain
+in force; a visible swapped active is not hidden solely by the floor curse.
 Flip remains included in the build, but live device verification is pending.
 
 Absorption previews require **Void / Black Rune stat previews**, independently
@@ -462,7 +463,8 @@ The update branch at `0x10071a520` shifts the queue and appends the old current
 item before morphing to the next. No mutating routine is called by EID.
 
 The main-thread reader validates the live pickup RTTI, type, active flags, seed,
-native run/room context, curse mask and question-mark/forced-blind visibility.
+native run/room context and question-mark/forced-blind visibility. The floor's
+curse mask alone does not suppress a revealed pickup.
 Only bounded known IDs are accepted. The complete circular sequence is rotated
 to a canonical representation before deduplication, so duplicate IDs cannot
 make a changing cycle reset the UI. At least five unique IDs are required, as in

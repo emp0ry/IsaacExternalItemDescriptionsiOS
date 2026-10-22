@@ -222,14 +222,24 @@ allocator and does not directly dereference mutable game allocations.
 | ItemPool pill effect array | `ItemPool + 0xa2c` | ARM64 `GetPillEffect` implementation |
 | ItemPool identified-pill bytes | `ItemPool + 0xa68` | Native identification code and state copy |
 
-The iOS `LayerState` stride is `0x90`; its libc++ spritesheet path starts at
-`+0x08`. A collectible is hidden if the forced-blind byte is set or layer 1 is
-using `gfx/Items/Collectibles/questionmark.png`. An unreadable blind-state
-structure fails closed and produces no description.
+The iOS `LayerState` stride is `0xb0`; its libc++ replacement spritesheet path
+starts at `+0x10`. Native `ANM2::GetLayer` at `0x10089f558` multiplies the
+layer index by `0xb0`, and `ReplaceSpritesheet` at `0x1008a0250` writes the
+override at layer `+0x10`. Both instruction signatures are checked at runtime.
+The old `0x90`/`+0x08` layout was incorrect and could miss question-mark art.
 
-The current level curse mask is also read from `Game + 0x0c`. Bit `0x40`
-identifies Curse of the Blind and suppresses all collectible descriptions,
-including pedestals whose sprite-layer state has not caught up yet.
+A collectible is hidden if its forced-blind byte is set or any layer uses
+`gfx/Items/Collectibles/questionmark.png`. Native blind-artwork setup at
+`0x100718f9c` assigns this path to layer 1 even when ForceBlind itself is zero.
+Missing layer 1, an empty item-artwork override, unreadable strings or an
+unverified ABI fail closed and produce no description. The same byte decoder
+is exercised by local native-layer fixtures, including long and short strings.
+
+The current level curse mask is also read from `Game + 0x0c` for diagnostics.
+Bit `0x40` identifies Curse of the Blind, but it is not a blanket suppression
+rule: a previously held active left on a pedestal after swapping can have
+visible artwork on the same cursed floor. Actual per-pickup artwork and native
+ForceBlind determine visibility in scan, live-update and cycle paths.
 
 ## Supported pickup identities
 

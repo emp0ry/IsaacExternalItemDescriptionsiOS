@@ -5,6 +5,7 @@
 #include "EIDInventoryCountPolicy.hpp"
 #import "EIDLogger.h"
 #include "EIDPickupPolicy.hpp"
+#include "EIDCollectibleVisibilityPolicy.hpp"
 #include "EIDNativeContextPolicy.hpp"
 #include "EIDPillPolicy.h"
 #include "EIDPredictionPolicy.hpp"
@@ -24,7 +25,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -211,11 +211,8 @@ static ScanContext LocateEntityVTables(void) {
 constexpr size_t kEntityTypeOffset = 0x38;
 constexpr size_t kEntityStateOffset = 0x1c0;
 constexpr size_t kEntityPositionOffset = 0x310;
-constexpr size_t kEntitySpriteLayerStatesOffset = 0xf8;
-constexpr size_t kEntitySpriteLayerCountOffset = 0x100;
 constexpr size_t kGridEntityDescOffset = 0x8;
 constexpr size_t kGridEntityVarDataOffset = kGridEntityDescOffset + 0x14;
-constexpr size_t kPickupForceBlindOffset = 0x562;
 // Native AddCollectibleCycle at 0x10071812c fills up to eight int32 IDs.
 // Update at 0x10071a520 rotates the queue and current SubType together.
 constexpr size_t kPickupCollectibleCycleOffset = 0x5e4;
@@ -292,8 +289,6 @@ constexpr size_t kPlayerNonQuestItemsDisabledOffset = 0x284c;
 constexpr size_t kGameDifficultyOffset = 0x24f9d8;
 constexpr size_t kNativeTransformationCount = 15;
 constexpr size_t kMaximumCollectibleID = 732;
-constexpr size_t kLayerStateSize = 0x90;
-constexpr size_t kLayerStateSpritePathOffset = 0x8;
 constexpr vm_size_t kVMReadChunk = 2 * 1024 * 1024;
 constexpr vm_size_t kGamePlayerVectorScanLimit = 512 * 1024;
 constexpr float kMaximumDescriptionDistance = 220.0f;
@@ -1264,16 +1259,6 @@ static bool ReadRemoteLibCppString(const uint8_t *stringObject, std::string& val
     return true;
 }
 
-static bool IsQuestionMarkSpritePath(std::string path) {
-    for (char& character : path) {
-        if (character == '\\') character = '/';
-        else character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-    }
-    size_t slash = path.find_last_of('/');
-    std::string basename = slash == std::string::npos ? path : path.substr(slash + 1);
-    return basename == "questionmark.png";
-}
-
 static NSDictionary *ReadCollectionSnapshot(void) {
     const mach_header_64 *header = IsaacExecutableHeader(nullptr);
     uintptr_t manager = 0;
@@ -1323,36 +1308,17 @@ static NSDictionary *ReadUnlockHintState(void) {
     return state.copy;
 }
 
-enum class PickupVisibility { Visible, Blind, Unreadable };
+using PickupVisibility = EIDCollectibleVisibilityPolicy::State;
 
 static PickupVisibility PickupVisibilityState(const uint8_t *object, size_t available) {
-    if (available <= kPickupForceBlindOffset) return PickupVisibility::Unreadable;
-    if (object[kPickupForceBlindOffset]) return PickupVisibility::Blind;
-    if (available < kEntitySpriteLayerCountOffset + sizeof(uint32_t)) {
-        return PickupVisibility::Unreadable;
-    }
-    uintptr_t layerStatesAddress = 0;
-    uint32_t layerCount = 0;
-    memcpy(&layerStatesAddress, object + kEntitySpriteLayerStatesOffset, sizeof(layerStatesAddress));
-    memcpy(&layerCount, object + kEntitySpriteLayerCountOffset, sizeof(layerCount));
-    if (!layerStatesAddress || !layerCount || layerCount > 32) return PickupVisibility::Unreadable;
-
-    bool unreadableLayer = false;
-    for (uint32_t layer = 0; layer < layerCount; ++layer) {
-        std::array<uint8_t, kLayerStateSize> layerState{};
-        vm_address_t layerAddress = layerStatesAddress + layer * kLayerStateSize;
-        if (!ReadOwnTaskMemory(layerAddress, layerState.data(), layerState.size())) {
-            unreadableLayer = true;
-            continue;
-        }
-        std::string path;
-        if (!ReadRemoteLibCppString(layerState.data() + kLayerStateSpritePathOffset, path)) {
-            unreadableLayer = true;
-            continue;
-        }
-        if (IsQuestionMarkSpritePath(path)) return PickupVisibility::Blind;
-    }
-    return unreadableLayer ? PickupVisibility::Unreadable : PickupVisibility::Visible;
+    static const bool layoutValid = [] {
+        const auto *header = IsaacExecutableHeader(nullptr);
+        return header && EIDCollectibleVisibilityPolicy::ValidateLayout(
+            reinterpret_cast<uintptr_t>(header),ReadOwnTaskMemory);
+    }();
+    if (!layoutValid) return PickupVisibility::Unreadable;
+    return EIDCollectibleVisibilityPolicy::ReadNativeArtwork(object,available,
+        ReadOwnTaskMemory,ReadRemoteLibCppString);
 }
 
 static bool IsDescribableVariant(int32_t variant) {
@@ -1378,23 +1344,6 @@ static void AddVMPickup(VMRegionResult& result, int32_t variant, int32_t subtype
             variant, subtype, x, y, hasPosition, isShopItem, optionsPickupIndex, rawPillSubtype, flipID,address,cycleSeed,outcomeSeed
         };
     }
-}
-
-static size_t SuppressCollectiblePickups(VMRegionResult& result) {
-    size_t output = 0;
-    size_t suppressed = 0;
-    for (size_t index = 0; index < result.pickupCount; ++index) {
-        const VMPickup& pickup = result.pickups[index];
-        if (pickup.variant == EIDPickupVariantCollectible) {
-            suppressed++;
-            continue;
-        }
-        if (output != index) result.pickups[output] = pickup;
-        output++;
-    }
-    result.pickupCount = output;
-    result.blindPickupCount += suppressed;
-    return suppressed;
 }
 
 static bool ResolveSacrificeRoomSpikes(const ScanContext& context,
@@ -2505,9 +2454,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         EIDLog(@"native level curse mask changed: 0x%02x%@", curseMask,
                curseMask & kCurseOfTheBlind ? @" (Curse of the Blind)" : @"");
     }
-    if (curseMaskAvailable && (curseMask & kCurseOfTheBlind)) {
-        SuppressCollectiblePickups(pickupResult);
-    }
+    // ScanVMCopy already checks each pedestal's ForceBlind and actual artwork.
+    // A level-wide curse must not hide a revealed/dropped active item again.
 
     // Original EID does not use Pickup.Touched as general card knowledge. Apply
     // its default shop, Options?, Soul Stone and reachability rules instead.
@@ -2766,11 +2714,10 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     if (!self.supportedBuild || !NSThread.isMainThread || !self.gameplayActive ||
         [previous[@"native_run"] unsignedIntegerValue] != self.runCounter) return nil;
     uintptr_t address = [previous[@"native_address"] unsignedLongLongValue];
-    uint32_t seed = [previous[@"native_seed"] unsignedIntValue], curses = 0;
+    uint32_t seed = [previous[@"native_seed"] unsignedIntValue];
     vm_address_t room = 0;
     if (!address || !seed || !ReadCurrentRoomAddress(room) ||
-        room != [previous[@"native_room"] unsignedLongLongValue] ||
-        !ReadCurrentCurseMask(curses) || (curses & kCurseOfTheBlind)) return nil;
+        room != [previous[@"native_room"] unsignedLongLongValue]) return nil;
     // Read only the one selected object, not a heap region or player inventory.
     // Morph updates its ID, artwork and cycle queue on Isaac's main thread.
     std::array<uint8_t,0x618> bytes{};
@@ -2827,12 +2774,8 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
     if (!self.supportedBuild || !NSThread.isMainThread || !self.gameplayActive ||
         [context[@"native_run"] unsignedIntegerValue] != self.runCounter) return finish();
     uintptr_t address = [context[@"native_address"] unsignedLongLongValue];
-    uint32_t seed = [context[@"native_seed"] unsignedIntValue], curses = 0;
+    uint32_t seed = [context[@"native_seed"] unsignedIntValue];
     if (!address || !seed) return finish();
-    if (!ReadCurrentCurseMask(curses) || (curses & kCurseOfTheBlind)) {
-        context[@"collectible_hidden"] = @YES;
-        return finish();
-    }
     std::array<uint8_t,kPickupCollectibleCycleCountOffset+sizeof(int32_t)> bytes{};
     if (!ReadOwnTaskMemory(address,bytes.data(),bytes.size())) return finish();
     uintptr_t vtable = 0;
@@ -2927,11 +2870,9 @@ static NSSet<NSNumber *> *LoadActiveCollectibleIdentifiers(void) {
         for (unsigned i = 0; i < prediction.count; ++i) [outcomes addObject:@(prediction.heads[i])];
         context[@"crooked_penny"] = @{@"validated":@YES,@"battery":@(battery),@"heads":outcomes.copy};
     } else {
-        uint32_t curses = 0;
         uintptr_t address = [context[@"native_address"] unsignedLongLongValue];
         uint32_t seed = [context[@"native_seed"] unsignedIntValue];
-        if (!address || !seed || [context[@"native_run"] unsignedIntegerValue] != self.runCounter ||
-            !ReadCurrentCurseMask(curses) || (curses & kCurseOfTheBlind)) return finish();
+        if (!address || !seed || [context[@"native_run"] unsignedIntegerValue] != self.runCounter) return finish();
         BOOL eternal = has(player,609,false);
         if (!eternal && has(player,489,false)) {
             for (size_t slot = 0; slot < kPlayerPocketItemCount; ++slot) {

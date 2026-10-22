@@ -2,6 +2,21 @@
 
 All release changes are kept here. Older entries describe their own release; historical limitations may have been resolved by a later update.
 
+## v1.1.1
+
+2026-10-22
+
+Curse of the Blind visibility fix.
+
+- Show descriptions for visible active items left on pedestals after swapping under Curse of the Blind. A cursed floor no longer hides every collectible unconditionally.
+- Keep actual question-mark pedestals hidden, including the case where the native ForceBlind flag is off. Read the real ANM2 layer override path at +0x10 with a 0xb0 layer stride; the former +0x08/0x90 layout did not reliably detect hidden artwork. Verify the getter/setter instructions before accepting the layout, and suppress missing or unreadable artwork.
+- Apply the same visibility gate to pickup scans, live description updates, cycle inspection and optional Eternal D6 predictions. Existing spoiler opt-ins, languages, resources and saved preferences are unchanged.
+- Update the native-layout and parity documentation to describe the corrected per-pedestal rule.
+
+Local checks cover raw native-layer byte fixtures, long/short sprite-path strings, hidden-to-visible swaps, unreadable-state protection and existing context/importer/rendering regressions. Native ABI signatures are checked against the supported game executable. The corrected functional build was installed in PlayCover; exhaustive physical-device coverage is not claimed. Release packages include iPhone and PlayCover libraries, with signatures and checksums.
+
+Fully restart Isaac after updating. No game saves are changed.
+
 ## v1.1.0
 
 2026-10-22
