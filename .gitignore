@@ -12,22 +12,3 @@ tests/
 *.log
 *.json
 !data/descriptions.json
-
-# Product website
-/website/node_modules/
-/website/dist/
-
-# Keep generated website bundles in GitHub Pages.
-!docs/site/build/
-!docs/site/build/*.js
-!docs/site/build/*.css
-
-# Keep the recorded website checks.
-!/website/verification/*.log
-
-# Website source, tests and reproducible-build metadata.
-!/website/*.json
-!/website/design/*.json
-!/website/verification/*.json
-!/website/tests/
-!/website/tests/**

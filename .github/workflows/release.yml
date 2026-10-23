@@ -48,14 +48,11 @@ jobs:
           test -n "$version"
           python3 tools/release-notes.py "$version" > "$RUNNER_TEMP/release-body.md"
           python3 - "$version" <<'PY'
-          import json, plistlib, re, sys
+          import plistlib, sys
           from pathlib import Path
           version = sys.argv[1]
           info = plistlib.loads(Path('livecontainer/Info.plist').read_bytes())
           assert info['CFBundleShortVersionString'] == version, 'Framework version mismatch'
-          page = Path('docs/index.html').read_text()
-          metadata = re.search(r'<script type="application/ld\+json">(.*?)</script>', page).group(1)
-          assert json.loads(metadata)['softwareVersion'] == version, 'Website version mismatch'
           PY
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             test "$GITHUB_REF_NAME" = "v${version}" || {
