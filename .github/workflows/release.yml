@@ -157,3 +157,11 @@ jobs:
             dist/descriptions.json \
             dist/SHA256SUMS \
             IsaacExternalItemDescriptions-Full-Build.zip
+
+  notify-website:
+    needs: build-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions: {}
+    uses: ./.github/workflows/notify-website.yml
+    secrets:
+      EMP0RY_WEB_DEPLOY_HOOK: ${{ secrets.EMP0RY_WEB_DEPLOY_HOOK }}
