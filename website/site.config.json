@@ -1,0 +1,22 @@
+{
+  "name": "Isaac EID",
+  "repository": "IsaacExternalItemDescriptionsiOS",
+  "host": "isaaceidios.emp0ry.com",
+  "kind": "lens",
+  "port": 4179,
+  "version": "v1.1.2",
+  "assets": [
+    "IsaacExternalItemDescriptions-rootless.deb",
+    "IsaacExternalItemDescriptions-LiveContainer.framework.zip",
+    "IsaacExternalItemDescriptions-Embedded.zip",
+    "IsaacExternalItemDescriptions-PlayCover.dylib",
+    "IsaacExternalItemDescriptions.dylib",
+    "IsaacExternalItemDescriptions-Full-Build.zip",
+    "descriptions.json",
+    "SHA256SUMS"
+  ],
+  "headline": [
+    "Know the item.",
+    "Keep the run."
+  ]
+}

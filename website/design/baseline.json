@@ -1,0 +1,30 @@
+{
+  "commit": "0cbf346dda85a5ff4297bb49749a18454fdee297",
+  "retained": {
+    "TEST_MATRIX.md": "e3efcbf9a55af73acbdfa55085446b507f3a5a91256849aea0d7c4994c77f8bb",
+    "styles.css": "972e674f29dcc0b8d3107cf172515833f2e6cd4818ae2a92657e9eec799ce9b0",
+    "CNAME": "e6c4eb697bf70b275d462674e699275f7dd84c54159a3a087bd38a9cf4a85043",
+    "INSTALL.md": "38ce80e45b3c5bdd996e9c98c17000002c4ba74e578fadf95e36cee7143b81bc",
+    "script.js": "b52d40fcbed3b886671b3ce12d258f34581175d45b3e1ddbc15877cab43a98dd",
+    ".nojekyll": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "RENDERING.md": "6e0ecc391a4d3e896c6316c8d389014deb52079cf45bb9330fadf4b166459577",
+    "NATIVE_LAYOUT.md": "4da4d000769a262d96a8934e1a11a09cb3a0ed479e0a906de8eb49bd2c31156c",
+    "favicon.svg": "9eb826b6d910d5d3d37d2c084b56e19dccf6ed854279fdb5253405a1250765e1",
+    "EID_PARITY.md": "eb6e089bacd20a53b0c9be213145c324162444b65183ba9f5abb00ee537983b6",
+    "images/eid-book-of-virtues.png": "2a6031da76aed357b3d693107a4503ab58b8030cde6c2ea297234c0aa31c530c",
+    "images/eid-soul-of-isaac.png": "204774d3bb681bab2364b912fede0561914e908f139703e73f255d634fa9fa9b",
+    "images/eid-abyss.png": "816c3b7817ac2fd487821468da8492db18004b419415a6a9ff36d7fe76e01d98",
+    "images/eid-settings-content.png": "183a6a06ed0b495156eeb590e923e11efb08f7e3c1116e1c7bb07979be197d21",
+    "images/eid-unidentified-pill.png": "9728be4ba54561ebc068f9a4bf1c3bd73fc2844fdc3193e6f4522e642efcf3e7",
+    "images/eid-single-use.png": "365b9332e94d861ea4704889bb65e29ae61b3824c16d21dcde5307a486cb77c0",
+    "images/eid-settings-language.png": "5affad05d8acaea10b1acb607654cec61db62a401474ffdafe3c01da905cbb10",
+    "images/eid-settings-layout.png": "ed68fc53bedca71d6606843b6aa4d0185db56112025eb45b9f28ba653428413e",
+    "images/eid-lost-breakfast.png": "e95ccde9f45c976fecaf20fb5d45c60b301dcfecbc04e1f317cf071125834ee0",
+    "images/eid-spindown-preview.png": "ad8025f8400a47c53e273431fd7ad069892fe1f8090c80a666fea1a070249d82",
+    "images/eid-settings-appearance.png": "74a0188031bf17adea08a3096846ff30dceaaeaa7e8cbdd0ce4966de6ab84e66",
+    "images/eid-pause-d-infinity.png": "0576d2002eeefd5dc7db8a75de42dec542c48d3008c8cf8042168e2f9380e8db",
+    "images/eid-brimstone-transformation.png": "8c84c47865e3c28232df7a764b3ba703bbbe9ab4465beef5da3b965cf6559252",
+    "images/eid-settings-advanced.png": "d1e9fb9512ac8cefcc71a5e9747e44f93e81a1520db44dd281247b6690560804",
+    "images/eid-pandoras-box.png": "da0f1c33c90b2766fcc412ebec7bc0443c9d4ee0617bef71ec13c1abdacc9271"
+  }
+}

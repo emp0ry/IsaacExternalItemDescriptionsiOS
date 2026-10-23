@@ -1,0 +1,5 @@
+
+> emp0ry-eid-website@1.0.0 check:output
+> node scripts/check-output.mjs
+
+Isaac EID: anchors, verified formats, static content, metadata/CSP, local assets, retained endpoints and Pages output pass.

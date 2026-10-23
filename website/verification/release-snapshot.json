@@ -1,0 +1,56 @@
+{
+  "repository": "IsaacExternalItemDescriptionsiOS",
+  "tag": "v1.1.2",
+  "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/tag/v1.1.2",
+  "published_at": "2026-10-22T13:58:36Z",
+  "assets": [
+    {
+      "name": "descriptions.json",
+      "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/download/v1.1.2/descriptions.json",
+      "size": 6029105,
+      "state": "uploaded"
+    },
+    {
+      "name": "IsaacExternalItemDescriptions-Embedded.zip",
+      "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/download/v1.1.2/IsaacExternalItemDescriptions-Embedded.zip",
+      "size": 7162571,
+      "state": "uploaded"
+    },
+    {
+      "name": "IsaacExternalItemDescriptions-Full-Build.zip",
+      "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/download/v1.1.2/IsaacExternalItemDescriptions-Full-Build.zip",
+      "size": 21920224,
+      "state": "uploaded"
+    },
+    {
+      "name": "IsaacExternalItemDescriptions-LiveContainer.framework.zip",
+      "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/download/v1.1.2/IsaacExternalItemDescriptions-LiveContainer.framework.zip",
+      "size": 7165143,
+      "state": "uploaded"
+    },
+    {
+      "name": "IsaacExternalItemDescriptions-PlayCover.dylib",
+      "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/download/v1.1.2/IsaacExternalItemDescriptions-PlayCover.dylib",
+      "size": 648592,
+      "state": "uploaded"
+    },
+    {
+      "name": "IsaacExternalItemDescriptions-rootless.deb",
+      "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/download/v1.1.2/IsaacExternalItemDescriptions-rootless.deb",
+      "size": 6092236,
+      "state": "uploaded"
+    },
+    {
+      "name": "IsaacExternalItemDescriptions.dylib",
+      "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/download/v1.1.2/IsaacExternalItemDescriptions.dylib",
+      "size": 648592,
+      "state": "uploaded"
+    },
+    {
+      "name": "SHA256SUMS",
+      "url": "https://github.com/emp0ry/IsaacExternalItemDescriptionsiOS/releases/download/v1.1.2/SHA256SUMS",
+      "size": 640,
+      "state": "uploaded"
+    }
+  ]
+}
