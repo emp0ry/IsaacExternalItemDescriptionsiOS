@@ -1,0 +1,108 @@
+
+> emp0ry-eid-website@1.0.0 test
+> node --test tests/*.test.ts
+
+✔ anchor alignment uses the clipped scrollport, and manual scrolling releases resize alignment (1.431ms)
+✔ page keys scroll from the fixed header and document focus without intercepting content or controls (0.709791ms)
+✔ a hash away from its target does not override restored reading position on resize (0.159167ms)
+✔ initial fragments are repaired only at the untouched scroll origin (0.612791ms)
+✔ icons: deterministic silhouette closes its loop without clipping or invalid values (9.390833ms)
+✔ cursor: deterministic silhouette closes its loop without clipping or invalid values (4.848ms)
+✔ lens: deterministic silhouette closes its loop without clipping or invalid values (2.446416ms)
+✔ bridge: deterministic silhouette closes its loop without clipping or invalid values (1.674959ms)
+✔ console: deterministic silhouette closes its loop without clipping or invalid values (0.978917ms)
+✔ compass: deterministic silhouette closes its loop without clipping or invalid values (2.466625ms)
+✔ refresh: deterministic silhouette closes its loop without clipping or invalid values (1.4195ms)
+✔ rapid input preserves existing wave ages and remains bounded (0.095125ms)
+✔ official release assets resolve with exact repository, tag and positive size (1.028917ms)
+✔ a partial release remains useful without inventing missing formats (0.411709ms)
+✔ foreign URLs, credentials, drafts, prereleases and unfinished assets are rejected (0.119583ms)
+✔ the reticle pauses offscreen/hidden and releases its observers, frames, controls and input (8.432917ms)
+✔ native scrolling pauses and resumes the reticle even when observer updates are delayed (3.359208ms)
+✔ reduced motion draws one fixed pose with no decorative control or animation frame (2.021834ms)
+✔ unavailable canvas leaves the SVG fallback in place (0.887625ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 109.838458
+
+
+> emp0ry-eid-website@1.0.0 build
+> tsc --noEmit && vite build && node scripts/sync-docs.mjs
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 13 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/404.html                       6.50 kB │ gzip: 2.04 kB
+dist/index.html                    23.75 kB │ gzip: 6.12 kB
+dist/site/build/main-DWOVaeDa.css  26.64 kB │ gzip: 6.21 kB
+dist/site/build/main-D4E1LwLz.js   15.68 kB │ gzip: 6.40 kB
+
+✓ built in 74ms
+Synced 15 website files; retained domain, original assets and documentation.
+
+
+> emp0ry-eid-website@1.0.0 check:output
+> node scripts/check-output.mjs
+
+Isaac EID: anchors, verified formats, static content, metadata/CSP, local assets, retained endpoints and Pages output pass.
+
+Final compiled CSS/output verification:
+
+> emp0ry-eid-website@1.0.0 check:output
+> node scripts/check-output.mjs
+
+Isaac EID: anchors, verified formats, static content, metadata/CSP, local assets, retained endpoints and Pages output pass.
+
+Final dialog styling/output verification:
+
+> emp0ry-eid-website@1.0.0 build
+> tsc --noEmit && vite build && node scripts/sync-docs.mjs
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 13 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/404.html                       6.54 kB │ gzip: 2.04 kB
+dist/index.html                    23.80 kB │ gzip: 6.11 kB
+dist/site/build/main-B9u_5IjA.css  28.33 kB │ gzip: 6.45 kB
+dist/site/build/main-BjzCN-xL.js   15.68 kB │ gzip: 6.40 kB
+
+✓ built in 77ms
+Synced 15 website files; retained domain, original assets and documentation.
+
+
+> emp0ry-eid-website@1.0.0 check:output
+> node scripts/check-output.mjs
+
+Isaac EID: anchors, verified formats, static content, metadata/CSP, local assets, retained endpoints and Pages output pass.
+
+
+> emp0ry-eid-website@1.0.0 build
+> tsc --noEmit && vite build && node scripts/sync-docs.mjs
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 13 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/404.html                       6.54 kB │ gzip: 2.03 kB
+dist/index.html                    23.80 kB │ gzip: 6.11 kB
+dist/site/build/main-6cfCLSeg.css  28.38 kB │ gzip: 6.46 kB
+dist/site/build/main-SGffk0pL.js   15.68 kB │ gzip: 6.40 kB
+
+✓ built in 78ms
+Synced 15 website files; retained domain, original assets and documentation.
+
+
+> emp0ry-eid-website@1.0.0 check:output
+> node scripts/check-output.mjs
+
+Isaac EID: anchors, verified formats, static content, metadata/CSP, local assets, retained endpoints and Pages output pass.
