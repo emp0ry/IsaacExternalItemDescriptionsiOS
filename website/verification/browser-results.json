@@ -1,0 +1,624 @@
+{
+  "date": "2026-10-23",
+  "environment": "Codex in-app browser, local production builds, no network/CPU throttling; no physical-device claim",
+  "layouts": [
+    {
+      "canvas": "point-field is-ready",
+      "height": 740,
+      "hero": {
+        "bottom": 829.765625,
+        "height": 761.765625,
+        "left": 20,
+        "right": 300,
+        "top": 68,
+        "width": 280
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 565.1875,
+            "height": 445.1875,
+            "left": 20,
+            "right": 300,
+            "top": 120,
+            "width": 280
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 801.765625,
+            "height": 228.578125,
+            "left": 20,
+            "right": 300,
+            "top": 573.1875,
+            "width": 280
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        },
+        {
+          "loaded": false,
+          "src": "/site/media/context.webp"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "112.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "title": "Isaac EID \u2014 Know the item. Keep the run.",
+      "width": 320,
+      "site": "eid",
+      "size": "320x740",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 844,
+      "hero": {
+        "bottom": 843.125,
+        "height": 775.125,
+        "left": 20,
+        "right": 370,
+        "top": 68,
+        "width": 350
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 524.703125,
+            "height": 404.703125,
+            "left": 20,
+            "right": 370,
+            "top": 120,
+            "width": 350
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 815.125,
+            "height": 282.421875,
+            "left": 20,
+            "right": 370,
+            "top": 532.703125,
+            "width": 350
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        },
+        {
+          "loaded": false,
+          "src": "/site/media/context.webp"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "104.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "title": "Isaac EID \u2014 Know the item. Keep the run.",
+      "width": 390,
+      "site": "eid",
+      "size": "390x844",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 1024,
+      "hero": {
+        "bottom": 650,
+        "height": 570,
+        "left": 32.2578125,
+        "right": 735.7421875,
+        "top": 80,
+        "width": 703.484375
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 561.6796875,
+            "height": 393.359375,
+            "left": 32.2578125,
+            "right": 390.2734375,
+            "top": 168.3203125,
+            "width": 358.015625
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 541.328125,
+            "height": 352.6640625,
+            "left": 410.2734375,
+            "right": 735.7421875,
+            "top": 188.6640625,
+            "width": 325.46875
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        },
+        {
+          "loaded": true,
+          "src": "/site/media/context.webp"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "92.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 768,
+        "width": 768
+      },
+      "title": "Isaac EID \u2014 Know the item. Keep the run.",
+      "width": 768,
+      "site": "eid",
+      "size": "768x1024",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 390,
+      "hero": {
+        "bottom": 650,
+        "height": 570,
+        "left": 35.4453125,
+        "right": 808.546875,
+        "top": 80,
+        "width": 773.1015625
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 561.6796875,
+            "height": 393.359375,
+            "left": 35.4453125,
+            "right": 429.921875,
+            "top": 168.3203125,
+            "width": 394.4765625
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 557.90625,
+            "height": 385.8203125,
+            "left": 449.921875,
+            "right": 808.546875,
+            "top": 172.0859375,
+            "width": 358.625
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        },
+        {
+          "loaded": false,
+          "src": "/site/media/context.webp"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "104.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 844,
+        "width": 844
+      },
+      "title": "Isaac EID \u2014 Know the item. Keep the run.",
+      "width": 844,
+      "site": "eid",
+      "size": "844x390",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 720,
+      "hero": {
+        "bottom": 774.0234375,
+        "height": 694.0234375,
+        "left": 53.7578125,
+        "right": 1226.234375,
+        "top": 80,
+        "width": 1172.4765625
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 661.328125,
+            "height": 462.6328125,
+            "left": 53.7578125,
+            "right": 649.0546875,
+            "top": 198.6953125,
+            "width": 595.296875
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 710.0234375,
+            "height": 560.0234375,
+            "left": 685.0546875,
+            "right": 1226.234375,
+            "top": 150,
+            "width": 541.1796875
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        },
+        {
+          "loaded": false,
+          "src": "/site/media/context.webp"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "92.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 1280,
+        "width": 1280
+      },
+      "title": "Isaac EID \u2014 Know the item. Keep the run.",
+      "width": 1280,
+      "site": "eid",
+      "size": "1280x720",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 900,
+      "hero": {
+        "bottom": 840,
+        "height": 760,
+        "left": 60.4765625,
+        "right": 1379.515625,
+        "top": 80,
+        "width": 1319.0390625
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 704.953125,
+            "height": 483.9140625,
+            "left": 60.4765625,
+            "right": 732.5390625,
+            "top": 221.0390625,
+            "width": 672.0625
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 752.421875,
+            "height": 578.84375,
+            "left": 768.5390625,
+            "right": 1379.515625,
+            "top": 173.578125,
+            "width": 610.9765625
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        },
+        {
+          "loaded": true,
+          "src": "/site/media/context.webp"
+        }
+      ],
+      "metrics": {
+        "cls": "0.0068",
+        "lcp": "112.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "title": "Isaac EID \u2014 Know the item. Keep the run.",
+      "width": 1440,
+      "site": "eid",
+      "size": "1440x900",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 1080,
+      "hero": {
+        "bottom": 840,
+        "height": 760,
+        "left": 300,
+        "right": 1620,
+        "top": 80,
+        "width": 1320
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 705.125,
+            "height": 484.2578125,
+            "left": 300,
+            "right": 954.7578125,
+            "top": 220.8671875,
+            "width": 654.7578125
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 752.421875,
+            "height": 578.84375,
+            "left": 1024.7578125,
+            "right": 1620,
+            "top": 173.578125,
+            "width": 595.2421875
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        },
+        {
+          "loaded": true,
+          "src": "/site/media/context.webp"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "100.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 1920,
+        "width": 1920
+      },
+      "title": "Isaac EID \u2014 Know the item. Keep the run.",
+      "width": 1920,
+      "site": "eid",
+      "size": "1920x1080",
+      "headerCollisions": []
+    }
+  ],
+  "interactions": {
+    "site": "eid",
+    "mode": "reduced",
+    "tabs": [
+      {
+        "id": "gallery-tab-0",
+        "images": [
+          {
+            "loaded": true,
+            "src": "/site/media/context.webp"
+          }
+        ],
+        "selected": "true",
+        "visible": true
+      },
+      {
+        "id": "gallery-tab-1",
+        "images": [
+          {
+            "loaded": true,
+            "src": "/site/media/spindown.webp"
+          }
+        ],
+        "selected": "true",
+        "visible": true
+      },
+      {
+        "id": "gallery-tab-2",
+        "images": [
+          {
+            "loaded": true,
+            "src": "/site/media/inventory.webp"
+          }
+        ],
+        "selected": "true",
+        "visible": true
+      },
+      {
+        "id": "install-tab-0",
+        "images": [],
+        "selected": "true",
+        "visible": true
+      },
+      {
+        "id": "install-tab-1",
+        "images": [],
+        "selected": "true",
+        "visible": true
+      },
+      {
+        "id": "install-tab-2",
+        "images": [],
+        "selected": "true",
+        "visible": true
+      }
+    ],
+    "menu": {
+      "open": true,
+      "escape": true,
+      "anchor": {
+        "expected": 92,
+        "focus": "features",
+        "open": false,
+        "top": 92.125
+      }
+    },
+    "faq": {
+      "name": "Does it reveal unknown pills or Curse of the Blind?\n+",
+      "open": ""
+    },
+    "layout": {
+      "canvas": "point-field is-ready",
+      "height": 844,
+      "hero": {
+        "bottom": -4480.375,
+        "height": 775.125,
+        "left": 20,
+        "right": 370,
+        "top": -5255.5,
+        "width": 350
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": -4798.796875,
+            "height": 404.703125,
+            "left": 20,
+            "right": 370,
+            "top": -5203.5,
+            "width": 350
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": -4508.375,
+            "height": 282.421875,
+            "left": 20,
+            "right": 370,
+            "top": -4790.796875,
+            "width": 350
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        },
+        {
+          "loaded": true,
+          "src": "/site/media/inventory.webp"
+        }
+      ],
+      "metrics": {
+        "cls": "0.0000",
+        "lcp": "100.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "title": "Isaac EID \u2014 Know the item. Keep the run.",
+      "width": 390
+    },
+    "errors": []
+  },
+  "gallery": {
+    "site": "eid",
+    "featureAnchor": {
+      "scroll": 826,
+      "top": 92.125
+    },
+    "viewer": {
+      "focus": "image-title",
+      "loaded": true,
+      "open": true,
+      "restored": true
+    },
+    "keyboardTabs": {
+      "focus": "gallery-tab-1",
+      "selected": "gallery-tab-1"
+    },
+    "logs": []
+  },
+  "motion": {
+    "site": "eid",
+    "waves": {
+      "activePulses": "4",
+      "draws": "22",
+      "state": "running"
+    },
+    "running": {
+      "activePulses": "0",
+      "cls": "0",
+      "drawP95": "5.00",
+      "draws": "61",
+      "frameMedian": "33.3",
+      "lcp": "108.0",
+      "state": "running"
+    },
+    "paused": true,
+    "errors": []
+  },
+  "fallback": {
+    "site": "eid",
+    "canvasOpacity": "0",
+    "class": "point-field",
+    "errors": [],
+    "fallbackOpacity": "0.95",
+    "loaded": true,
+    "motion": "reduced"
+  },
+  "final_controls": {
+    "site": "eid",
+    "blur": "blur(32px) saturate(1.1)",
+    "canvasState": "static",
+    "githubHidden": true,
+    "menuHeight": 411.796875
+  }
+}

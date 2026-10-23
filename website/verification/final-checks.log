@@ -1,0 +1,54 @@
+
+> emp0ry-eid-website@1.0.0 test
+> node --test tests/*.test.ts
+
+✔ anchor alignment uses the clipped scrollport, and manual scrolling releases resize alignment (4.233875ms)
+✔ page keys scroll from the fixed header and document focus without intercepting content or controls (1.523875ms)
+✔ a hash away from its target does not override restored reading position on resize (0.273708ms)
+✔ initial fragments are repaired only at the untouched scroll origin (2.649459ms)
+✔ icons: deterministic silhouette closes its loop without clipping or invalid values (14.146334ms)
+✔ cursor: deterministic silhouette closes its loop without clipping or invalid values (8.889917ms)
+✔ lens: deterministic silhouette closes its loop without clipping or invalid values (4.220833ms)
+✔ bridge: deterministic silhouette closes its loop without clipping or invalid values (2.83625ms)
+✔ console: deterministic silhouette closes its loop without clipping or invalid values (2.013875ms)
+✔ compass: deterministic silhouette closes its loop without clipping or invalid values (4.934834ms)
+✔ refresh: deterministic silhouette closes its loop without clipping or invalid values (1.72375ms)
+✔ rapid input preserves existing wave ages and remains bounded (0.110959ms)
+✔ official release assets resolve with exact repository, tag and positive size (0.970584ms)
+✔ a partial release remains useful without inventing missing formats (1.944875ms)
+✔ foreign URLs, credentials, drafts, prereleases and unfinished assets are rejected (0.195459ms)
+✔ the reticle pauses offscreen/hidden and releases its observers, frames, controls and input (15.884417ms)
+✔ native scrolling pauses and resumes the reticle even when observer updates are delayed (4.780125ms)
+✔ reduced motion draws one fixed pose with no decorative control or animation frame (3.197208ms)
+✔ unavailable canvas leaves the SVG fallback in place (1.742292ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 308.910791
+
+
+> emp0ry-eid-website@1.0.0 build
+> tsc --noEmit && vite build && node scripts/sync-docs.mjs
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 11 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/404.html                       6.45 kB │ gzip: 1.99 kB
+dist/index.html                    23.72 kB │ gzip: 6.07 kB
+dist/site/build/main-DbvuzDOR.css  25.70 kB │ gzip: 5.95 kB
+dist/site/build/main-BT2eGiwl.js   15.68 kB │ gzip: 6.40 kB
+
+✓ built in 121ms
+Synced 15 website files; retained domain, original assets and documentation.
+
+
+> emp0ry-eid-website@1.0.0 check:output
+> node scripts/check-output.mjs
+
+Isaac EID: anchors, verified formats, static content, metadata/CSP, local assets, retained endpoints and Pages output pass.
